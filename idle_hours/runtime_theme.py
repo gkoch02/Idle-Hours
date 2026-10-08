@@ -44,14 +44,11 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
 
     Single seam so call sites that thread these into ``resolve_effective_theme``
     don't each have to reach into ``args``; if we ever add a third dimension
-    (e.g. weekend/weekday split) only this helper changes. ``getattr`` defaults
-    cover programmatic ``argparse.Namespace`` constructions in tests (and any
-    caller predating these flags) — the legacy binary contract is preserved
-    when the attributes are absent.
+    (e.g. weekend/weekday split) only this helper changes.
     """
     return {
-        "auto_day_theme": getattr(args, "auto_day_theme", "default"),
-        "auto_night_theme": getattr(args, "auto_night_theme", "dark"),
+        "auto_day_theme": args.auto_day_theme,
+        "auto_night_theme": args.auto_night_theme,
     }
 
 
@@ -216,7 +213,7 @@ def resolve_quiet_theme(
     sleep frame's quote never changes, so the quiet window is the only
     meaningful unit to reroll on.
     """
-    quiet_choice = getattr(args, "quiet_theme", QUIET_THEME_INHERIT) or QUIET_THEME_INHERIT
+    quiet_choice = args.quiet_theme or QUIET_THEME_INHERIT
 
     with state.lock:
         manual_theme = state.manual_theme

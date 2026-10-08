@@ -1,4 +1,4 @@
-"""The ``vitrail`` theme's frame and the code only it uses (issue #335).
+"""The ``vitrail`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -10,12 +10,11 @@ import random
 
 from PIL import Image, ImageDraw
 
-from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import _clock_hour12, _fit_dotted_byline
+from ..fonts import load_font, normalize_dashes, theme_font_candidates
+from ..furniture import _clock_hour12, _fit_dotted_byline, _paint_placed, _place_lines
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
-from ..text import draw_text_dithered
 from ._shared import _TAROT_ROMAN_NUMERALS, _vitrail_fill_polygon
 
 # ─── vitrail (Gothic stained-glass cathedral window) ─────────────────────────
@@ -404,35 +403,9 @@ def _vitrail_paint_quote_body(
     )
     quote_block_height = len(wrapped_quote) * line_height
     block_top = y0 + max(0, (height - quote_block_height) // 2)
-    body_ascent = _font_ascent(quote_font)
-    y = block_top
-    for line in wrapped_quote:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        line_width: float = 0
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            line_width += bbox[2] - bbox[0]
-        x: float = x0 + max(0, (width - line_width) // 2)
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (body_ascent - _font_ascent(font))
-            if is_bold:
-                draw_text_dithered(
-                    image, (x, chunk_y), chunk, font=font,
-                    dark=RED, light=BLUE, light_density=0.5,
-                )
-            else:
-                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    for line in _place_lines(draw, wrapped_quote, x0=x0, width=width, top=block_top, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold):
+        _paint_placed(draw, line, BLACK, RED, image=image, accent_light=BLUE)
 
 
 def _vitrail_paint_attribution(

@@ -32,7 +32,7 @@ idle_hours/render_quote/
                    relief.py (relief, hatched tone, flow strokes, shade_height_field, craquelure),
                    noise.py (_white_noise, _smooth_noise, position_noise, _bayer_threshold_field, swatch stipple)
   furniture.py     _clock_hour12/_clock_hh_mm, _row_digest, tracked text, fit_text_to_width, byline helpers,
-                   _place_quote/_paint_placed, paint_mount_card, wrap_quote_into_masks
+                   _place_quote/_place_lines/_paint_placed, paint_mount_card, wrap_quote_into_masks
   frames.py        source card, static message, sleep frame, diags
   themes/
     __init__.py    explicit, ordered import list → registry (no pkgutil auto-discovery)

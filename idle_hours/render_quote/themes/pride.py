@@ -1,4 +1,4 @@
-"""The ``pride`` theme's frame and the code only it uses (issue #335).
+"""The ``pride`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
-from ..layout import fit_quote, strip_underscore_emphasis
+from ..layout import _trim_line, fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
@@ -286,13 +286,7 @@ def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict, width: int, height
     lines = []
     block_w: float = 0
     for line in wrapped:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
+        drawable = _trim_line(line)
         widths = []
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font

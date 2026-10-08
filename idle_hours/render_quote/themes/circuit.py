@@ -1,4 +1,4 @@
-"""The ``circuit`` theme's border painter and the code only it uses (issue #335).
+"""The ``circuit`` theme's border painter and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """

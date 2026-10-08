@@ -11,7 +11,7 @@ from itertools import pairwise
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .fonts import _font_ascent, normalize_dashes
-from .layout import fit_quote, strip_underscore_emphasis
+from .layout import _trim_line, fit_quote, strip_underscore_emphasis
 from .palette import SPECTRA6, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access
 
 
@@ -138,12 +138,7 @@ def wrap_quote_into_masks(draw, size, quote_row: dict, rect, *, theme: str,
     y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
     body_ascent = _font_ascent(quote_font)
     for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
+        segment = _trim_line(line)
         width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
                        for c, b in segment)
         x = x0 if align == "left" else x0 + max(0, (box_w - width_px) // 2)

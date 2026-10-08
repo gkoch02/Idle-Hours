@@ -49,6 +49,8 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ### `THEME_FONTS` entry (`render_quote/theme_tables.py`)
 
+`ARCHIVO_REGULAR` and `idle_hours/fonts/archivo/Archivo-Regular.ttf` were removed once nothing else loaded them (issue #395); restoring the theme means taking both back from git history.
+
 ```python
     "blueprint": {
         # Archivo grotesque; falls back through common Linux/Pi sans installs

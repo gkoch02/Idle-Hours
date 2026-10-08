@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from idle_hours import atomic_io
-from idle_hours.clean_display_quotes import HEADING_PREFIX, LEADING_CAPS_HEADING, unbalanced_quotes
+from idle_hours.clean_display_quotes import EXPANSION_MAX_CHARS, HEADING_PREFIX, LEADING_CAPS_HEADING, unbalanced_quotes
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -83,7 +83,7 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     elif length < 80:
         score -= 8
         reasons.append("short")
-    elif length > 260:
+    elif length > EXPANSION_MAX_CHARS:
         score -= 20
         reasons.append("too_long")
     elif length > 200:

@@ -1,6 +1,7 @@
 """Shared fixtures for Idle Hours tests."""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -65,6 +66,37 @@ def _isolate_photo_theme(monkeypatch):
     _clear()
     yield
     _clear()
+
+
+def make_args(tmp_path: Path | None = None, **overrides) -> argparse.Namespace:
+    """Build a ``run_clock`` Namespace from the real parser, then apply ``overrides``.
+
+    Every dest and default comes from ``run_clock.parse_args``, so a test
+    can't pass on a value the parser never produces (issue #396). The base
+    argv pins what a test must never inherit from the appliance defaults:
+    quiet hours off (the real 22:00-06:00 window would tie a result to the
+    wall clock), buttons off, no shutdown command, no preflight, and, given
+    ``tmp_path``, the runtime artefacts (output, state, history, telemetry,
+    pidfile) inside it. An override naming a dest the parser doesn't define
+    raises, which is what keeps a misspelt key from silently doing nothing.
+    """
+    from idle_hours import run_clock
+
+    argv = ["--skip-preflight", "--buttons-off", "--quiet-off", "--shutdown-command", ""]
+    if tmp_path is not None:
+        argv += [
+            "--output", str(tmp_path / "current.png"),
+            "--state-path", str(tmp_path / "state.json"),
+            "--history-path", str(tmp_path / "history.jsonl"),
+            "--telemetry-path", str(tmp_path / "telemetry.jsonl"),
+            "--pidfile", str(tmp_path / "run_clock.pid"),
+        ]
+    args = run_clock.parse_args(argv)
+    for key, value in overrides.items():
+        if not hasattr(args, key):
+            raise AttributeError(f"run_clock.parse_args defines no {key!r} dest")
+        setattr(args, key, value)
+    return args
 
 
 def make_row(**kwargs) -> dict:

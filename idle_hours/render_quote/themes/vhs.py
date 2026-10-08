@@ -1,4 +1,4 @@
-"""The ``vhs`` theme's frame and the code only it uses (issue #335).
+"""The ``vhs`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -10,8 +10,8 @@ import random
 from PIL import Image, ImageDraw
 
 from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES, PIXELIFYSANS_VARIABLE
-from ..fonts import _font_ascent, load_font, normalize_dashes
-from ..furniture import _row_digest, fallback_title
+from ..fonts import load_font, normalize_dashes
+from ..furniture import _place_lines, _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, _fill_swatch_stipple_3way
@@ -188,29 +188,14 @@ def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: d
     block_h = len(wrapped) * line_height
     total = block_h + (credit_h + _VHS_CREDIT_GAP if credits else 0)
     y = y0 + max(0, ((y1 - y0) - total) // 2)
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        widths = []
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            box = draw.textbbox((0, 0), chunk, font=font)
-            widths.append(box[2] - box[0])
-        start_x = x0 + max(0, ((x1 - x0) - sum(widths)) // 2)
+    for line in _place_lines(draw, wrapped, x0=x0, width=x1 - x0, top=y, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold):
         # Two passes over the line: every ghost, then every core. Per-chunk
         # ghost-then-core lets the next chunk's left ghost land on the previous
         # chunk's core (from an offset of about 5), and the ``ground`` guard
         # cannot catch it since it lists the white core too.
         for pass_core in (False, True):
-            x = start_x
-            for (chunk, is_bold), chunk_w in zip(drawable, widths, strict=True):
-                font = quote_font_bold if is_bold else quote_font
-                chunk_y = y + (ascent - _font_ascent(font))
+            for x, chunk_y, chunk, font, is_bold, *_ in line:
                 draw_text_chroma_shift(
                     image, (x, chunk_y), chunk, font,
                     core=white if pass_core else None,
@@ -219,9 +204,7 @@ def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: d
                     offset=_VHS_CHROMA_OFFSET + (1 if is_bold else 0),
                     ground=ground,
                 )
-                x += chunk_w
-        y += line_height
-    return y
+    return y + len(wrapped) * line_height
 
 
 def _vhs_paint_osd(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict,

@@ -23,39 +23,17 @@ import pytest
 from PIL import Image
 
 from idle_hours import atomic_io, pick_quote, run_clock, runtime_actions, runtime_render, runtime_theme, web_server
-from tests.conftest import make_row
+from tests.conftest import make_args, make_row
 
 
 def _make_args(tmp_path: Path, **overrides) -> argparse.Namespace:
-    """Build a plausible argparse.Namespace for run_clock/web_server wiring."""
-    defaults = dict(
-        render_script="render_quote.py",
-        output=str(tmp_path / "current.png"),
-        once=False,
-        interval_seconds=60,
-        width=800,
-        height=480,
-        display_script=None,
-        mode="debug",
-        theme="default",
-        buttons_off=True,
-        shutdown_command="",
-        startup_image=None,
-        state_path=str(tmp_path / "state.json"),
-        telemetry_path=str(tmp_path / "telemetry.jsonl"),
-        quiet_start="22:00",
-        quiet_end="06:00",
-        quiet_image="assets/goodnight.png",
-        quiet_off=True,
-        history_path=str(tmp_path / "history.jsonl"),
-        history_days=7,
-        web_bind="127.0.0.1:0",
-        web_token="",
-        web_token_file="",
-        overrides=str(tmp_path / "selection_overrides.json"),
-    )
-    defaults.update(overrides)
-    return argparse.Namespace(**defaults)
+    """``make_args`` with the curator UI on an ephemeral loopback port and the
+    overrides sidecar in ``tmp_path``, since a ban writes it."""
+    return make_args(tmp_path, **{
+        "web_bind": "127.0.0.1:0",
+        "overrides": str(tmp_path / "selection_overrides.json"),
+        **overrides,
+    })
 
 
 def _start(tmp_path: Path, *, token: str = "", args: argparse.Namespace | None = None,
@@ -1891,17 +1869,14 @@ class TestContentLengthEdges:
 # ============================================================================
 
 def _make_args_v2(tmp_path: Path, **overrides) -> argparse.Namespace:
-    """Args helper that also wires the v2 corpus / sidecar / baked-DB paths.
-
-    Kept separate from the v1 ``_make_args`` to keep existing tests untouched.
-    """
-    args = _make_args(tmp_path, **overrides)
-    args.content_overrides = overrides.get(
-        "content_overrides", str(tmp_path / "content_overrides.json"),
-    )
-    args.raw_corpus = overrides.get("raw_corpus", str(tmp_path / "candidates-attributed.jsonl"))
-    args.baked_db = overrides.get("baked_db", str(tmp_path / "quote_database.jsonl"))
-    return args
+    """``_make_args`` with the content-overrides sidecar, raw corpus and baked DB
+    in ``tmp_path`` too, since ``/api/bake`` writes all three."""
+    return _make_args(tmp_path, **{
+        "content_overrides": str(tmp_path / "content_overrides.json"),
+        "raw_corpus": str(tmp_path / "candidates-attributed.jsonl"),
+        "baked_db": str(tmp_path / "quote_database.jsonl"),
+        **overrides,
+    })
 
 
 def _start_v2(tmp_path: Path, *, token: str = "", args: argparse.Namespace | None = None,
@@ -3215,10 +3190,9 @@ class TestHostPolicy:
         assert ctx.bind_is_loopback is True
         assert ctx.host_is_allowed("attacker.test") is False
 
-    def test_missing_web_bind_attribute_degrades_too(self, tmp_path):
-        args = _make_args(tmp_path)
-        del args.web_bind
-        args.web_allowed_hosts = None
+    def test_empty_web_bind_degrades_too(self, tmp_path):
+        """``--web-bind`` defaults to ``""`` (server off); a context built on it still constructs."""
+        args = _make_args(tmp_path, web_bind="")
         ctx = web_server.WebContext(args, run_clock.RuntimeState(args.theme))
         assert (ctx.bind_host, ctx.bind_port) == ("", 0)
 

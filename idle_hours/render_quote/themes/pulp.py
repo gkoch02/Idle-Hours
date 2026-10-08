@@ -1,4 +1,4 @@
-"""The ``pulp`` theme's frame and the code only it uses (issue #335).
+"""The ``pulp`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import ALFA_SLAB_ONE, META_FONT_BOLD_CANDIDATES, QUOTE_FONT_BOLD_CANDIDATES, SPACEMONO_BOLD
 from ..fonts import _font_ascent, load_font, normalize_dashes
+from ..furniture import _paint_placed, _place_lines
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
@@ -38,7 +39,6 @@ from ._shared import _TAROT_ROMAN_NUMERALS
 # ---------------------------------------------------------------------------
 _PULP_MASTHEAD_H = 46
 _PULP_TITLE_TOP = 58
-_PULP_TITLE_MAX = 132          # title block height before the byline
 _PULP_BLURB_RECT = (54, 176, 746, 380)
 _PULP_PLATE_OFFSET = (3, 2)    # how far the red plate missed the black one
 _PULP_IMPRINT = "IDLE HOURS"
@@ -166,26 +166,9 @@ def _pulp_paint_blurb(image, draw, quote_row, rect):
     )
     block_h = len(wrapped) * line_height
     y = inner[1] + max(0, ((inner[3] - inner[1]) - block_h) // 2)
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        widths = []
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            box = draw.textbbox((0, 0), chunk, font=font)
-            widths.append(box[2] - box[0])
-        x = inner[0] + max(0, ((inner[2] - inner[0]) - sum(widths)) // 2)
-        for (chunk, is_bold), chunk_w in zip(drawable, widths, strict=True):
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (ascent - _font_ascent(font))
-            draw.text((x, chunk_y), chunk, font=font, fill=red if is_bold else black)
-            x += chunk_w
-        y += line_height
+    for line in _place_lines(draw, wrapped, x0=inner[0], width=inner[2] - inner[0], top=y,
+                             line_height=line_height, regular=quote_font, bold=quote_font_bold):
+        _paint_placed(draw, line, black, red)
 
 
 def _pulp_paint_price_flash(image, draw, width, height):

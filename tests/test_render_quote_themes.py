@@ -18,11 +18,13 @@ custom paths add.
 from __future__ import annotations
 
 import bisect
+import functools
 import json
 import math
 import pathlib
 import threading
 from itertools import pairwise
+from types import MappingProxyType
 
 import pytest
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
@@ -39,6 +41,25 @@ from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
 CUSTOM_THEMES = ("marquee", "tarot", "vitrail", "outrun", "sampler", "lieder", "izakaya",
                  "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro", "bakelite",
                  "nocturne", "plaque", "daguerreotype")
+
+
+# Input samples for the sweeps that pin a frame to the hour (issue #397).
+# "Every minute of an hour renders identically" and "every hour renders" are
+# properties that break at boundaries, not in the middle of a range, so the
+# sweeps render the boundaries instead of all 60 minutes or all 24 hours.
+#
+# EDGE_MINUTES straddles every way a minute could leak in. ``buckets`` rounds
+# with ((minute + 2) // 5) * 5, so 00 and 02 share the :00 bucket and 03 opens
+# the :05 one; 27 | 28 and 32 | 33 are the two edges of the :30 bucket, with
+# the half hour between them; and 58 and 59 round forward into the *next*
+# hour's :00 bucket while 57 does not. A raw minute, a rounded minute, a
+# past/to switch at the half hour and an hour rolled forward by rounding each
+# separate at least two of these.
+EDGE_MINUTES = (0, 2, 3, 27, 28, 30, 32, 33, 57, 58, 59)
+# EDGE_HOURS covers the 12-hour clock's wraps (midnight 00 and noon 12, which
+# both read 12; 11 -> 12 -> 1 and its PM twin 23 / 13) plus one mid-afternoon
+# hour away from any wrap.
+EDGE_HOURS = (0, 1, 11, 12, 13, 15, 23)
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -657,10 +678,12 @@ class TestVitrailFrame:
         assert png(1) == png(2)
 
     def test_every_hour_renders_on_palette(self):
-        """All twelve numeral mappings (and the 00→XII rollover) render
-        without raising and stay on-palette."""
+        """The numeral mapping renders without raising and stays on-palette
+        across the 12-hour clock's wraps (the 00 and 12 -> XII rollovers,
+        11 -> XII -> I) and a mid-afternoon hour. A numeral that broke would
+        break at a wrap, so ``EDGE_HOURS`` stands in for all 24 (issue #397)."""
         palette = set(rq.SPECTRA6.values())
-        for hh in range(24):
+        for hh in EDGE_HOURS:
             img = rq.render(f"{hh:02d}:15", make_row(), 800, 480, theme="vitrail")
             assert img.size == (800, 480)
             assert distinct_inks(img).issubset(palette), f"off-palette at hour {hh}"
@@ -1163,8 +1186,15 @@ class TestPrideChevronBands:
     TOLERANCE = 0.06
 
     @staticmethod
-    def _bands(width: int = 800, height: int = 480) -> list[dict]:
-        """Ink histograms per chevron band, bucketed by the painter's own term."""
+    @functools.cache
+    def _bands(width: int = 800, height: int = 480) -> tuple[MappingProxyType, ...]:
+        """Ink histograms per chevron band, bucketed by the painter's own term.
+
+        Memoised (read-only) because the walk is a per-pixel Python loop that
+        costs ~10 s and the three tests below all read the same 800x480 flag:
+        measuring it once per worker instead of once per test (issue #397)
+        changes nothing they assert.
+        """
         image = rq.Image.new("RGB", (width, height), rq.SPECTRA6["white"])
         rq._pride_paint_flag(image)
         px = image.load()
@@ -1188,7 +1218,7 @@ class TestPrideChevronBands:
                     continue
                 ink = names[px[x, y]]
                 buckets[band][ink] = buckets[band].get(ink, 0) + 1
-        return buckets
+        return tuple(MappingProxyType(bucket) for bucket in buckets)
 
     def test_band_inks_and_order(self):
         buckets = self._bands()
@@ -1804,7 +1834,10 @@ class TestBakeliteHourIndex:
     do, by showing a *setting index* rather than a clock reading, and the way to
     keep that honest is mechanical: if a minute could reach the frame, the
     readout would be a clock. So every minute of an hour must render identically
-    for a fixed row, and the twelve hours must all differ.
+    for a fixed row, and the hours must all differ.
+
+    Both sweeps render the boundaries rather than the whole range (issue
+    #397): ``EDGE_MINUTES`` for the minutes, ``EDGE_HOURS`` for the hours.
     """
 
     ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
@@ -1815,15 +1848,23 @@ class TestBakeliteHourIndex:
         return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="bakelite"))
 
     def test_no_minute_reaches_the_console(self):
-        frames = {self._frame(f"09:{minute:02d}") for minute in range(60)}
+        frames = {self._frame(f"09:{minute:02d}") for minute in EDGE_MINUTES}
         assert len(frames) == 1, (
             "the minute is reaching the bakelite frame — the console shows an hour "
             "index, not a clock reading, and the matched phrase is the time carrier"
         )
 
     def test_every_hour_renders_differently(self):
-        frames = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
-        assert len(frames) == 12, "two hours render the same console"
+        """Hours a 12-hour clock tells apart render differently, and the AM
+        and PM twins (00 and 12, 01 and 13, 11 and 23) render the same."""
+        frames = {hour: self._frame(f"{hour:02d}:30") for hour in EDGE_HOURS}
+        for hour in EDGE_HOURS:
+            for other in EDGE_HOURS:
+                same_hour = hour % 12 == other % 12
+                assert (frames[hour] == frames[other]) == same_hour, (
+                    f"{hour:02d}:30 and {other:02d}:30 "
+                    + ("render different consoles" if same_hour else "render the same console")
+                )
 
 
 class TestBakelitePhosphorHalo:
@@ -2145,21 +2186,29 @@ class TestNocturneBrushwork:
         assert water > sky, "the water is no denser than the upper sky"
 
     def test_gold_stays_confined_to_the_lit_elements(self):
+        """No yellow or red pixel lies outside the quote, rocket, water and butterfly.
+
+        Built as a mask with the allowed boxes blanked out (inclusive bounds,
+        as ``ImageDraw.rectangle`` draws them) rather than a per-pixel Python
+        walk of the frame, which cost ~9 s for the same answer (issue #397).
+        """
         img = self._render()
-        px = img.load()
+        gold = Image.new("L", img.size, 0)
+        for ink in (rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]):
+            delta = ImageChops.difference(img, Image.new("RGB", img.size, ink)).split()
+            off_ink = ImageChops.lighter(ImageChops.lighter(delta[0], delta[1]), delta[2])
+            gold = ImageChops.lighter(gold, off_ink.point(lambda v: 255 if v == 0 else 0))
         qx0, qy0, qx1, qy1 = rq._NOCTURNE_QUOTE_RECT
-        strays = []
-        for y in range(480):
-            for x in range(800):
-                if px[x, y] not in (rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]):
-                    continue
-                in_quote = qx0 - 16 <= x <= qx1 + 16 and qy0 - 16 <= y <= qy1 + 16
-                in_rocket = 520 <= x <= 800 and 0 <= y <= 262
-                in_water = y >= rq._NOCTURNE_SHORE[0] - 6
-                in_butterfly = 728 <= x <= 780 and 408 <= y <= 452
-                if not (in_quote or in_rocket or in_water or in_butterfly):
-                    strays.append((x, y))
-        assert not strays, f"gold ink leaked outside the lit elements: {strays[:10]}"
+        blank = ImageDraw.Draw(gold)
+        blank.rectangle((qx0 - 16, qy0 - 16, qx1 + 16, qy1 + 16), fill=0)    # the quote
+        blank.rectangle((520, 0, 800, 262), fill=0)                          # the rocket
+        blank.rectangle((0, rq._NOCTURNE_SHORE[0] - 6, 800, 480), fill=0)    # the water
+        blank.rectangle((728, 408, 780, 452), fill=0)                        # the butterfly
+        bbox = gold.getbbox()
+        if bbox is not None:
+            mask = gold.load()
+            strays = [(x, y) for y in range(bbox[1], bbox[3]) for x in range(bbox[0], bbox[2]) if mask[x, y]]
+            pytest.fail(f"gold ink leaked outside the lit elements: {strays[:10]}")
 
     def test_time_never_reaches_the_canvas(self):
         frames = {pixel_bytes(self._render(t)) for t in ("03:07", "03:52", "09:30", "23:59")}
@@ -2412,13 +2461,26 @@ class TestPlaqueRelief:
         assert render() == render(contact=None), "the default grew a side effect"
 
     def test_dedication_tracks_hour_only(self):
-        frames = {self._frame(f"04:{minute:02d}") for minute in (0, 9, 17, 30, 48, 59)}
-        assert len(frames) == 1, (
+        """Every minute of an hour casts the same tablet; every hour its own.
+
+        Sampled at the boundaries (issue #397): the minutes of the noon hour,
+        where a minute rounded forward (12:58 -> 13:00) would also cross the
+        12 -> 1 wrap, and ``EDGE_HOURS`` at the half hour, whose AM and PM
+        twins must cast the same Roman hour.
+        """
+        noon = {minute: self._frame(f"12:{minute:02d}") for minute in EDGE_MINUTES}
+        assert len(set(noon.values())) == 1, (
             "two minutes of the same hour rendered differently — a minute is reaching "
             "the plaque, whose only time device is the ERECTED year's Roman hour"
         )
-        hours = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
-        assert len(hours) == 12, "two different hours produced the same tablet"
+        hours = {hour: noon[30] if hour == 12 else self._frame(f"{hour:02d}:30") for hour in EDGE_HOURS}
+        for hour in EDGE_HOURS:
+            for other in EDGE_HOURS:
+                same_hour = hour % 12 == other % 12
+                assert (hours[hour] == hours[other]) == same_hour, (
+                    f"{hour:02d}:30 and {other:02d}:30 "
+                    + ("cast different tablets" if same_hour else "produced the same tablet")
+                )
 
 
 class TestDaguerreotypePlate:

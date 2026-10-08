@@ -1,4 +1,4 @@
-"""The Marain script and Culture data the ``culture`` and ``orbital`` themes share (issue #335).
+"""The Marain script and Culture data the ``culture`` and ``orbital`` themes share.
 
 One family's helpers, so neither theme module imports the other. Code more
 than one unrelated theme uses goes in ``_shared``.

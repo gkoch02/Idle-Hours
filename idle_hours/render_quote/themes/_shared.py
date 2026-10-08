@@ -1,4 +1,4 @@
-"""Code more than one theme uses, so no theme module imports another (issue #335).
+"""Code more than one theme uses, so no theme module imports another.
 
 Each piece keeps the name it had in the theme that grew it: tarot's numerals,
 astrarium's cream wash, vitrail's glass fill, codex's asemic script, metro's

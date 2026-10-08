@@ -1,4 +1,4 @@
-"""The ``betweenus`` and ``betweenus_dark`` themes' border painter and the code only it uses (issue #335).
+"""The ``betweenus`` and ``betweenus_dark`` themes' border painter and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -59,7 +59,6 @@ from ..spec import BorderSpec
 # they paint on the paper outside the card, where a ``page_bg`` glyph would
 # punch a hole in the wash.
 
-_BETWEENUS_THEMES: frozenset[str] = frozenset({"betweenus", "betweenus_dark"})
 # The app's 16 pt screen inset, scaled to the panel.
 _BETWEENUS_MARGIN = 28
 # The app's 22 pt card corner radius, scaled to the panel.

@@ -356,7 +356,8 @@ def looks_fragment(text: str) -> bool:
     return False
 
 
-EXPANSION_MAX_CHARS = 260  # matches quality_filter's `too_long` ceiling — keep in lockstep.
+# Also quality_filter's `too_long` ceiling (imported from here), so an expanded run is never scored too long.
+EXPANSION_MAX_CHARS = 260
 EXPANSION_NEIGHBOURS = 2
 
 # Catches chapter/book/part/scene/volume/letter markers *anywhere* in a candidate.
