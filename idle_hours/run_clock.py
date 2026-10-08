@@ -46,6 +46,12 @@ BASE_DIR = Path(__file__).resolve().parent
 # Bound on the button-D shutdown command, so sudo hanging on PAM can't stall
 # the button thread. The render and display bounds live in ``runtime_render``.
 SHUTDOWN_TIMEOUT_SECONDS = 30
+# ``_shutdown`` waits this long for an in-flight render to finish before it
+# gives up: a whole render plus a whole display push at their timeouts, so a
+# ``systemctl restart`` landing mid-push lets the panel finish. The sample
+# unit's ``TimeoutStopSec`` must exceed it (``tests/test_pi_deployment_contract.py``).
+SHUTDOWN_DRAIN_SECONDS = runtime_render.RENDER_TIMEOUT_SECONDS + runtime_render.DISPLAY_TIMEOUT_SECONDS
+
 
 # Minimum wall-clock spacing between loop-heartbeat telemetry writes. The
 # heartbeat is a positive "I'm ticking" signal that works during quiet
@@ -1066,9 +1072,9 @@ def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None
     acquired = False
     try:
         with contextlib.suppress(Exception):
-            acquired = state.render_lock.acquire(timeout=30.0)
+            acquired = state.render_lock.acquire(timeout=SHUTDOWN_DRAIN_SECONDS)
         if not acquired:
-            _log("shutdown: render still in flight after 30s, proceeding anyway", err=True)
+            _log(f"shutdown: render still in flight after {SHUTDOWN_DRAIN_SECONDS}s, proceeding anyway", err=True)
 
         # Tear down ingress WHILE holding render_lock so any late web POST
         # or button callback that slips through hits _button_render_gate's

@@ -9,6 +9,13 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- A `systemctl restart` no longer cuts a panel refresh short. The sample
+  unit now stops only the loop (`KillMode=mixed`), which already waits for
+  an in-flight render, and the wait covers a whole render plus a whole
+  display push instead of a flat 30 seconds; `TimeoutStopSec` is set above
+  it. Restarts landing mid-push used to leave the panel half-refreshed and
+  log a display error. Existing installs need the two directives copied
+  into their unit and a `daemon-reload`.
 - Every render finishes about a quarter of a second sooner on a desktop,
   and far more on a Pi: the final snap of the frame to the six panel inks
   ran a Python loop over all 384,000 pixels and now runs in Pillow's C
