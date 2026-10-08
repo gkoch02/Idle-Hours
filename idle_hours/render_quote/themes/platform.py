@@ -160,7 +160,7 @@ def _platform_truncate(words, measure: int) -> list:
 
 def _platform_cells(line, x0: int = 0, y0: int = 0) -> list[tuple[int, int, bool]]:
     """``(col, row, is_bold)`` for every lit dot of ``line``, from ``(x0, y0)``."""
-    cells = []
+    cells: list[tuple[int, int, bool]] = []
     x = x0
     for word_index, word in enumerate(line):
         if word_index:
