@@ -2622,7 +2622,8 @@ class TestDaguerreotypePlate:
     Atkinson must be *measurably* different from Floyd-Steinberg on the 2-ink
     sub-palette — blown highlights, crushed shadows — or the dithering half of
     the theme's pitch collapses. The case rules: the silver stays achromatic,
-    the tarnish stays in its rim annulus, no clock reaches the canvas, and a
+    the tarnish stays in its rim annulus, the quote is stamped on the lid's
+    velvet, the case opens on a hinge, no clock reaches the canvas, and a
     stripped install still gets a photograph-shaped fallback.
     """
 
@@ -2698,10 +2699,32 @@ class TestDaguerreotypePlate:
     def test_missing_plate_falls_back_gracefully(self, monkeypatch):
         monkeypatch.setattr(rq_themes.daguerreotype, "DAGUERREOTYPE_PLATE", rq.BASE_DIR / "assets" / "no_such_plate.png")
         img = self._render()
-        counts = ink_counts(img.crop((200, 100, 340, 380)))
+        counts = ink_counts(img.crop((540, 120, 650, 380)))
         assert counts.get(rq.SPECTRA6["white"], 0) > 0 and counts.get(rq.SPECTRA6["black"], 0) > 0, (
             "the fallback did not paint a photograph-shaped silver image"
         )
+
+    def test_the_quote_is_stamped_on_the_velvet(self):
+        """The case lies open: the quote sits on the lid's red pad in gold,
+        the matched phrase in white, with no cream card anywhere."""
+        text = self._render().crop(rq._DAG_TEXT)
+        inks = distinct_inks(text)
+        allowed = {rq.SPECTRA6[c] for c in ("red", "black", "yellow", "white")}
+        assert inks <= allowed, f"stray inks {inks - allowed} on the velvet"
+        counts = ink_counts(text)
+        assert counts.get(rq.SPECTRA6["red"], 0) > 0.5 * text.width * text.height, (
+            "the pad behind the stamped quote is no longer velvet"
+        )
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 0, "the gold stamping is missing"
+        assert counts.get(rq.SPECTRA6["white"], 0) > 0, "the matched phrase lost its white"
+
+    def test_the_case_opens_on_a_hinge(self):
+        """Black leather between the halves, pewter knuckles on the spine."""
+        px = self._render().load()
+        spine = (rq._DAG_LID[2] + rq._DAG_BASE[0]) // 2
+        assert px[spine, 240] == rq.SPECTRA6["black"], "the spine is not leather"
+        knuckle = {px[spine + dx, rq._DAG_HINGES[0] + 10 + dy] for dx in (0, 1) for dy in (0, 1)}
+        assert knuckle == {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}, "the hinge is missing"
 
 
 class TestBetweenUs:
@@ -3178,9 +3201,9 @@ class TestAutochromePlate:
     regenerates the art with punchier colour, or quietly narrows the palette
     the way every other plate theme does, these fail.
 
-    The case rules follow: the caption card stays clean so a dense quote is
-    legible over a photograph, no clock reaches the canvas, and a stripped
-    install still gets a colour picture.
+    The slide rules follow: the caption is lettered on the black mask under
+    the window, the mask frames the plate on every side, no clock reaches the
+    canvas, and a stripped install still gets a colour picture.
     """
 
     ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
@@ -3279,29 +3302,39 @@ class TestAutochromePlate:
 
     # -- the case ------------------------------------------------------------
 
-    def test_the_caption_card_stays_clean(self):
-        """A dense literary quote sits on this card over a photograph, so the
-        knockout has to be complete: only card stock, rule and ink inside it."""
-        px = self._render().load()
-        x0, y0, x1, y1 = rq._AUTOCHROME_CARD
-        allowed = {rq.SPECTRA6[c] for c in ("white", "yellow", "black", "red")}
-        for y in range(y0 + 2, y1 - 1, 3):
-            for x in range(x0 + 2, x1 - 1, 3):
-                assert px[x, y] in allowed, (
-                    f"photograph bleeding through the caption card at ({x}, {y}) — "
-                    "the card must be knocked out of the plate, not laid over it"
-                )
+    def test_the_caption_is_lettered_on_the_mask(self):
+        """The slide carries its caption on the black mask, not on a card: the
+        strip under the window holds only mask, white letters and the yellow
+        matched phrase, and all three are present."""
+        caption = self._render().crop(rq._AUTOCHROME_CAPTION)
+        inks = distinct_inks(caption)
+        allowed = {rq.SPECTRA6[c] for c in ("black", "white", "yellow")}
+        assert inks <= allowed, (
+            f"stray inks {inks - allowed} under the window — the plate is leaking "
+            "into the caption, or a card has crept back"
+        )
+        counts = ink_counts(caption)
+        assert counts.get(rq.SPECTRA6["black"], 0) > 0.6 * caption.width * caption.height, (
+            "the caption strip is not mostly black mask"
+        )
+        assert rq.SPECTRA6["yellow"] in inks, "the matched phrase lost its yellow"
 
-    def test_the_card_is_lifted_off_the_plate(self):
-        """The shadow ledge, without which the card reads as a hole cut in the
-        photograph rather than as paper resting on it."""
-        px = self._render().load()
-        _, _, x1, y1 = rq._AUTOCHROME_CARD
-        ledge = rq._AUTOCHROME_LEDGE
-        for offset in range(1, ledge + 1):
-            assert px[x1 + offset, y1] == rq.SPECTRA6["black"], (
-                "the caption card's drop-shadow ledge is missing"
+    def test_the_mask_frames_the_window(self):
+        """Black paper on every side of the window, the plate's chroma only
+        inside it, and the projectionist's white thumb-spot in the corner."""
+        image = self._render()
+        px = image.load()
+        black = rq.SPECTRA6["black"]
+        x0, y0, x1, y1 = rq._AUTOCHROME_WINDOW
+        for x, y in ((x0 // 2, 240), ((x1 + 800) // 2, 240), (400, y0 // 3), (400, 476)):
+            assert px[x, y] == black, f"mask missing at ({x}, {y})"
+        window = image.crop((x0 + 12, y0 + 12, x1 - 12, y1 - 12))
+        for ink in ("blue", "green", "red"):
+            assert ink_counts(window).get(rq.SPECTRA6[ink], 0) > 0, (
+                f"no {ink} in the window — the transparency is not a colour plate"
             )
+        cx, cy, _ = rq._AUTOCHROME_THUMB_SPOT
+        assert px[cx, cy] == rq.SPECTRA6["white"], "the thumb-spot is missing"
 
     def test_no_clock_reaches_the_canvas(self):
         """A photograph carries no clock — ``daguerreotype``'s rule, for the
@@ -3327,16 +3360,6 @@ class TestAutochromePlate:
                 f"blooms are what make it read as a colour photograph at all"
             )
         rq._DITHER_CACHE.clear()
-
-    def test_the_tape_binds_all_four_edges(self):
-        """The passe-partout: a bound plate is taped on every edge, and the
-        tape is also what stops the photograph running off the panel."""
-        px = self._render().load()
-        black = rq.SPECTRA6["black"]
-        mid = rq._AUTOCHROME_TAPE // 2
-        for x, y in ((400, mid), (400, 479 - mid), (mid, 240), (799 - mid, 240)):
-            assert px[x, y] == black, f"binding tape missing at ({x}, {y})"
-
 
 class TestPhotoTheme:
     """The open-ended theme: the art is a file the operator chooses.
@@ -3864,17 +3887,35 @@ class TestPhotoTheme:
             "could never be invalidated"
         )
 
+    def test_the_default_picture_is_not_autochromes(self):
+        """Unconfigured, the theme shows its own coast, not ``autochrome``'s
+        garden: borrowing that plate made the two themes look the same in the
+        rotation. The coast is a blue-and-yellow picture where the garden is
+        a green-and-red one, so the ink mix tells them apart."""
+        assert rq_themes.photo.PHOTO_PLATE != rq.AUTOCHROME_PLATE
+        rq.clear_photo_cache()
+        plate, _ = rq_themes.photo._photo_fallback_frame(800, 480)
+        counts = ink_counts(plate)
+        coast = counts.get(rq.SPECTRA6["blue"], 0) + counts.get(rq.SPECTRA6["yellow"], 0)
+        meadow = counts.get(rq.SPECTRA6["green"], 0) + counts.get(rq.SPECTRA6["red"], 0)
+        assert coast > 2 * meadow, (
+            f"blue+yellow {coast} vs green+red {meadow} — the default picture no "
+            "longer reads as a coast"
+        )
+        for ink in rq.SPECTRA6.values():
+            assert counts.get(ink, 0) > 0, "the coast plate has dropped an ink"
+
     def test_a_stripped_install_still_renders(self, tmp_path, monkeypatch):
         """Fallback of the fallback: nothing configured *and* the bundled plate
-        gone. The synthesised garden keeps the theme a colour picture."""
-        monkeypatch.setattr(rq_themes.photo, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        gone. The synthesised coast keeps the theme a colour picture."""
+        monkeypatch.setattr(rq_themes.photo, "PHOTO_PLATE", tmp_path / "absent.png")
         rq.clear_photo_cache()
         rq._DITHER_CACHE.clear()
         image = self._render()
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
         counts = ink_counts(image)
         total = 800 * 480
-        for ink in ("blue", "green"):
+        for ink in ("blue", "yellow", "green"):
             assert counts.get(rq.SPECTRA6[ink], 0) / total > 0.01, (
                 f"the synthesised fallback has almost no {ink}"
             )

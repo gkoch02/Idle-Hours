@@ -347,8 +347,8 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `intaglio`    | <img src="idle_hours/assets/previews/intaglio.png" width="240" alt="intaglio theme preview">       | white       | black | green  | Old Standard TT + Cinzel Decorative | Banknote engraving |
 | `nocturne`    | <img src="idle_hours/assets/previews/nocturne.png" width="240" alt="nocturne theme preview">       | black       | white | yellow | Cormorant Garamond   | Whistler night river |
 | `plaque`      | <img src="idle_hours/assets/previews/plaque.png" width="240" alt="plaque theme preview">           | green       | yellow | white | Cinzel Decorative    | Patinated bronze plaque |
-| `daguerreotype` | <img src="idle_hours/assets/previews/daguerreotype.png" width="240" alt="daguerreotype theme preview"> | white   | black | red    | Libre Caslon Text    | Cased 1850s photograph |
-| `autochrome` | <img src="idle_hours/assets/previews/autochrome.png" width="240" alt="autochrome theme preview"> | white   | black | red    | Libre Caslon Text    | 1907 Lumière colour plate |
+| `daguerreotype` | <img src="idle_hours/assets/previews/daguerreotype.png" width="240" alt="daguerreotype theme preview"> | red velvet | gold | white  | Libre Caslon Text    | Cased 1850s photograph, lying open |
+| `autochrome` | <img src="idle_hours/assets/previews/autochrome.png" width="240" alt="autochrome theme preview"> | black   | white | yellow | Libre Caslon Text    | 1907 Lumière colour plate as a lantern slide |
 | `photo` | <img src="idle_hours/assets/previews/photo.png" width="240" alt="photo theme preview"> | white   | black | red    | Libre Caslon Text    | Your own picture via `--photo-path` |
 | `betweenus`   | <img src="idle_hours/assets/previews/betweenus.png" width="240" alt="betweenus theme preview">     | white/cream | black | red    | Fraunces + Inter      | Between Us app card, light |
 | `betweenus_dark` | <img src="idle_hours/assets/previews/betweenus_dark.png" width="240" alt="betweenus_dark theme preview"> | black       | white | amber  | Fraunces + Inter      | Between Us app card, dark |

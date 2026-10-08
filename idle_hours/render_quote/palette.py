@@ -232,19 +232,34 @@ def dither_image_to_palette(
 
 
 def _load_dithered_plate(path: Path, width: int, height: int, method: str = "floyd-steinberg",
-                         palette: list[tuple[int, int, int]] | None = None) -> Image.Image | None:
+                         palette: list[tuple[int, int, int]] | None = None,
+                         focus: tuple[float, float] | None = None) -> Image.Image | None:
     """Open a committed plate PNG, resize it, and dither it to ``palette``
     (default the full Spectra-6 set), memoised. Returns ``None`` if the asset
     is missing or unreadable, so a stripped install degrades to a plain
-    ground."""
+    ground.
+
+    With ``focus`` (x, y fractions, 0..1) the plate is scaled to *cover* the
+    box and the overflow cropped about that point, for a window whose aspect
+    differs from the plate's; without it the plate is stretched to fit.
+    """
     pal = palette if palette is not None else SPECTRA6_PALETTE
-    key = (str(path), width, height, method, tuple(pal))
+    key = (str(path), width, height, method, tuple(pal), focus)
     cached = _DITHER_CACHE.get(key)
     if cached is not None:
         return cached
     try:
         with Image.open(path) as raw:
-            resized = raw.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
+            rgb = raw.convert("RGB")
+            if focus is None:
+                resized = rgb.resize((width, height), Image.Resampling.LANCZOS)
+            else:
+                scale = max(width / rgb.width, height / rgb.height)
+                sw, sh = max(width, round(rgb.width * scale)), max(height, round(rgb.height * scale))
+                left = round((sw - width) * min(1.0, max(0.0, focus[0])))
+                top = round((sh - height) * min(1.0, max(0.0, focus[1])))
+                resized = rgb.resize((sw, sh), Image.Resampling.LANCZOS).crop(
+                    (left, top, left + width, top + height))
     except (OSError, ValueError):
         return None
     dithered = dither_image_to_palette(resized, pal, method=method)

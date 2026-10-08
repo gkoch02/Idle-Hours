@@ -28,7 +28,6 @@ NON_RETRYABLE_EXCEPTIONS = (FileNotFoundError, PermissionError)
 THEME_SATURATION: dict[str, float] = {
     # Light ground.
     "astrarium": 0.5,
-    "autochrome": 0.5,
     "bauhaus": 0.5,
     "beksinski": 0.5,
     "betweenus": 0.5,
@@ -37,7 +36,6 @@ THEME_SATURATION: dict[str, float] = {
     "cartograph": 0.5,
     "codex": 0.5,
     "control": 0.5,
-    "daguerreotype": 0.5,
     "deco": 0.5,
     "default": 0.5,
     "diags": 0.5,
@@ -75,6 +73,7 @@ THEME_SATURATION: dict[str, float] = {
     "anna_atkins": 0.7,
     "atomic": 0.7,
     "atropos": 0.7,
+    "autochrome": 0.7,
     "bakelite": 0.7,
     "betweenus_dark": 0.7,
     "biomech": 0.7,
@@ -87,6 +86,7 @@ THEME_SATURATION: dict[str, float] = {
     "circuit": 0.7,
     "comic": 0.7,
     "culture": 0.7,
+    "daguerreotype": 0.7,
     "dark": 0.7,
     "dsky": 0.7,
     "expanse": 0.7,
