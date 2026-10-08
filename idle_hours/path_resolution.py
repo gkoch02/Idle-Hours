@@ -1,31 +1,12 @@
-"""Path-resolution helpers for the run_clock orchestrator + its siblings.
+"""Path-resolution helpers for the run_clock orchestrator and its siblings.
 
-The v2.x package restructure moved ``BASE_DIR`` (the directory each module
-lives in) *inside* the installed ``idle_hours/`` package, so the
-pre-restructure idiom of joining every relative path with ``BASE_DIR`` now
-buries operator artifacts inside site-packages. We need two contracts:
-
-* **Outputs** (``--output``, the render PNG target): always CWD-relative. The
-  operator owns these; ``Path(value).expanduser().resolve()`` is enough.
-* **Inputs** (``--render-script``, ``--display-script``, ``--quiet-image``,
-  ``--startup-image``): try CWD first, fall back to the bundled location
-  under ``BASE_DIR`` if the CWD candidate doesn't exist. This satisfies
-  three otherwise-conflicting requirements simultaneously:
-    1. The shipped configs can stay portable (``config.toml.example`` lists
-       ``display_script = "display_inky.py"`` as a relative string; that
-       still resolves to the bundled script regardless of where the
-       operator installed the package or what their CWD is).
-    2. An operator who drops a ``./my_renderer.py`` in their working tree
-       and points the config at it gets *their* file, not the bundled
-       one — CWD-relative wins when the file exists.
-    3. An operator passing an absolute path gets exactly that path.
-
-The fallback is asymmetric on purpose: outputs MUST go to CWD (BASE_DIR
-would mean writing into site-packages), inputs ALSO go to CWD when the
-file is there, falling back to BASE_DIR only for the bundled-default
-case. Two regression tests pin this behaviour:
-``tests/test_run_clock.py::TestParseArgsBasic::test_main_persists_resolved_output_back_to_args``
-and ``tests/test_web_server.py::TestOutputPathAlignment``.
+``BASE_DIR`` lives inside the installed package, so joining every relative
+path onto it would bury operator files in site-packages. Outputs are always
+CWD-relative; operator-supplied inputs (``--render-script``,
+``--display-script``, ``--quiet-image``, ``--startup-image``) resolve CWD
+first and fall back to the bundled copy, so a shipped relative config stays
+portable while an operator's own file wins. The full rules: docs/runtime.md
+("Default paths").
 """
 from __future__ import annotations
 

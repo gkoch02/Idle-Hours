@@ -1,6 +1,7 @@
-"""The ``carcosa`` theme's border painter and the code only it uses.
+"""The ``carcosa`` theme's border painter: *The King in Yellow* (Chambers, 1895)
+staged as the play itself.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § carcosa
 """
 
 from __future__ import annotations
@@ -12,27 +13,6 @@ from PIL import Image, ImageDraw
 from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..primitives import position_noise
 from ..spec import BorderSpec
-
-# The King in Yellow — Robert W. Chambers, 1895.
-#
-#     Along the shore the cloud waves break,
-#     The twin suns sink behind the lake,
-#         The shadows lengthen
-#             In Carcosa.
-#     Strange is the night where black stars rise,
-#     And strange moons circle through the skies ...
-#
-# ``carcosa`` stages the page as the play itself: a tattered yellow curtain
-# drawn back at either side, the Yellow Sign hung over the proscenium, black
-# stars in a sickly sky, and — along the foot — the towers of Carcosa standing
-# against twin suns as they sink into Lake Hali. Everything is solid Spectra-6
-# ink laid with ``ImageDraw`` primitives, plus two sparse haze washes and one
-# tangerine post-pass on the curtain folds, all bounds-checked so the painter
-# clips cleanly at the ``/api/preview`` thumbnail sizes.
-#
-# The Yellow Sign here is an original glyph — Chambers never describes it, and
-# the well-known triskelion is a later artist's design — so it is drawn as
-# three hooked arms spiralling off a ring, asymmetric enough to feel wrong.
 
 # (x as a fraction of width, y, radius) for the black stars in the top margin.
 # Positioned by hand so none crowds the Yellow Sign at the top centre.
@@ -304,25 +284,12 @@ def _carcosa_paint_lake(image: Image.Image, draw: ImageDraw.ImageDraw, scale: fl
 
 
 def draw_carcosa_border(image: Image.Image, colors: dict) -> None:
-    """Paint the King in Yellow stage: curtains, the Sign, the sky, Lake Hali.
-
-    Composition, back to front:
-
-    * **Sky** — a sparse yellow haze across the top margin, fading by y≈56,
-      with six black stars rising in it (black four-pointed stars, rimmed in
-      yellow so a black shape can be seen against black).
-    * **The Yellow Sign** — centred at the top, clear of the right-aligned
-      ``DEBUG MODE`` banner.
-    * **Tattered curtains** — one down each side, drawn back to a blood-red
-      tie-back cord, torn along the inner edge and frayed into strands at the
-      hem, with tangerine-shadowed folds and holes eaten through them.
-    * **Lake Hali** — along the foot, the towers of Carcosa stand in
-      silhouette against twin suns as they sink, cloud-waves break along the
-      shore to the left, and the suns' reflections break up in the water.
+    """Paint the King in Yellow stage, back to front: sky, the Sign, curtains, Lake Hali.
 
     Only the curtains reach the side margins (x ≤ 34 at the rail; the body
     column starts at x≈60); the sky stays above y≈56 and the lake below
-    y≈416, the bands the shared layout leaves free.
+    y≈416, the bands the shared layout leaves free. Design notes:
+    docs/themes.md § carcosa.
     """
     del colors  # every ink here is the theme's own; the THEMES slots are the text's.
     width, height = image.size

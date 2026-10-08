@@ -1,6 +1,8 @@
-"""The ``marquee`` theme's frame and the code only it uses.
+"""The ``marquee`` theme's frame, a 1930s movie-palace facade at night: a bulb
+border round the book title as the feature, the quote as the feature copy,
+and its own closed-for-the-night sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § marquee
 """
 
 from __future__ import annotations
@@ -13,14 +15,6 @@ from ..furniture import _paint_placed, _place_lines, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..spec import FrameSpec
-
-# ─── marquee (1930s movie-palace facade) ─────────────────────────────────────
-# A black theatre facade at night: a yellow/red bulb-light border, the book
-# title at the top as the chunky Bungee Shade "feature title", the quote below
-# as the feature copy in white Cardo Italic with a red matched-phrase accent,
-# and WRITTEN BY credit chrome along the bottom. (A Solari split-flap board
-# was tried for this slot; its wayfinding register fought the literary
-# content.)
 
 _MARQUEE_BULB_INSET = 16
 _MARQUEE_BULB_RADIUS = 5
@@ -303,9 +297,6 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
 
 
 # ─── sleep frame: the house is closed for the night ─────────────────────────
-# The facade keeps its bulbs lit (a dark marquee reads as a dead panel) and the
-# changeable-letter board, backlit white, spells the closing notice in block
-# capitals, one letter per fixed-pitch tile on black track rails.
 
 _MARQUEE_SLEEP_BOARD = (64, 92, 736, 388)
 _MARQUEE_SLEEP_LINES = (

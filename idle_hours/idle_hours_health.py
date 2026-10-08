@@ -507,28 +507,13 @@ def render_staleness_reference(summary: dict) -> str | None:
 def is_render_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
     """Return True when the panel has gone too long without a repaint.
 
-    Distinct from heartbeat staleness: the loop can be perfectly alive —
-    heartbeating every 60s — while stuck in render backoff or a dedup-skip
-    branch that never repaints. That combination is invisible to the
-    heartbeat gate and is exactly the "panel is showing an old frame"
-    condition an operator wants paged on.
-
-    Quiet hours are the one case where *not* rendering is correct, and this
-    gate used to fire right through them (#232): with the shipped 22:00–06:00
-    defaults and the documented ``--max-render-age-minutes 90``, a healthy
-    appliance failed the check from ~23:30 to 06:00 every single night — and
-    an operator who also wired ``--webhook-url`` got paged for it. The
-    threshold can't be tuned around that (an 8-hour window would need ~500
-    minutes, which defeats the check by day), so the gate consults the
-    ``quiet_enter`` / ``quiet_exit`` markers ``runtime_quiet`` already emits
-    for exactly this purpose: while the window is open the gate is suppressed,
-    and once it closes the age is measured from the later of the last render
-    and the window's close.
-
-    A wedge *during* quiet hours is still caught — by ``is_heartbeat_stale``
-    while the window is open (heartbeats keep flowing through quiet hours,
-    which is the whole point of them), and by this gate once the window closes
-    and the appliance fails to resume rendering.
+    Distinct from heartbeat staleness: a loop that heartbeats while stuck in
+    backoff or a dedup-skip never repaints, which is what an operator wants
+    paged on. Suppressed while a quiet window is open (``quiet_enter`` /
+    ``quiet_exit`` markers); after it closes, the age runs from the later of
+    the last render and the window's close. Why, and how a wedge during quiet
+    hours is still caught: docs/runtime.md ("Quiet hours suppress the
+    render-age gate").
     """
     if summary.get("quiet_active"):
         return False

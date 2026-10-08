@@ -1,6 +1,7 @@
-"""The ``trisolaris`` theme's frame and the code only it uses.
+"""The ``trisolaris`` theme's frame and sleep frame: the Trisolaran sky of Liu
+Cixin's *The Three-Body Problem*, computed by integrating three suns and a planet.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § trisolaris
 """
 
 from __future__ import annotations
@@ -19,46 +20,11 @@ from ..primitives import _flow_stroke_hash, paint_neon_mask, wrap_quote_into_mas
 from ..spec import FrameSpec
 from ..text import draw_tracked
 
-# ---------------------------------------------------------------------------
-# trisolaris — Liu Cixin's *The Three-Body Problem* (三体, 2008)
-# ---------------------------------------------------------------------------
-# The Trisolaran sky, computed rather than drawn: three suns and a planet are
-# integrated under Newtonian gravity from fixed initial conditions, and the
-# clock advances the simulation (each dial minute is a fixed slice of simulated
-# time). Every render shows where the suns have got to, with the last hour of
-# their paths trailing behind.
-#
-# **The novel's mechanics come from the physics.** The era is read off the
-# integration: *stable* when one sun's pull on the planet exceeds the next
-# strongest by ``_TRISOLARIS_STABLE_DOMINANCE``, *chaotic* otherwise. When the
-# planet falls into a sun or is flung out, that civilization ends: the planet is
-# reborn in a circular orbit about the most isolated sun and the header counter
-# advances. The planet's trail is broken at every rebirth so a teleport never
-# draws as a streak.
-#
-# **Byte-identical everywhere.** Only ``+ - * /`` and ``math.sqrt`` are used,
-# all correctly rounded under IEEE 754. Don't use ``**`` in the force law
-# (``r2 * sqrt(r2)``, not ``r2 ** 1.5``): ``pow`` goes through libm, which need
-# not round correctly. Kick-drift-kick leapfrog at a fixed step; forces are
-# Plummer-softened because an adaptive step would make the frame depend on
-# floating-point comparisons in a step controller.
-#
-# **The initial conditions were searched offline** for a start whose suns stay
-# inside the sky all day and whose planet sees a mix of stable and chaotic eras
-# and a handful of lost civilizations (a generic three-body system ejects a sun
-# within a few dozen crossing times). ``TestTrisolarisEphemeris`` fences those
-# properties against the committed constants.
-#
-# **Composition.** The orrery owns the left; at its foot the Red Coast Base dish
-# on Radar Peak aims at the barycentre with wavefronts leaving its feed. The
-# quote sits on the right under a ``三体`` masthead, the matched phrase lit as
-# sunlight (yellow core in the bakelite split-band tangerine bloom), the prose
-# solid white. Along the foot: DO NOT ANSWER.
-#
-# **The time.** The clock drives the simulation and the era label; no digit of
-# the time is printed (the civilization number is a count of deaths). Composed
-# at 800x480 and NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
+# Byte-identical everywhere: the integrator uses only ``+ - * /`` and
+# ``math.sqrt``, all correctly rounded under IEEE 754. Keep ``**`` out of the
+# force law (``r2 * sqrt(r2)``, not ``r2 ** 1.5``): ``pow`` goes through libm,
+# which need not round correctly. The constants below were searched offline
+# and are fenced by ``TestTrisolarisFrame``.
 _TRISOLARIS_MASSES = (1.0, 0.85, 1.15)
 _TRISOLARIS_INITIAL_SUNS = (
     (-0.7790231091549272, -1.123740528588034),
@@ -564,13 +530,7 @@ def render_trisolaris_frame(time_str: str, quote_row: dict, width: int, height: 
 # ---------------------------------------------------------------------------
 # The sleep frame: "Chaotic era. Dehydrate."
 # ---------------------------------------------------------------------------
-# In the novel's game a chaotic era is survived by dehydrating: the people dry
-# out, are rolled up and stored, and are rehydrated when a stable era returns.
-# That is the Trisolaran version of sleep, so quiet hours freeze the sky at the
-# first sample of the day's longest chaotic era, the header gives the order,
-# and the column shows the dried rolls racked in their store under the promise
-# that the stable era will wake them. Rest, not catastrophe: the warning at
-# the foot gives way to the store's own notice.
+# Design notes: docs/themes.md § trisolaris ("Its own sleep frame").
 _TRISOLARIS_SLEEP_INDEX = 1123             # a stable era has just given way to the day's longest chaotic one
 _TRISOLARIS_SLEEP_ROW = {
     "display_quote": "Dehydrate, and rest. You will be rehydrated when the stable era returns.",

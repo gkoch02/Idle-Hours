@@ -1,48 +1,23 @@
 #!/usr/bin/env python3
 """Bake the runtime quote database from the attributed corpus.
 
-Final pipeline stage. Reads ``assets/candidates-attributed.jsonl`` (the output
-of ``apply_content_overrides.py``) and produces ``assets/quote_database.jsonl``:
-a *display-ready* corpus with scoring pre-computed.
+Final pipeline stage: reads ``assets/candidates-attributed.jsonl`` (after
+``apply_content_overrides``) and writes ``assets/quote_database.jsonl``
+atomically, dropping the rows the picker would filter anyway and caching
+each kept row's ten row-intrinsic score components (``baked_score``), its
+``inferred_quote_minute`` and a curator-facing ``baked_rank``. The picker
+then recomputes only the two request-time components. Selection overrides
+stay runtime concerns and are never baked.
 
-At runtime the picker no longer has to filter quality / drop daypart-only rows
-/ compute the nine row-intrinsic score components on every tick. Instead it
-reads this file and only recomputes the two request-time components
-(``minute_penalty``, ``override_bonus``); the remaining ten components live in
-``baked_score`` on each row.
-
-Baking drops rows that the runtime picker would have filtered anyway:
-
-* missing / empty ``fuzzy_bucket`` — daypart-only harvests that never match an
-  ``h{1..12}_{state}`` bucket, so ``pick_best`` can never surface them;
-* missing / empty ``display_quote`` — same filter ``pick_best`` applies today;
-* ``quality_score < --min-quality`` — same gate the picker applies on every
-  tick, paid once at bake time instead of per-render.
-
-Each kept row gets:
-
-* ``baked_score``: list of the ten row-intrinsic score components in the same
-  order the runtime picker expects when it interleaves the request-time
-  components back in (see ``pick_quote.compose_baked_score_key``);
-* ``inferred_quote_minute``: what minute this row *claims* (for the runtime
-  ``minute_penalty``) — cached once so the picker skips regex work per tick;
-* ``baked_rank``: 0-based ordinal within the row's bucket after sorting by
-  ``baked_score`` ascending. Purely for curator-UI readability; the runtime
-  picker sorts again once the request-time components are known.
-
-The baker never applies ``selection_overrides.json`` (bans / boosts /
-preferred buckets) — those are edited live via the web UI and stay runtime
-concerns. ``content_overrides.json`` is already applied by
-``apply_content_overrides.py`` immediately upstream.
+What is dropped, the field contract and the pick-equivalence guarantee:
+docs/pipeline.md ("Baked Quote Database").
 
 Example:
 
-    python3 bake_quote_database.py \\
-        assets/candidates-attributed.jsonl \\
-        --output assets/quote_database.jsonl \\
+    python3 bake_quote_database.py \
+        assets/candidates-attributed.jsonl \
+        --output assets/quote_database.jsonl \
         --min-quality 60
-
-Writes atomically via ``atomic_io.atomic_write_lines``.
 """
 from __future__ import annotations
 

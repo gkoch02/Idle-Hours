@@ -1,6 +1,7 @@
-"""The ``questline`` theme's frame and the code only it uses.
+"""The ``questline`` theme's frame, an 8-bit JRPG scene with the quote as NPC
+dialogue (the author on the nameplate), and its resting-at-the-inn sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § questline
 """
 
 from __future__ import annotations
@@ -16,14 +17,6 @@ from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple
 from ..spec import FrameSpec
-
-# ─── questline (pixel RPG dialogue) ──────────────────────────────────────────
-#
-# An 8/16-bit JRPG presents the quote as NPC dialogue: dithered sky over green
-# hills, a hero sprite, sun and clouds, and a bordered dialogue box. The author
-# is the speaker on the nameplate, the matched phrase glows yellow, a static ▼
-# arrow sits in the corner, and the title runs along the bottom. HH:MM is never
-# shown — the matched phrase carries the time.
 
 # 8-wide × 10-tall pixel hero: red cap, white face, blue tunic, black boots.
 # Painted as scale×scale blocks; '.' is transparent.
@@ -202,7 +195,7 @@ def _questline_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote
 
 
 def render_questline_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Pixel RPG dialogue scene (see the module section comment above).
+    """Pixel RPG dialogue scene (docs/themes.md § questline).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.
@@ -224,12 +217,6 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
 
 
 # ─── questline sleep frame (resting at the inn) ──────────────────────────────
-#
-# The same scene after dark: a navy night sky with a yellow crescent moon and
-# white pixel stars, the hills in forest green, and a pixel inn standing where
-# the hero stood. Its upstairs window is dark and white Z's drift up out of it;
-# a lantern-lit door and a hanging INN sign keep it welcoming. The innkeeper
-# speaks in the usual dialogue box. Nothing on the frame tells the time.
 
 _QUESTLINE_SLEEP_ROW = {
     "display_quote": "You rest at the inn. HP and MP are fully restored. Sleep well, traveller!",

@@ -17,37 +17,9 @@ from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
 
 # ---------------------------------------------------------------------------
-# bakelite — an amber-phosphor CRT readout in a moulded bakelite console.
-#
-# The one *appliance* in the rotation: a moulded butterscotch slab with a
-# sunken CRT face, and the quote is what the tube displays. Full design notes:
-# docs/themes.md (``bakelite``).
-#
-# **The screen's brown is the scanlines, not a wash.** Only every third row is
-# lit (``_BAKELITE_PITCH``), stippled red and green at 3:1
-# (``_BAKELITE_TUBE_GREEN``) so it averages to a dark warm brown with visible
-# line structure; the rows between stay black. Thinning the lit rows toward
-# the rim carries the vignette, with a mild lift toward the upper left for the
-# glass's reflection.
-#
-# **The glow is a synthesised tangerine.** No single ink is amber: a red halo
-# is lost against a screen made of red, and yellow alone reads olive (the
-# panel's yellow is a green one). So ``paint_neon_mask`` blooms red with a
-# yellow minor share (``glow_minor`` / ``core_minor``), the ratio riding the
-# density's own Bayer read as a split band (see its docstring);
-# ``_bakelite_paint_phosphor`` only supplies this theme's inks. Two tiers: the
-# prose has a gold stipple core, the matched phrase a solid white core and a
-# wider, denser bloom — an over-driven character on a one-phosphor tube.
-#
-# **The chrome is unlit.** Labels are flat solid yellow with no bloom, so the
-# legend sits behind the emissive readouts it names. Don't set them in red
-# (lowest contrast on black; 11 px caps vanish into the scanlines) or in a
-# tangerine stipple (shreds a letterform that small). The rules are wider than
-# a stem, so they can carry the tangerine.
-#
-# **The hour rides a setting index**, ``HOUR 2/12``. Hour only: every minute
-# of an hour renders byte-identically for a given row (pinned by
-# ``TestBakeliteHourIndex``).
+# bakelite — an amber-phosphor CRT readout in a moulded bakelite console. The
+# hour rides a setting index, ``HOUR 2/12``; hour only, so every minute of an
+# hour renders byte-identically. Design notes: docs/themes.md § bakelite.
 _BAKELITE_SCREEN = (46, 36, 754, 444)          # the CRT face, inset into the slab
 _BAKELITE_SCREEN_RADIUS = 26
 _BAKELITE_PITCH = 3                            # one lit scanline in every three
@@ -193,7 +165,7 @@ def _bakelite_paint_bevels(image: Image.Image) -> None:
 
 
 def _bakelite_paint_tube(image: Image.Image, screen: Image.Image) -> None:
-    """The CRT face: black glass carrying warm scanlines (see section comment)."""
+    """The CRT face: black glass carrying warm scanlines (``docs/themes.md`` § bakelite)."""
     pixels = pixel_access(image)
     sc_px = gray_pixel_access(screen)
     black, red, green = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["green"]
@@ -254,7 +226,7 @@ def _bakelite_fit_text(draw, text: str, size: int, max_width: int, floor: int = 
 
 def _bakelite_paint_phosphor(image: Image.Image, mask: Image.Image, core=None,
                              *, radius: int = 7, gamma: float = 1.5, cap: float = 0.68) -> None:
-    """Bloom one glyph mask as lit amber phosphor (see the section comment).
+    """Bloom one glyph mask as lit amber phosphor (``docs/themes.md`` § bakelite).
 
     A thin wrapper over ``paint_neon_mask`` supplying this theme's inks and
     tuning; the mechanism is documented there. ``core=None`` (the prose and
@@ -351,7 +323,7 @@ def _bakelite_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_r
 
 
 def render_bakelite_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """An amber-phosphor CRT in a bakelite console (see the section comment).
+    """An amber-phosphor CRT in a bakelite console (``docs/themes.md`` § bakelite).
 
     Every element is an absolute panel coordinate, so the frame is composed at
     800x480 and NEAREST-downsampled otherwise (the ``metro`` convention);

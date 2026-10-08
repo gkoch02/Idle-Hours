@@ -54,25 +54,10 @@ def draw_circuit_border(
 ) -> None:
     """Paint a printed-circuit-board (PCB) composition around the quote.
 
-    The clock as if etched onto the board that drives the panel. Layers,
-    deepest → shallowest:
-
-    * **Layer 0 — forest soldermask wash.** Half the green ``page_bg`` pixels
-      flipped to black on the ``(x + y) & 1`` checkerboard: G+K 1:1 reads as
-      FR-4 bottle-green and keeps ``circuit`` distinct from ``atomic``'s mint.
-      Idempotent (only green pixels flip), which matters because ``render``
-      calls every border painter twice.
-    * **Copper traces** (gold) from ``_CIRCUIT_TRACES``.
-    * **Plated pads** at every trace endpoint — gold ring, dark drill.
-    * **Mounting holes** in the four corners, inset 28 px. The top-right one
-      overlaps the DEBUG-banner band, hence ``circuit``'s
-      ``_DEBUG_LABEL_RIGHT_INSET`` entry.
-    * **Y1 crystal** in the bottom-left margin.
-    * **Silkscreen designators** (white) plus an ``IDLE HOURS · REV 2.0``
-      legend bottom-right.
-
-    With ``clear_rect`` the body region is reset to clean soldermask and
-    framed with a white silkscreen component outline and a pin-1 marker.
+    Layer 0 flips only green pixels, so it is idempotent across ``render``'s
+    two border paints. With ``clear_rect`` the body is reset to clean
+    soldermask inside a silkscreen outline. Design notes:
+    ``docs/themes.md`` § circuit.
     """
     width, height = image.size
     page_bg = colors.get("page_bg")

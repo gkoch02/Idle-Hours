@@ -1,6 +1,6 @@
-"""The ``splitflap`` theme's frame and the code only it uses.
+"""The ``splitflap`` theme: a split-flap message board on a wall.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § splitflap
 """
 
 from __future__ import annotations
@@ -17,28 +17,6 @@ from ..layout import strip_underscore_emphasis, tokenize_quote
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, position_noise
 from ..spec import FrameSpec
-
-# ---------------------------------------------------------------------------
-# splitflap — a split-flap message board on a wall, in the manner of a
-# Vestaboard.
-#
-# A fixed grid of flap tiles, every position a tile whether it shows a
-# character or not, the quote in capitals in the board's own character set,
-# the matched phrase on yellow colour tiles, the source on the bottom row
-# behind a run of colour tiles, and two tiles caught mid-flip.
-#
-# **The hinge does the work.** Every tile is split across its middle by the
-# gap between its two flaps, and the gap runs straight through the letter:
-# without it the board reads as letters in boxes. The mid-flip tiles are the
-# motion a still frame needs: the top half already shows the new character,
-# the bottom half still the old one, and the old top flap is falling between
-# them, foreshortened.
-#
-# **The grid never changes size.** A split-flap board cannot change its
-# tiles, so a short quote sits small on a mostly blank board. 32 columns by
-# 12 rows holds every corpus quote in nine rows, with a blank row and the
-# byline row under it.
-# ---------------------------------------------------------------------------
 
 _SPLITFLAP_COLS = 32
 _SPLITFLAP_ROWS = 12
@@ -303,7 +281,7 @@ def _splitflap_finish(image: Image.Image, width: int, height: int) -> Image.Imag
 
 
 def render_splitflap_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A split-flap message board (see the section comment).
+    """A split-flap message board (see docs/themes.md).
 
     Composed at the canonical 800x480 and NEAREST-downsampled for other
     sizes (``metro`` convention). Nothing reads the time: the matched phrase

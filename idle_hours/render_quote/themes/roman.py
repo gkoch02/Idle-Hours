@@ -1,6 +1,7 @@
-"""The ``roman`` theme's border painter and the code only it uses.
+"""The ``roman`` theme's border painter, a Roman lapidary tablet: stone grain, a tabula
+ansata, an SPQR cartouche, a laurel sprig and carved corner stops.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § roman
 """
 
 from __future__ import annotations

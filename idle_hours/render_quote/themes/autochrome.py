@@ -16,32 +16,9 @@ from ..spec import FrameSpec
 from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_garden_fallback
 
 # ---------------------------------------------------------------------------
-# autochrome — a colour transparency in its lantern-slide mask
-#
-# Autochrome Lumière plates were a stochastic mosaic of dyed starch grains
-# the eye integrates — the same object as a dither to six inks. Full design
-# notes: docs/themes.md (``autochrome``).
-#
-# The only plate dithered against the full six-ink palette: the other plate
-# themes restrict the candidates so diffusion cannot scatter chroma into
-# their ground, but here the chroma is the subject. The source is muted and
-# high-key on purpose: a saturated source quantises to chunky colour bars,
-# while a soft desaturated one breaks into fine grain. The committed garden
-# (``scripts/generate_autochrome_plate.py``) puts all six inks on the page;
-# ``TestAutochromePlate`` checks every ink is present and none but white
-# dominates.
-#
-# An autochrome was a glass transparency, seen against light or thrown on a
-# screen, so the frame is the slide: a black paper mask with a wide window
-# cut across the top, the plate cover-cropped into it, and the caption
-# lettered on the mask beneath, white with the matched phrase in yellow (the
-# one chromatic ink that holds up as type on black). The white thumb-spot in
-# the lower-left corner is the projectionist's orientation mark. Picture
-# above, words below, no card: the composition is what keeps this theme
-# apart from ``daguerreotype``'s case and ``photo``'s floating card.
-#
-# A photograph carries no clock: ``time_str`` is del-asserted. Composed at
-# 800x480 and NEAREST-downsampled otherwise (the ``metro`` convention).
+# autochrome — a colour transparency in its lantern-slide mask, the only plate
+# dithered against the full six-ink palette. ``time_str`` is del-asserted.
+# Design notes: docs/themes.md § autochrome.
 _AUTOCHROME_WINDOW = (38, 30, 762, 318)         # the mask's window onto the plate
 _AUTOCHROME_WINDOW_RADIUS = 9                   # the cut's rounded corners
 _AUTOCHROME_PLATE_FOCUS = (0.5, 0.42)           # sky, hills and the poppy drift
@@ -110,8 +87,8 @@ def _autochrome_paint_caption(draw: ImageDraw.ImageDraw, quote_row: dict) -> Non
 
 
 def render_autochrome_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """An autochrome lantern slide (see the section comment)."""
-    del time_str  # a photograph carries no clock; see the section comment.
+    """An autochrome lantern slide (``docs/themes.md`` § autochrome)."""
+    del time_str  # a photograph carries no clock; see docs/themes.md § autochrome.
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     _autochrome_paint_plate(image)
     draw = ImageDraw.Draw(image)

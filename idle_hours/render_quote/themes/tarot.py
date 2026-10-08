@@ -1,6 +1,8 @@
-"""The ``tarot`` theme's frame and the code only it uses.
+"""The ``tarot`` theme's frame, a major-arcana trump for the hour laid on a foxed
+vellum cloth with the quote as its reading beside it, and its XVIII La Lune
+sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § tarot
 """
 
 from __future__ import annotations
@@ -21,9 +23,9 @@ from ._shared import _TAROT_ROMAN_NUMERALS
 
 # Separated Tarot de Marseille trumps (Jean Dodal, Lyon, 1701-1715), one
 # 220x290 tile per hour on a 3x4 sheet (scripts/ingest_tarot_plates.py). Unlike
-# the plates above this is NOT dithered at render time: a woodcut is line and
-# flat colour, so the ingest separates it to white/black/red once. Absent, the
-# polygon painters still draw every hour.
+# other themes' plates this is NOT dithered at render time: a woodcut is line
+# and flat colour, so the ingest separates it to white/black/red once. Absent,
+# the polygon painters still draw every hour.
 TAROT_PLATES = BASE_DIR / "assets" / "tarot_plates.png"
 # The sleep frame's trump, XVIII La Lune, separated the same way into a single
 # tile (``ingest_tarot_plates.py --single``). Absent, a polygon moon stands in.
@@ -106,8 +108,9 @@ _TAROT_PAINTER_TRUMP_NAMES = {
 
 # Card and reading-column geometry: a portrait card (a real tarot card's
 # ratio is 0.58) laid on the cloth at the left, the interpretation written
-# beside it — the left-object / right-text composition of ``astrarium``. The emblem gets a tall panel, the quote a full column, and
-# the vellum shows on every side of the card.
+# beside it — the left-object / right-text composition of ``astrarium``. The
+# emblem gets a tall panel, the quote a full column, and the vellum shows on
+# every side of the card.
 _TAROT_CARD_RECT = (34, 24, 294, 456)  # 260 x 432 — ratio 0.602
 _TAROT_CARD_SHADOW = 4
 _TAROT_READING_RECT = (324, 54, 768, 426)

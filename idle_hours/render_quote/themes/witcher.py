@@ -1,6 +1,6 @@
-"""The ``witcher`` theme's frame and the code only it uses.
+"""The ``witcher`` theme: a bestiary page from *The Witcher 3: Wild Hunt* under the meditation dial.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § witcher
 """
 
 from __future__ import annotations
@@ -18,42 +18,6 @@ from ..primitives import _bayer_threshold_field, _smooth_noise, _white_noise, pa
 from ..spec import FrameSpec
 from ..text import draw_text_dithered, draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# witcher — CD Projekt Red's *The Witcher 3: Wild Hunt* (2015): a bestiary
-# page under the meditation dial
-# ---------------------------------------------------------------------------
-# Geralt's journal: a parchment page in a leather binding, an entry title in
-# condensed capitals over a red rule, the quote as its epigraph, and a
-# "susceptible to" line of sign icons at the foot. The **meditation dial** is
-# the time carrier, with three claw slashes at its hub.
-#
-# **The dial is hour-only**: two engraved rings, 48 ticks, and one marker on
-# the hour's radius, a sun by day and a crescent by night (chosen by the
-# 24-hour hour). Pinned byte-identical across the minutes of an hour by
-# ``TestWitcherFrame``; nothing prints a digit.
-#
-# **The hub** carries three claw slashes after the III of the logotype (the
-# Wolf School emblem is CD Projekt's mark, and Roman bars read only as a
-# numeral): red blades outlined in black, the outer two scaled down and swung
-# outward.
-#
-# **The page** is the ``tarot`` vellum recipe (Y+W cream under sparse R+G
-# foxing) inside a deckled edge eaten by seeded noise. The binding is black
-# with a sparse red fleck, six-ink dark brown.
-#
-# **Type**: Barlow Condensed for title, quote and matched phrase (R+Y
-# tangerine stipple), Archivo Narrow for labels, attribution and the
-# ``WILD HUNT`` mark (see the ``THEME_FONTS`` entry). Labels are solid ink:
-# small text in a stipple shreds.
-#
-# **Susceptible to**: the five signs drawn as icons, the susceptible ones
-# (from ``_row_digest``) filled in the sign's own colour. The entry number is
-# the row's real Gutenberg ID.
-#
-# The page is quote- and hour-independent and cached once per process
-# (``_WITCHER_PAGE``, keyed on the painters). Composed at 800x480 and
-# NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _WITCHER_SEED = 0x3331
 _WITCHER_PAGE_RECT = (30, 28, 770, 452)
 _WITCHER_RULE_INSET = 12
@@ -389,7 +353,7 @@ def _witcher_paint_foot(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
 
 
 def render_witcher_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A bestiary page under the meditation dial (see the section comment above)."""
+    """A bestiary page under the meditation dial (see docs/themes.md)."""
     hour = _witcher_hour(time_str)
     image = _witcher_page().copy()
     draw = ImageDraw.Draw(image)
@@ -404,11 +368,7 @@ def render_witcher_frame(time_str: str, quote_row: dict, width: int, height: int
 
 
 # ---------------------------------------------------------------------------
-# The sleep frame: the meditation screen. Geralt kneels, the player drags the
-# dial's hand round to the hour to wake, and the arc between now and then
-# lights up. Same page, rules and type as the bestiary entry; the dial grows
-# to a 24-hour plate (noon at the top, midnight at the foot, as in the game),
-# its hand set to dawn and the arc lit from the hour quiet hours began.
+# The sleep frame: the meditation screen on a 24-hour dial, its hand on dawn.
 # ---------------------------------------------------------------------------
 _WITCHER_SLEEP_DIAL_CENTRE = (196, 260)
 _WITCHER_SLEEP_DIAL_RADIUS = 126

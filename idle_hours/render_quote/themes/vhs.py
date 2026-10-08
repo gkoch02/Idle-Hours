@@ -19,27 +19,9 @@ from ..spec import FrameSpec
 from ..text import draw_text_chroma_shift
 
 # ---------------------------------------------------------------------------
-# vhs — a camcorder OSD over a degraded tape (issue #211).
-#
-# The identity is ``draw_text_chroma_shift``: red ghost left, blue ghost right,
-# white core on top, so every glyph fringes like bled composite video.
-#
-# Four layers of wear, all deterministic:
-#
-#   * **Video noise**, denser toward the foot (the head sweep).
-#   * **Tracking tears** — row bands shifted sideways. A real row-shift of the
-#     painted pixels, applied AFTER the text, so whatever a tear crosses comes
-#     apart with it.
-#   * **Scanlines**, fainter than ``nightvision``'s (tape, not a terminal).
-#   * **Dropout flecks** — sparse short white dashes; more read as snow.
-#
-# **The time carrier is a camcorder burn-in** — the one theme where HH:MM
-# digits are authentic, since a camcorder OSD is a clock. Wall time, not a
-# tape-position counter.
-#
-# The **date** stamp is NOT today's date (that would make the frame
-# clock-dependent); it is derived from the quote via ``_row_digest`` — the
-# date the tape was *recorded*.
+# vhs — a camcorder OSD over a degraded tape (issue #211). The OSD burn-in is
+# the one authentic HH:MM; the date stamp comes from ``_row_digest``, never the
+# clock. Design notes: docs/themes.md § vhs.
 # ---------------------------------------------------------------------------
 _VHS_CHROMA_OFFSET = 2
 _VHS_QUOTE_RECT = (86, 96, 714, 372)
@@ -58,7 +40,7 @@ _VHS_TEAR_SHIFT = (5, 17)
 _VHS_HEAD_SWITCH_H = 9
 _VHS_DROPOUT_COUNT = 26
 _VHS_SCANLINE_STEP = 4
-# Tape-recorded date pool, indexed from the quote (see the section comment).
+# Tape-recorded date pool, indexed from the quote (docs/themes.md § vhs).
 _VHS_TAPE_YEARS = (1984, 1987, 1989, 1991, 1993, 1996, 1998)
 
 
@@ -249,7 +231,7 @@ def _vhs_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row:
 
 
 def render_vhs_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A camcorder OSD over a worn tape (see the module section comment above).
+    """A camcorder OSD over a worn tape (``docs/themes.md`` § vhs).
 
     Composed at the canonical 800x480 (fixed panel coordinates) and
     NEAREST-downsampled for other sizes (``metro`` convention); an

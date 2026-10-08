@@ -1,6 +1,6 @@
-"""The ``hitchhiker`` theme's frame and the code only it uses.
+"""The ``hitchhiker`` theme: a Guide entry as the BBC's 1981 *Hitchhiker's Guide to the Galaxy* animated it.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § hitchhiker
 """
 
 from __future__ import annotations
@@ -19,25 +19,6 @@ from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._shared import _crt_paint_scanlines
 
-# ---------------------------------------------------------------------------
-# hitchhiker — *The Hitchhiker's Guide to the Galaxy* (BBC, 1981): the Guide
-# ---------------------------------------------------------------------------
-# A Guide entry as the 1981 series animated them by hand: a black screen,
-# square-shouldered capitals, flat-colour diagrams with numbered callouts and
-# DON'T PANIC. Full design notes: docs/themes.md (``hitchhiker``).
-#
-# The entry's subject is the quoted author; its text is the quote in white
-# with the matched phrase in yellow, each line headed by a marker in the inks
-# in rotation. Every glyph is set on its own with a seeded one-pixel
-# registration wobble (``_hitchhiker_draw``), the look of held cel lettering.
-#
-# Figure 1 is the Babel fish under a CRT raster. Figure 2 is a seeded
-# two-armed galaxy with twelve sector lines, and that is the clock: the hour's
-# sector, clockwise from the top like a clock face, is outlined in yellow with
-# the Earth ringed inside it and a YOU ARE HERE leader. Pinned across the
-# minutes; the matched phrase carries the minute. Composed at 800x480 and
-# NEAREST-downsampled otherwise (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _HITCHHIKER_SEED = 0x48484747         # HHGG
 _HITCHHIKER_ENTRY_Y = 58
 _HITCHHIKER_QUOTE_RECT = (62, 116, 456, 392)
@@ -238,7 +219,7 @@ def _hitchhiker_paint_galaxy(draw: ImageDraw.ImageDraw, hour: int) -> None:
 
 def render_hitchhiker_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """A Guide entry on the quoted author with its two figures, the hour's
-    sector marked (see the section comment above)."""
+    sector marked (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = Image.new("RGB", (800, 480), SPECTRA6["black"])
     draw = ImageDraw.Draw(image)

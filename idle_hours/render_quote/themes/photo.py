@@ -33,35 +33,9 @@ from ..primitives import _flow_stroke_hash
 from ..spec import FrameSpec
 
 # ---------------------------------------------------------------------------
-# photo — the operator's own picture
-#
-# ``autochrome``'s machinery pointed at a file the operator chooses — the only
-# theme whose art is not committed. Full design notes: docs/themes.md
-# (``photo``).
-#
-# **The path arrives through the environment, not argv**
-# (``IDLE_HOURS_PHOTO_PATH``): an operator's own ``--render-script`` would
-# reject an unknown flag and send the appliance into render backoff (see
-# ``run_clock._corpus_render_args``). ``run_clock.main`` exports it into its
-# own environment, so render children inherit it and in-process callers
-# (``/api/preview``, ``contact_sheet``) read the same value.
-#
-# **An arbitrary photograph does not dither well**: a saturated source
-# quantises to chunky colour bars. ``_photo_condition`` pulls saturation and
-# contrast into the band that survives, adaptively — factors computed from the
-# source and clamped so they only ever reduce, leaving a gentle photo alone.
-# A dark photograph is lifted by gamma, part way, so it keeps its blacks.
-#
-# **The card cannot sit in a fixed place**, because that place might be the
-# face. ``_photo_card_rect`` scores candidate positions by the detail and
-# salience each would cover, measured on the conditioned image before
-# dithering, and takes the cheapest.
-#
-# Everything else is defensive. The source is a file or a directory (rotated
-# with the quote via ``_row_digest``), and every operator failure mode — a
-# missing path, a misnamed file, CMYK, EXIF rotation, a decompression bomb, an
-# empty directory — degrades to the bundled coast plate (``PHOTO_PLATE``) with a
-# latched warning rather than raising into the per-tick render path.
+# photo — the operator's own picture (``IDLE_HOURS_PHOTO_PATH``), conditioned,
+# dithered to six inks and captioned on a card placed where it covers least.
+# Every failure degrades to the bundled plate. Design notes: docs/themes.md § photo.
 
 # The picture shown when nothing is configured or the configured source
 # cannot be read: a coast with a lighthouse (scripts/generate_photo_plate.py).
@@ -245,26 +219,11 @@ def _photo_cap_chroma(image: Image.Image) -> Image.Image:
 def _photo_condition(image: Image.Image) -> Image.Image:
     """Pull an arbitrary photograph into the band that dithers to grain.
 
-    **The brightness target is decided from the source, before anything moves
-    it.** A bright photograph is pulled down to ``_PHOTO_TARGET_MEAN`` (the
-    autochrome reference); a dark one is lifted only to
-    ``_PHOTO_LIFT_TARGET``; anything between keeps its own mean. Deciding
-    after the chroma correction would misread a saturated photo as dark,
-    because blending toward grey lowers the lightest channel of a saturated
-    pixel.
-
-    **Chroma, then lift, then levels.** The lift is a gamma curve so the black
-    point stays put, but gamma widens the channel spread in the shadows, so
-    chroma is re-capped after each lift; the re-cap costs a little luminance
-    back, hence the short loop. Levels runs last and is stable:
-    ``v * scale + offset`` with ``scale <= 1`` leaves ``max - min`` unchanged
-    or lower, so chroma never rises back above target. It never adds a
-    positive offset, because that raises the black point and turns a dark
-    scene to fog: when compressing contrast would need one, it scales toward
-    black and restores the mean with the gamma lift instead.
-
-    Chroma and contrast are clamped to only reduce, so a photograph already in
-    the band comes through untouched.
+    The brightness target is decided from the source before anything moves it
+    (the chroma correction makes a saturated photo measure dark). Order is
+    chroma, then lift, then levels; levels never adds a positive offset, which
+    would raise the black point. Chroma and contrast only ever reduce. Design
+    notes: ``docs/themes.md`` § photo.
     """
     _, source_mean, _ = _photo_measure(image)
     if source_mean > _PHOTO_TARGET_MEAN + _PHOTO_MEAN_TOLERANCE:

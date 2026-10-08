@@ -1,6 +1,7 @@
-"""The ``outrun`` theme's frame and the code only it uses.
+"""The ``outrun`` theme's frame, a 1980s synthwave poster: a gradient sky, a
+sliced half-sun over a neon perspective grid, and the quote in the dark sky.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § outrun
 """
 
 from __future__ import annotations
@@ -264,7 +265,7 @@ def _outrun_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_r
 
 
 def render_outrun_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """1980s synthwave / Outrun sunset (see the module section comment above).
+    """1980s synthwave / Outrun sunset (docs/themes.md § outrun).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.

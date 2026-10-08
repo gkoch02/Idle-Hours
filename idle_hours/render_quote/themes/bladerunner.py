@@ -1,6 +1,6 @@
-"""The ``bladerunner`` theme's frame and the code only it uses.
+"""The ``bladerunner`` theme: the LAPD's records terminal from *Blade Runner 2049*.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § bladerunner
 """
 
 from __future__ import annotations
@@ -17,30 +17,6 @@ from ..primitives import _catmull_rom, _smooth_noise
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# bladerunner — *Blade Runner 2049* (2017): the LAPD's systems
-# ---------------------------------------------------------------------------
-# Not the city: the screens K works at. A records terminal in the
-# monochrome, hairline manner of the film's interfaces, black glass with
-# white rules and type, yellow for what the system has found, red for what
-# it wants you to look at. Full design notes: docs/themes.md
-# (``bladerunner``).
-#
-# Four panes. The record holds the quote. The bone scan is the box's
-# remains on the light table: a pelvis and the heads of both femurs as an
-# X-ray, painted in continuous tone (bright cortical rims over a dimmer
-# marrow, a soft scatter, film grain) and Floyd–Steinberg dithered to
-# black, blue and white (``_dither_calibrated``), with the serial on the
-# iliac crest boxed in red and magnified in an inset. The DNA comparison is
-# the twins born 06.10.21, two sequences seeded from the quote and identical
-# base for base. The baseline strip is the post-trauma test: twelve words
-# of the call-and-response along a flat trace.
-#
-# The hour is the baseline's prompt: the hour's word is lit yellow and the
-# trace spikes above it, pinned across the minutes; the matched phrase
-# carries the minute. Composed at 800x480 and NEAREST-downsampled otherwise
-# (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _BLADERUNNER_SEED = 0x4C415044        # LAPD
 _BLADERUNNER_XRAY_INKS = ("black", "blue", "white")
 _BLADERUNNER_RECORD = (20, 56, 468, 372)
@@ -319,7 +295,7 @@ def _bladerunner_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> Non
 
 
 def render_bladerunner_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The LAPD records terminal (see the section comment above)."""
+    """The LAPD records terminal (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _bladerunner_scene().copy()
     draw = ImageDraw.Draw(image)

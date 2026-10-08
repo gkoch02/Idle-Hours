@@ -1,6 +1,7 @@
-"""The ``culture`` theme's frame and the code only it uses.
+"""The ``culture`` theme's frame: a Mind's signal beside the Orbital it concerns,
+after Iain M. Banks's Culture novels.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § culture
 """
 
 from __future__ import annotations
@@ -58,13 +59,6 @@ def _marain_layout(text: str, max_cols: int) -> list[list[int | None]]:
 
 
 # -- culture: the Mind signal ---------------------------------------------------
-# A custom frame. Left: the signal, set out the way Banks prints ship-to-ship
-# traffic — a bracketed transmission line, then ``x`` (from) and ``o`` (to)
-# ship names — and the quote as its body. The matched phrase glows like a
-# drone's aura field. Right: the Orbital the signal concerns, a tilted ring
-# whose visible inner face holds exactly the plates in daylight (their cities
-# showing only where the face turns into dusk at its tips) and the hull,
-# the current plate marked; and under it the matched phrase again, in Marain.
 _CULTURE_TEXT_X = (34, 462)
 _CULTURE_HEADER_Y = 28
 _CULTURE_RULE_Y = 104

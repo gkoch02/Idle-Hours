@@ -1,6 +1,7 @@
-"""The ``orbital`` theme's frame and the code only it uses.
+"""The ``orbital`` theme's frame: the Culture's Arch, the far side of an Orbital
+seen from one of its plates and lit plate by plate by each plate's own local time.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § orbital
 """
 
 from __future__ import annotations
@@ -20,24 +21,6 @@ from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._culture_common import _culture_clock, _culture_face_ink, _culture_signal, _marain_code, _marain_draw_glyph
 
-# -- orbital: the Arch from the plate --------------------------------------------
-# A custom frame, standing on one of the Orbital's plates and looking up. The
-# rest of the ring rises from both horizons and meets overhead — the Arch — and
-# the page is lit by where the sun is in this plate's day.
-#
-# **The Arch is the clock.** A point a fraction ``f`` of the way round the ring
-# keeps a local time ``f`` of a day ahead of ours, so each pixel of the band is
-# lit or dark by its own local time: at noon the Arch is lit at its feet and
-# dark overhead, at midnight the zenith burns in daylight over a black sky
-# (Banks's own image). The sky follows the hour: blue by day, a warm horizon
-# band at dawn and dusk, stars at night.
-#
-# **The Arch narrows as it rises**, because it recedes: a point ``phi`` round
-# the ring is ``2R sin(phi/2)`` away, so its apparent width falls as
-# ``1 / sin(phi/2)``.
-#
-# The quote card is white with dark type by day and black with white type by
-# night, so it is legible against either sky.
 _ORBITAL_HORIZON = 318
 _ORBITAL_ARCH = (400, 474, 300)            # centre x, semi-axis a, semi-axis b
 _ORBITAL_ARCH_PHI0 = math.radians(44)      # ring angle where the Arch meets the ground

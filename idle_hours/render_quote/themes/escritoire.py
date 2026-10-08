@@ -1,6 +1,6 @@
-"""The ``escritoire`` theme's frame and the code only it uses.
+"""The ``escritoire`` theme: a handwritten letter on a writing desk, seen from the writer's chair.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § escritoire
 """
 
 from __future__ import annotations
@@ -19,41 +19,6 @@ from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, gray_pixel_access, 
 from ..primitives import _bayer_threshold_field, _shift_no_wrap
 from ..spec import FrameSpec
 from ._shared import _codex_script, _metro_ellipsize
-
-# ---------------------------------------------------------------------------
-# escritoire — a handwritten letter on a writing desk, seen at an angle
-# ---------------------------------------------------------------------------
-# The quote is the last paragraph of a letter on a mahogany desk, seen from
-# the writer's chair: the sheet is a foreshortened, slightly rolled
-# trapezoid, with out-of-focus brass beyond it, a second page under it and a
-# fountain pen across it. Full design notes: docs/themes.md (``escritoire``).
-#
-# **Only the near half of the page is legible, on purpose.** At the far edge
-# a glyph is 60% of its near-edge size, which is noise at panel resolution, so
-# the far band carries the letter's earlier lines as faint asemic script
-# (``_codex_script``, seeded from the row) and the quote sits in the near band.
-#
-# **The page is laid out flat, then warped.** The quote is fitted on an
-# upright 900x560 sheet at 2x (``fit_quote_balanced``) into three ``"L"``
-# masks (prose, phrase, faint), each carried through one bicubic perspective
-# transform, box-reduced and thresholded so every ink pixel lands solid. Don't
-# warp a finished RGB frame: the resampled glyph edges become a grey fringe
-# that the palette snap turns into a ragged stipple.
-#
-# **Inks.** Prose black, matched phrase blue (fountain-pen ink). The paper is
-# white with a yellow stipple warming toward the near corner. The desk is
-# black with a red stipple pooled under the lamp, 30% of it yellow (red alone
-# reads aubergine). The brass is a blurred luminance field stippled on a
-# black-red-yellow-white ramp; the pen's gold is R+Y 5/8:3/8.
-#
-# **Cost.** The scene is quote-independent and cached for in-process callers,
-# keyed on the painters (the ``expanse`` convention) so the decoration fence's
-# neutered painters rebuild it. The appliance renders cold, so the smooth
-# fields are computed at reduced resolution and the per-pixel passes are
-# confined to their bounding boxes.
-#
-# No clock: ``time_str`` is deleted at entry. Fixed geometry, composed at
-# 800x480 and NEAREST-downsampled.
 
 _ESCRITOIRE_SEED = 0x45534352          # ESCR
 _ESCRITOIRE_SS = 2                     # supersample for the sheet masks
@@ -359,7 +324,7 @@ def _escritoire_paint_sheet(image: Image.Image) -> None:
 
 def _escritoire_scene() -> Image.Image:
     """The desk, its shadow, the brass and the empty sheet: identical for
-    every quote. Cached keyed on the painters (see the section comment)."""
+    every quote. Cached keyed on the painters (see docs/themes.md)."""
     key = (_escritoire_paint_desk, _escritoire_paint_shadow, _escritoire_paint_brass, _escritoire_paint_sheet)
     cached = _ESCRITOIRE_SCENE.get("frame")
     if cached is not None and cached[0] == key:
@@ -553,8 +518,7 @@ def _escritoire_paint_pen(image: Image.Image) -> None:
 
 
 def render_escritoire_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A handwritten letter on a writing desk, seen at an angle (see the
-    section comment above).
+    """A handwritten letter on a writing desk, seen at an angle (see docs/themes.md).
 
     ``time_str`` is unused by design: the matched phrase carries the time.
     """

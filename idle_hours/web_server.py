@@ -1,62 +1,15 @@
 #!/usr/bin/env python3
-"""Curator web UI for Idle Hours — local HTTP surface for browsing and tweaking the clock.
+"""Curator web UI for Idle Hours: a local HTTP surface for browsing and tweaking the clock.
 
-This runs in-process inside ``run_clock.py`` on a background daemon thread, sharing
-``RuntimeState.render_lock`` / ``state.lock`` / ``state.ledger_lock`` with the GPIO
-button listener so web-driven actions and physical presses can never render-race.
-Every mutating POST routes through the same ``_button_render_gate`` (non-blocking
-``render_lock.acquire``) that button handlers use, returning 409 when a render is
-already in flight rather than queueing.
+Runs in-process inside ``run_clock`` on a daemon thread and shares its locks,
+so every mutating POST goes through the same ``_button_render_gate`` as the
+GPIO buttons (409 when a render is in flight) and the two can never race.
+Stdlib only (``ThreadingHTTPServer``), so runtime deps stay at Pillow.
 
-Design notes:
-
-* Stdlib only — ``http.server.ThreadingHTTPServer`` + ``BaseHTTPRequestHandler``.
-  Runtime deps stay at Pillow; no Flask, no ``[web]`` extras group.
-* Default bind is ``127.0.0.1:<port>``. Exposing on LAN (``0.0.0.0:<port>``)
-  additionally requires a token (``--web-token`` or ``--web-token-file``);
-  otherwise ``start_web_server`` refuses to start so an operator can't
-  accidentally open a tokenless POST surface on the network.
-* Token is checked via the ``X-Idle-Hours-Token`` header only, never a query string,
-  since ``BaseHTTPRequestHandler`` logs request paths — a token in the URL would
-  leak into journald.
-* When a token is configured it gates every POST **and** every JSON GET
-  (``/api/history``, ``/api/search``, ``/api/bucket/*``, ``/api/overrides``,
-  ``/api/content-overrides``, ...). Those all reach the browser through
-  ``main.js``'s ``jsonFetch``, which already attaches the header, so this is
-  invisible to the UI. ``/current.png`` and ``/api/preview`` are gated too
-  (issue #286): ``main.js`` fetches both with the header and shows them
-  through object URLs. Only the static shell (``/``, ``/main.js``,
-  ``/style.css``, i.e. ``UNGATED_GET_PATHS``) stays open, because the
-  navigation and tags that load it cannot attach a request header, plus
-  ``/metrics`` for the scraper unless ``--web-metrics-token`` gates it.
-
-CSRF / DNS-rebinding defence (#233). On the deployment the docs recommend —
-``--web-bind 127.0.0.1:8080``, where loopback binds skip auth entirely — any
-page the operator visits could otherwise drive the appliance: flip quiet mode,
-ban the displayed quote, rewrite both override sidecars, trigger a bake, each
-burning a 10–20 s Spectra 6 refresh. The token is CSRF-resistant *where it
-applies* (a custom header forces a preflight an attacker can't answer), but on
-a loopback bind there is no token, and the body parser used to accept any
-``Content-Type`` — so a cross-site *simple* request went straight through with
-nothing to preflight. Three independent server-side layers close it:
-
-1. **Content-Type.** Every POST must send ``application/json``. That is not a
-   CORS-safelisted media type, so a cross-origin POST now requires a preflight,
-   and we answer no ``OPTIONS`` — the browser never sends the real request.
-2. **Origin vs Host.** A present ``Origin`` whose hostname differs from the
-   request's own ``Host`` is a cross-site request; reject it. Comparing the two
-   headers against *each other* rather than against a configured name is what
-   keeps this from breaking LAN operators who reach the UI by mDNS name,
-   reverse proxy, or bare IP — all of which we have no way to enumerate.
-3. **Host.** A loopback bind accepts only loopback names (plus
-   ``--web-allowed-host`` entries). This is the layer that closes DNS
-   rebinding, where an attacker-controlled name resolving to 127.0.0.1 arrives
-   as a *same-origin* page and so defeats layers 1 and 2 outright. It is also
-   the only layer that protects the read surface. A non-loopback bind can't be
-   checked this way (we don't know which names the operator uses), so it stays
-   permissive unless an allowlist is configured — those binds require a token
-   anyway, and a rebound origin has its own ``localStorage`` and therefore no
-   token to replay.
+The security model (token gating via the ``X-Idle-Hours-Token`` header only,
+the ungated static shell, and the three CSRF / DNS-rebinding layers:
+JSON-only POSTs, ``Origin`` vs ``Host``, ``Host`` vs the bind) is in
+docs/web_ui.md.
 """
 from __future__ import annotations
 
@@ -1313,25 +1266,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _coverage_summary(self) -> dict:
         """Compute bucket coverage from the corpus this appliance actually uses.
 
-        Previously both coverage views served ``assets/bucket-coverage.json``,
-        a *build-time* artifact committed alongside the bundled corpus. That
-        made the Coverage tab and the gap-finder wrong in exactly the moments
-        an operator consults them: a ban or a "Bake now" changes which rows the
-        picker can reach and the snapshot never moves, and on a relocated
-        ``--raw-corpus`` deployment (the shipped systemd preset) the snapshot
-        describes the *bundled* corpus rather than the live one.
-
-        ``bucket_coverage.build_summary`` is already a pure function over rows,
-        and ``pick_quote.load_rows_cached`` is stat-keyed, so a repeat request
-        against an unchanged corpus costs one stat plus the summary walk over
-        ~3K rows. The committed snapshot stays as a fallback for the case where
-        the corpus itself is missing or unreadable.
-
-        Reads the RAW corpus so the ``raw_bucket_counts`` it reports show
-        material the baker dropped; the headline ``bucket_counts`` apply the
-        baker's quality floor and the live bans (issue #300), so the grid and
-        the gap finder describe what the panel can actually display rather
-        than reporting a bucket as covered by a quote that can never appear.
+        Live rather than the committed build-time snapshot, which stays only as
+        a fallback for a missing or unreadable corpus. Reads the raw corpus;
+        ``bucket_counts`` apply the baker's gates and the live bans, while
+        ``raw_bucket_counts`` keep the raw tallies. Why: docs/web_ui.md
+        ("Coverage is computed live").
         """
         from idle_hours import bucket_coverage
         ctx = self._ctx()
@@ -2022,33 +1961,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _api_bake_post(self) -> None:
         """Re-bake ``assets/quote_database.jsonl`` from the raw corpus + sidecar.
 
-        Runs the bake in-process (it's pure-Python and finishes in <1s for the
-        ~3K-row corpus). Then re-applies the content-overrides sidecar so a
-        recent ``POST /api/content-overrides`` is reflected in the freshly-baked
-        DB without requiring a CLI step.
-
-        **The patched rows are written back to the raw corpus too** (issue
-        #288), matching the CLI stage — ``apply_content_overrides.main`` with
-        ``--output`` omitted rewrites its input in place. The bake used to
-        patch an in-memory copy and write only the baked DB, and every curator
-        *read* surface (``/api/bucket``, ``/api/search``, the history join,
-        the coverage grid) reads the raw corpus: after save → bake the panel
-        showed the patched quote while the inspector still showed the old
-        text, so the operator concluded the save had not landed. The raw
-        write is skipped when no row changed — an appliance runs on an SD card.
-        Deleting an override and baking again restores the row: the
-        overrides stage records what it replaced in ``override_originals``.
-
-        The runtime picker reloads the baked DB on every ``select_quote`` call
-        (it goes through ``_resolve_corpus`` which reads from disk), so the next
-        tick will see the newly-baked rows automatically — no in-memory cache
-        invalidation is needed.
-
-        Held under ``state.render_lock`` so a concurrent render isn't reading
-        the baked DB while we're swapping it (atomic_write_lines makes the swap
-        atomic at the FS level, but the picker's read+score is non-atomic above
-        that). Returns 409 (busy) if a render is already in flight rather than
-        queueing — the operator can retry.
+        Re-applies the content overrides, writes the patched rows back to the
+        raw corpus when any changed (the curator's read surfaces read it), then
+        bakes in-process. Held under ``state.render_lock``, 409 when a render
+        is in flight. Semantics: docs/web_ui.md ("``POST /api/bake``
+        semantics").
         """
         from idle_hours import bake_quote_database
         from idle_hours.jsonl_io import iter_jsonl

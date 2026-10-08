@@ -20,31 +20,9 @@ from ._shared import _astrarium_paint_cream_wash
 
 # ─── lieder (engraved art-song manuscript) ───────────────────────────────────
 #
-# The quote as the vocal line of a Lied, engraved as lyrics beneath a stave,
-# one note per syllable. The clock is carried by the score's furniture:
-#
-#   * the TIME SIGNATURE is the hour over 4 (7 o'clock → 7/4), so the hour also
-#     decides where the barlines fall.
-#   * the TEMPO MARK is the minute: an Italian tempo word plus ``♩ = 60 +
-#     minute``, which stays musically plausible at every minute.
-#
-# HH:MM is never printed; the matched phrase, sung in red under its own slur,
-# carries the readable time. ``time_str`` IS used here, for that chrome.
-#
-# Ink discipline is typographic before chromatic:
-#   roman black  — the plate: staves, clef, notes, barlines, lyrics, title.
-#   italic black — the editorial apparatus: tempo, expression, composer. A
-#                  synthesised two-ink tone shatters Alegreya's italic
-#                  hairlines at 13px after palette snapping.
-#   red          — the sung phrase alone: its lyric, noteheads and slur.
-#
-# Layer 0 is the shared cream wash (``_astrarium_paint_cream_wash``).
-#
-# Music glyphs come from the bundled Noto Music face (a treble clef's spiral
-# renders as mush from polygons). Its staff is one em tall (draw at ``size = 4 *
-# gap``) and its baseline sits on the BOTTOM staff line, so the clef is drawn
-# with ``anchor="ls"`` onto that line; noteheads are ink-bbox-centred on their
-# pitch instead.
+# The quote as the vocal line of a Lied; the time signature is the hour over 4
+# and the tempo mark the minute, so ``time_str`` IS used here, for that chrome.
+# Design notes: docs/themes.md § lieder.
 
 _LIEDER_STAVE_GAP = 7            # px between adjacent staff lines (staff = 4×)
 _LIEDER_MARGIN_L = 46
@@ -793,7 +771,7 @@ def _lieder_paint_plate_line(draw, quote_row: dict, width: int, height: int) -> 
 
 
 def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Engraved art-song manuscript (see the module section comment above).
+    """Engraved art-song manuscript (``docs/themes.md`` § lieder).
 
     Five passes, in dependency order: split the text into sung syllables, give
     them durations and barlines, give them pitches (which needs the barlines,

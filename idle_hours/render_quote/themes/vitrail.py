@@ -1,6 +1,8 @@
-"""The ``vitrail`` theme's frame and the code only it uses.
+"""The ``vitrail`` theme's frame, a Gothic stained-glass lancet window: jewel
+glass panes in lead came, a rose window with the hour, and the quote in a
+clear-glass cartouche.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § vitrail
 """
 
 from __future__ import annotations

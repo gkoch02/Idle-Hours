@@ -14,11 +14,8 @@ from ..palette import SPECTRA6, SPECTRA6_PALETTE, gray_pixel_access, pixel_acces
 from ..spec import FrameSpec
 
 # ── sampler: counted cross-stitch embroidery ──────────────────────────────────
-# Every glyph is cross-stitch "X" marks: text is drawn to a small Silkscreen
-# pixel-font mask and each set pixel is stamped as one stitch cell on an Aida
-# ground. A stitched floral border and sampler motifs fill the margins. Body
-# floss is black, the matched phrase red; HH:MM is never shown. No RNG, so
-# re-renders are byte-identical.
+# Text drawn to a Silkscreen mask, each set pixel stamped as one stitch. No
+# RNG, so re-renders are byte-identical. Design notes: docs/themes.md § sampler.
 
 # Floss palette — every stitch is one Spectra-6 ink.
 _SAMPLER_FLOSS = {
@@ -279,7 +276,7 @@ def _sampler_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
 
 
 def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Counted cross-stitch embroidery sampler (see the module section comment).
+    """Counted cross-stitch embroidery sampler (``docs/themes.md`` § sampler).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.

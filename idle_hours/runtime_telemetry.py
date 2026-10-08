@@ -47,32 +47,15 @@ def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
 
 
 def append_heartbeat(telemetry_path: str | None, *, quiet: bool | None = None) -> None:
-    """Emit a lightweight liveness marker with ``type="heartbeat"``.
+    """Emit a ``type="heartbeat"`` liveness marker, without fsync or webhook.
 
-    Shares the rotation / fail-open / ``ts`` stamping with ``append_telemetry``;
-    factored as a thin wrapper so call sites read as "emit heartbeat" instead
-    of passing a bare sentinel dict, and so ``idle_hours_health.py`` can keep
-    a single ``"type"`` convention for any future marker types we add.
-
-    Heartbeat entries are deliberately NOT counted toward ``render_count`` or
-    ``error_count`` by the health summariser — they answer "is the loop
-    alive?", not "is the panel being refreshed?", which is a different
-    question an idle appliance should be able to answer "yes / no".
-
-    Heartbeats fire every ``HEARTBEAT_INTERVAL_SECONDS`` (~60 s on the
-    appliance), so they're written without ``fsync`` to bound SD-card write
-    amplification. Losing the last minute of "alive" pings to a power cut is
-    recoverable; losing a render error or backoff event is not — that's why
-    every other ``append_telemetry`` caller fsyncs.
-
-    ``quiet`` stamps whether the loop was in its quiet window when the ping
-    fired. The ``quiet_enter`` / ``quiet_exit`` edge markers alone are not
-    enough for the health summariser: they are single points in time, so a
-    check over a window narrower than the blackout (``--hours 1``, which the
-    README documents for cron) sees neither edge and cannot tell "asleep on
-    purpose" from "wedged". A heartbeat lands every ~60 s, so stamping the
-    state here makes it legible in *any* window. ``None`` omits the field, so
-    a caller with nothing to say doesn't assert something false.
+    Heartbeats answer "is the loop alive?", so the health summariser keeps
+    them out of ``render_count`` / ``error_count``. They fire about once a
+    minute: losing the last few to a power cut is recoverable, so they skip
+    the fsync that bounds SD-card wear, and alerting on each would be spam.
+    ``quiet`` stamps whether the loop was in its quiet window, which keeps
+    "asleep" legible in a health window narrower than the blackout; ``None``
+    omits the field. See docs/runtime.md (telemetry, quiet-hours health).
     """
     entry: dict = {"type": "heartbeat"}
     if quiet is not None:
@@ -81,32 +64,14 @@ def append_heartbeat(telemetry_path: str | None, *, quiet: bool | None = None) -
 
 
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
-    """Append one JSON line to today's telemetry log. No-op when disabled.
+    """Append one fsync'd JSON line to today's date-rotated telemetry file.
 
-    Rotates by date: writes to ``<base-stem>-YYYYMMDD<suffix>`` in the base
-    path's directory so the file size stays bounded. ``idle_hours_health.py``
-    globs the directory for date-suffixed siblings (plus any legacy
-    unsuffixed file) so older entries are still summarised.
-
-    Telemetry is best-effort: an I/O failure here (unwritable path, full
-    disk, path is a directory) must never surface to the caller, since this
-    is called from the loop's error-recovery path — turning telemetry into
-    a fatal failure mode would defeat its purpose.
-
-    Entries are flushed and ``os.fsync``'d before close so a SIGKILL / power
-    loss immediately after a render or error event can't leave the line
-    buffered in the kernel and lost — that's exactly when ``idle_hours_health``
-    needs the last few entries to distinguish "wedged" from "idle".
-    Heartbeats skip the fsync via ``append_heartbeat`` (see its docstring).
-
-    Webhook fan-out: if ``runtime_webhook.configure(...)`` has been called
-    with a URL (typically once at ``run_clock.main`` startup), we
-    additionally fire a fire-and-forget POST for entries that pass
-    ``runtime_webhook``'s alert filter. This runs on a daemon thread so the
-    render path never blocks on network I/O. Heartbeats deliberately don't
-    reach this path — ``append_heartbeat`` calls ``_append_entry`` directly
-    without webhook plumbing, since alerting on every 60s liveness ping
-    would be spam.
+    Best-effort: it runs on the loop's error-recovery path, so an I/O
+    failure is logged and dropped, never raised. The fsync is what keeps
+    the last render or error entry readable by ``idle_hours_health`` after
+    a power cut. An entry that passes ``runtime_webhook``'s alert filter is
+    also POSTed, on a daemon thread, when a webhook is configured. Rotation,
+    fsync and retention: docs/runtime.md.
     """
     # Stamp ``ts`` once so the file line and the webhook payload carry the
     # same timestamp (issue #281).
