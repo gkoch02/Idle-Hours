@@ -9,6 +9,8 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+## [3.1.0] - 2026-10-08
+
 - Three passages no longer open with a stray chapter number ("V When Archie
   got back…", "X June 20th.—Eight o'clock…", "L She plunged into…"). The
   cleaner already stripped a bare numeral of two or more letters; it now
