@@ -1,7 +1,4 @@
-"""Per-theme data: colours, cycle order, font roles and the small per-theme flags.
-
-Transitional (issue #335): the registry stage derives these from each theme module's spec.
-"""
+"""Per-theme data: colours, cycle order, font roles and the small per-theme flags."""
 
 from __future__ import annotations
 

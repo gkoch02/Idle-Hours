@@ -4104,22 +4104,43 @@ class TestRandomThemeMode:
             pick = runtime_render._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
         assert pick != just_played, "back-to-back repeat at reshuffle boundary"
 
-    def test_random_mode_no_near_boundary_repeat(self):
+    @pytest.mark.parametrize(
+        ("pool_size", "expected"),
+        [(0, 1), (1, 1), (2, 1), (3, 1), (4, 2), (5, 2), (40, 20), (41, 20)],
+    )
+    def test_recent_window_size_is_half_the_pool_floored_at_one(self, pool_size, expected):
+        """Pin the window with literals (issue #392): half the pool maximises
+        the guaranteed gap, and the floor of one keeps the just-played theme
+        out of the next bag's draw-front even for a tiny pool. A test that
+        reads its threshold back from this function cannot catch it breaking.
+        """
+        from idle_hours.runtime_theme import recent_window_size
+        assert recent_window_size(pool_size) == expected
+
+    @pytest.mark.parametrize("seed", [0, 1, 392, 2026])
+    def test_random_mode_no_near_boundary_repeat(self, seed):
         """A theme shown at the tail of one pass must not reappear within a
         few picks at the head of the next — the gap-2 regression that the
         single-theme swap missed. Drive several full passes and assert the
         guaranteed minimum spacing holds.
+
+        The bound is written out (half the pool), not read from
+        ``recent_window_size``, and the shuffle is seeded, so a broken window
+        fails deterministically rather than weakening the assertion with it.
         """
-        from idle_hours.runtime_theme import random_theme_pool, recent_window_size
+        import random
+
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
-        window = recent_window_size(len(themes))
+        window = len(themes) // 2
         state = run_clock.RuntimeState("random")
         seq: list[str] = []
-        for i in range(len(themes) * 4):
-            new_quote_id = ("src", i, "q", "m")
-            pick = runtime_render._maybe_pick_random_theme(state, new_quote_id)
-            seq.append(pick)
-            state.last_quote_id = new_quote_id
+        with patch("idle_hours.runtime_theme.random", random.Random(seed)):
+            for i in range(len(themes) * 4):
+                new_quote_id = ("src", i, "q", "m")
+                pick = runtime_render._maybe_pick_random_theme(state, new_quote_id)
+                seq.append(pick)
+                state.last_quote_id = new_quote_id
         last_seen: dict[str, int] = {}
         min_gap = len(seq)
         for i, theme in enumerate(seq):
