@@ -8,7 +8,9 @@
 
 Idle Hours is a literary clock: every few minutes it shows a sentence from a public-domain novel that names the current time, with the time phrase picked out in bold. Behind it is a pipeline that mines Project Gutenberg for phrases like "a quarter past seven", cleans and scores them, and bakes over two thousand quotes into a database ranked for each five-minute slot of the twelve-hour clock. A Raspberry Pi renders the pick for a six-colour eInk panel and runs unattended as a systemd appliance, with a small web UI for curating the corpus.
 
-<!-- TODO(#354): photo of the physical Inky Impression panel goes here. preview.png below is a render, not the device. -->
+![Idle Hours on its Inky Impression panel, showing the sampler theme at a quarter to three](docs/images/panel.jpg)
+
+The panel on my desk, in the `sampler` theme. Below are four more themes as straight renders:
 
 ![Idle Hours rendered in saloon, gothic, astrarium, and deco themes](idle_hours/assets/preview.png)
 
