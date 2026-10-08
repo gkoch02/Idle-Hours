@@ -12,8 +12,7 @@ aggregate pits and lime specks. This script bakes all of that as a
 **continuous-tone** greyscale sheet, and ``render_quote.dither_image_to_palette``
 Floyd–Steinberg-dithers it to white+black at render time, so the plinth breaks
 into an organic stipple whose local density tracks the concrete's tone — the
-same render-time-plate capability ``grimdark``'s gunmetal and ``letter``'s aged
-paper use. The stipple stays in ``_control_paint_concrete_stipple`` as the
+same render-time-plate capability ``letter``'s aged paper uses. The stipple stays in ``_control_paint_concrete_stipple`` as the
 graceful fallback when the asset is missing.
 
 The mean luminance sits in the light-mid greys (L≈150, about 40% black after

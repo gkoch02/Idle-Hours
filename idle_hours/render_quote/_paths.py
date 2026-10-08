@@ -73,22 +73,12 @@ META_FONT_BOLD_CANDIDATES = [
 # / DejaVu defaults so a missing-fonts install still renders rather than
 # bitmap-fallbacking. Notes on the early themes:
 #
-# * ``scholar`` → Bitter (slab serif, textbook register), one variable font.
 # * ``newsprint`` → Old Standard TT (Didone-flavoured broadsheet serif).
 # * ``nightvision`` → Space Mono (retro-terminal mono legible on eInk);
 #   DejaVu Sans Mono as fallback.
-# * ``blueprint`` → Archivo (grotesque sans, so it reads as a different
-#   family from ``scholar`` despite the shared palette).
-# * ``illuminated`` → EB Garamond body (a blackletter body would be
-#   illegible) with UnifrakturMaguntia for the ornament marks; the ornament
-#   chain ends at Playfair Bold so a missing blackletter degrades to a heavy
-#   serif.
 # * ``bauhaus`` → Jost (geometric sans, distinct from Archivo's grotesque).
-# * ``risograph`` → Rubik (rounded sans). Variable font whose axis default is
-#   Light (300), so Regular / Bold are pinned explicitly.
 # * ``comic`` → Bangers (all-caps comic hand). One weight only, so the
 #   matched phrase falls through to DejaVu Sans Bold for weight contrast.
-BITTER_VARIABLE = str(BASE_DIR / "fonts/bitter/Bitter-Variable.ttf")
 OLDSTANDARD_REGULAR = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Regular.ttf")
 OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
 SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
@@ -103,7 +93,6 @@ EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
 EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
 UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
 JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
-RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
 BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
 ATOMICAGE_REGULAR = str(BASE_DIR / "fonts/atomic-age/AtomicAge-Regular.ttf")
@@ -112,19 +101,10 @@ RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
 CINZELDECORATIVE_REGULAR = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Regular.ttf")
 CINZELDECORATIVE_BOLD = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Bold.ttf")
 CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Black.ttf")
-# Eagle Lake — Astigmatic (OFL). An ornate calligraphic display face with
-# thorny ascenders; matched-phrase face for ``grimoire``, distinct from
-# gothic's UnifrakturMaguntia and alchemy's MedievalSharp.
-#
-# Replaced TFoustScript, which carried no licence and could not be
-# redistributed. Eagle Lake's 404-glyph cmap includes curly quotes and the
-# em-dash, so grimoire needs no ``card_quote_bold`` override (PIL font
-# fallback is file-level, not glyph-level: an ASCII-only face tofus).
-EAGLELAKE_REGULAR = str(BASE_DIR / "fonts/eagle-lake/EagleLake-Regular.ttf")
 # IM Fell English — Igino Marini's revival of John Fell's 17th-century Oxford
 # types (OFL). The metal-type inking irregularities read as an antique page.
 # Its 352-glyph cmap covers curly quotes / em-dash / extended Latin, so it is
-# safe in body and ornament slots. Body face for ``alchemy`` and ``grimoire``.
+# safe in body and ornament slots. Body face for ``alchemy``.
 IMFELLENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
 IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
 # IM Fell Double Pica (expedition body + matched phrase) — the Fell types at Double Pica size,
@@ -146,11 +126,6 @@ UNCIALANTIQUA_REGULAR = str(BASE_DIR / "fonts/uncial-antiqua/UncialAntiqua-Regul
 # Single weight, so ``deco``'s matched phrase differs by colour alone. Falls
 # back through heavy sans before the Playfair chain to stay a display face.
 RIGHTEOUS_REGULAR = str(BASE_DIR / "fonts/righteous/Righteous-Regular.ttf")
-# Iceland — Cyreal (OFL). Geometric techno display face. Single weight, so
-# ``glacier``'s matched phrase gets a faux bold (``stroke_width=1`` in
-# ``_draw_text_body``) on top of the teal stipple: the teal alone sits too
-# close in hue to the blue body. Falls back through heavy sans.
-ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
 # Playwrite GB J Guides — TypeTogether (OFL). British school joined cursive
 # with the dotted-outline guide letters. Single weight (a bold would defeat
 # the practice-letter look), so ``chalkboard``'s matched phrase differs by
@@ -242,9 +217,9 @@ JURA_BOLD = str(BASE_DIR / "fonts/jura/Jura-Bold.ttf")
 # the signal-header and caption face of the Culture pair.
 SHARETECHMONO_REGULAR = str(BASE_DIR / "fonts/share-tech-mono/ShareTechMono-Regular.ttf")
 # Inter — Rasmus Andersson (OFL). Grotesque UI sans, the open Helvetica
-# stand-in; the ``swiss`` face. Variable, default Regular, but every candidate
-# pins its instance so the matched-phrase bold is unambiguous. Falls back
-# through sans faces before the Playfair chain so the theme stays sans.
+# stand-in, used by ``betweenus`` / ``betweenus_dark`` and ``lumon``. Variable,
+# default Regular, but every candidate pins its instance so a bold is
+# unambiguous.
 INTER_VARIABLE = str(BASE_DIR / "fonts/inter/Inter-Variable.ttf")
 # Montserrat (OFL) — the ``lumon`` digits and body: the open face closest to
 # the Gotham-like sans of the MDR terminal's number grid (round, even digits
@@ -258,12 +233,9 @@ MONTSERRAT_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat[wght].ttf")
 FRAUNCES_VARIABLE = str(BASE_DIR / "fonts/fraunces/Fraunces-Variable.ttf")
 FRAUNCES_ITALIC_VARIABLE = str(BASE_DIR / "fonts/fraunces/Fraunces-Italic-Variable.ttf")
 # Cormorant Garamond — Christian Thalmann (OFL). High-contrast Garamond
-# revival in the poster register ``mucha`` wants. Variable, named instances
-# Light..Bold (default Regular).
+# revival with a poster-register contrast (``nocturne``'s body). Variable,
+# named instances Light..Bold (default Regular).
 CORMORANT_VARIABLE = str(BASE_DIR / "fonts/cormorant-garamond/CormorantGaramond-Variable.ttf")
-# Berkshire Swash — Astigmatic (OFL). Flourished Art Nouveau display script,
-# single weight; ``mucha``'s ornament slot for the oversized quote marks.
-BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-Regular.ttf")
 # Yuji Boku (OFL). Sumi-brush Japanese face for ``kanagawa``, from the same
 # brush-and-ink tradition as its seigaiha pattern. Single weight; matched
 # phrase differs by colour. Distinct from chanbara's all-caps Shojumaru.
@@ -307,7 +279,7 @@ SILKSCREEN_BOLD = str(BASE_DIR / "fonts/silkscreen/Silkscreen-Bold.ttf")
 # Dancing Script (OFL). Fluid pen-script with a weight axis (400..700); the
 # ``letter`` body face. Copperplate (Pinyon) hairlines shatter at body sizes
 # after ``snap_image_to_palette``, so Dancing Script carries the text and
-# Pinyon only the ornament — the ``illuminated`` split. Its Bold instance
+# Pinyon only the ornament, a legible body beside a period ornament. Its Bold instance
 # gives the matched phrase a real weight step. Falls back through slanted
 # sans (DejaVu / Liberation Italic) before the Playfair chain.
 DANCINGSCRIPT_VARIABLE = str(BASE_DIR / "fonts/dancing-script/DancingScript-Variable.ttf")

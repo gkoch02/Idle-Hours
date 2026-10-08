@@ -110,6 +110,9 @@ exclude_lines = [
 [tool.ruff]
 line-length = 130
 target-version = "py311"
+# Retired themes are kept verbatim as an inert archive (see retired/README.md),
+# not maintained code.
+extend-exclude = ["retired"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B"]

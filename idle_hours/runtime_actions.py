@@ -280,9 +280,9 @@ def action_theme(
         # ``commit_render_result`` and the field still describes the
         # pre-sleep *clock* frame. Deriving ``current`` from it during quiet
         # hours got both consumers below wrong: an explicit apply of the
-        # clock theme (say ``scholar``, while the sleep frame shows
+        # clock theme (say ``newsprint``, while the sleep frame shows
         # ``nightvision``) matched the stale value and was dropped as a
-        # no-op, and a button-B cycle advanced from ``scholar`` rather than
+        # no-op, and a button-B cycle advanced from ``newsprint`` rather than
         # from the ``nightvision`` the operator can see. Resolving through
         # ``resolve_quiet_theme`` asks the same function the frame itself
         # used, so "current" means "displayed" in both states.

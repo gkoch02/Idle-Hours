@@ -117,8 +117,7 @@ def draw_kanagawa_border(
       black on ``(x+y)&1`` (R+K maroon), with a stylised 川 ("river") in
       2 px white strokes painted after the post-pass so they stay solid.
 
-    When ``clear_rect`` is given (the standard render path, as for
-    ``blueprint``), the body rect becomes a cream paper card over the
+    When ``clear_rect`` is given (the standard render path), the body rect becomes a cream paper card over the
     textile, so the band can run up to the text without hurting
     legibility.
     """
@@ -273,7 +272,7 @@ SPEC = BorderSpec(
     themes=("kanagawa",),
     paint=draw_kanagawa_border,
     # Wide enough to clear the seigaiha crescents. One knockout call: the
-    # painter resets the body rect to page_bg at the end, with no grid to
-    # re-add inside it (unlike blueprint).
+    # painter resets the body rect to page_bg at the end, with nothing to
+    # re-add inside it.
     clear_rect_pad=(14, 6, 6),
 )

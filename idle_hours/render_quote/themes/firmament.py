@@ -112,8 +112,7 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     * **Layer 0: navy ground.** ``page_bg`` is black; half of it flips to
       blue on ``(x + y) & 1`` (B+K navy). Idempotent: the second
       ``_paint_theme_border`` call after the text finds no ``page_bg``
-      pixels left to flip (the shape ``mucha`` / ``fillmore`` / ``atomic``
-      use).
+      pixels left to flip (the shape ``fillmore`` / ``atomic`` use).
     * **Layer 1: Milky Way.** Two irregular rotated blobs (top, right of
       centre; bottom, left of centre) filled with a dense scatter of
       yellow pin-stars and sparse red / blue "nebular dust", thinning

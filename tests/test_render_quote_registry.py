@@ -56,7 +56,7 @@ class TestBuildRegistry:
         with pytest.raises(TypeError):
             rq._BORDER_PAINTERS["kanagawa"] = print
         with pytest.raises(TypeError):
-            rq._FRAME_RENDERERS["vinyl"] = print
+            rq._FRAME_RENDERERS["tarot"] = print
 
 
 class TestBorderSpec:

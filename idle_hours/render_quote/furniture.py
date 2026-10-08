@@ -144,8 +144,8 @@ def _row_digest(quote_row: dict) -> int:
 #
 # ``daguerreotype``, ``autochrome`` and ``photo`` present a plate with the
 # quote on a cream card beside it; the card stock, the centred styled-line
-# loop and the truncating byline live here. ``pulp``, ``vhs``, ``intaglio``
-# and ``wrap_quote_into_masks`` keep near copies of the line loop (anchoring,
+# loop and the truncating byline live here. ``pulp``, ``vhs`` and
+# ``wrap_quote_into_masks`` keep near copies of the line loop (anchoring,
 # mask vs canvas and phrase colouring differ); folding them in would churn
 # golden fixtures for no behaviour change.
 

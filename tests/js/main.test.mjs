@@ -517,7 +517,7 @@ describe("refreshThemes — dropdown focus guard and state pill", () => {
   }
 
   const PAYLOAD = {
-    themes: ["default", "dark", "scholar"],
+    themes: ["default", "dark", "roman"],
     theme_arg: "auto",
     manual_theme: null,
     effective: "dark",
@@ -526,7 +526,7 @@ describe("refreshThemes — dropdown focus guard and state pill", () => {
   it("populates the dropdown from /api/themes", async () => {
     const { api, select } = await themeHarness(PAYLOAD);
     await api.refreshThemes();
-    assert.deepEqual(select.optionValues, ["default", "dark", "scholar"]);
+    assert.deepEqual(select.optionValues, ["default", "dark", "roman"]);
   });
 
   it("marks the effective theme in the option label", async () => {
@@ -552,7 +552,7 @@ describe("refreshThemes — dropdown focus guard and state pill", () => {
     for (const [payload, expected] of [
       [{ ...PAYLOAD, manual_theme: "gothic" }, "manual: gothic"],
       [{ ...PAYLOAD, manual_theme: null, theme_arg: "auto" }, "auto: dark"],
-      [{ ...PAYLOAD, manual_theme: null, theme_arg: "scholar", effective: "scholar" }, "fixed: scholar"],
+      [{ ...PAYLOAD, manual_theme: null, theme_arg: "roman", effective: "roman" }, "fixed: roman"],
     ]) {
       const { api, pill } = await themeHarness(payload);
       await api.refreshThemes();
@@ -563,7 +563,7 @@ describe("refreshThemes — dropdown focus guard and state pill", () => {
   it("caches the theme list on state for the preview grid", async () => {
     const { api } = await themeHarness(PAYLOAD);
     await api.refreshThemes();
-    assert.deepEqual(api.state.themes, ["default", "dark", "scholar"]);
+    assert.deepEqual(api.state.themes, ["default", "dark", "roman"]);
   });
 });
 
@@ -815,7 +815,7 @@ describe("the sleep frame — skip / un-skip are refused while asleep", () => {
 });
 
 describe("theme dropdown follows the live theme (#290)", () => {
-  const PAYLOAD = { themes: ["default", "dark", "scholar"], theme_arg: "auto", manual_theme: null, effective: "dark" };
+  const PAYLOAD = { themes: ["default", "dark", "roman"], theme_arg: "auto", manual_theme: null, effective: "dark" };
 
   async function harness(payloads) {
     let i = 0;
@@ -827,7 +827,7 @@ describe("theme dropdown follows the live theme (#290)", () => {
           i += 1;
           return { status: 200, ok: true, text: async () => JSON.stringify(body) };
         }
-        return routeTable({ "POST /api/action/theme": { body: { ok: true, theme: "scholar" } } })(url, init);
+        return routeTable({ "POST /api/action/theme": { body: { ok: true, theme: "roman" } } })(url, init);
       },
     });
     h.api.wireControls();
@@ -837,11 +837,11 @@ describe("theme dropdown follows the live theme (#290)", () => {
   const selected = (select) => select.children.find((c) => c.selected)?.value;
 
   it("moves the selection when the live theme changes", async () => {
-    const { api, select } = await harness([PAYLOAD, { ...PAYLOAD, effective: "scholar" }]);
+    const { api, select } = await harness([PAYLOAD, { ...PAYLOAD, effective: "roman" }]);
     await api.refreshThemes();
     assert.equal(selected(select), "dark");
     await api.refreshThemes();
-    assert.equal(selected(select), "scholar", "stuck on the first theme it showed");
+    assert.equal(selected(select), "roman", "stuck on the first theme it showed");
   });
 
   it("keeps an unapplied operator choice across polls", async () => {
@@ -855,7 +855,7 @@ describe("theme dropdown follows the live theme (#290)", () => {
 
   it("follows the live theme after the operator picks the live theme back (not latched)", async () => {
     const { api, select } = await harness([
-      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "scholar" },
+      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "roman" },
     ]);
     await api.refreshThemes();
     const pick = (v) => { select.value = v; for (const fn of select.listeners.change || []) fn(); };
@@ -864,23 +864,23 @@ describe("theme dropdown follows the live theme (#290)", () => {
     assert.equal(selected(select), "dark", "a real pending choice is kept");
     pick("default");
     await api.refreshThemes();
-    assert.equal(selected(select), "scholar", "stuck on a choice the operator already undid");
+    assert.equal(selected(select), "roman", "stuck on a choice the operator already undid");
   });
 
   it("drops a pending choice once the live theme catches up with it", async () => {
     const { api, select } = await harness([
-      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "dark" }, { ...PAYLOAD, effective: "scholar" },
+      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "dark" }, { ...PAYLOAD, effective: "roman" },
     ]);
     await api.refreshThemes();
     select.value = "dark";
     for (const fn of select.listeners.change || []) fn();
     await api.refreshThemes();
     await api.refreshThemes();
-    assert.equal(selected(select), "scholar");
+    assert.equal(selected(select), "roman");
   });
 
   it("follows the live theme again once the choice is applied", async () => {
-    const { api, select, elements } = await harness([PAYLOAD, PAYLOAD, { ...PAYLOAD, effective: "scholar" }]);
+    const { api, select, elements } = await harness([PAYLOAD, PAYLOAD, { ...PAYLOAD, effective: "roman" }]);
     await api.refreshThemes();
     select.value = "default";
     for (const fn of select.listeners.change || []) fn();
@@ -889,7 +889,7 @@ describe("theme dropdown follows the live theme (#290)", () => {
     await flush();
     assert.equal(api.state.themeSelectDirty, false);
     await api.refreshThemes();
-    assert.equal(selected(select), "scholar");
+    assert.equal(selected(select), "roman");
   });
 });
 
@@ -1341,7 +1341,7 @@ describe("setup wizard failure", () => {
         ok: false, error: "busy", setup_complete: false, applied_theme: { ok: false, error: "busy" },
       } } }),
     });
-    await api.completeWizard("scholar");
+    await api.completeWizard("roman");
     assert.equal(elements.get("wizard-status").textContent, "Setup save failed (409): busy");
     assert.equal(elements.get("setup-wizard").hidden, false);
   });

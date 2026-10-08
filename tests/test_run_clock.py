@@ -951,16 +951,16 @@ class TestAutoTheme:
         assert runtime_theme.auto_theme_for("06:00") == "default"
 
     def test_auto_theme_honours_day_theme_override(self):
-        assert runtime_theme.auto_theme_for("10:00", day_theme="scholar", night_theme="nightvision") == "scholar"
+        assert runtime_theme.auto_theme_for("10:00", day_theme="roman", night_theme="nightvision") == "roman"
 
     def test_auto_theme_honours_night_theme_override(self):
-        assert runtime_theme.auto_theme_for("22:00", day_theme="scholar", night_theme="nightvision") == "nightvision"
+        assert runtime_theme.auto_theme_for("22:00", day_theme="roman", night_theme="nightvision") == "nightvision"
 
     def test_auto_theme_boundary_dusk_uses_night_override(self):
-        assert runtime_theme.auto_theme_for("18:00", day_theme="scholar", night_theme="nightvision") == "nightvision"
+        assert runtime_theme.auto_theme_for("18:00", day_theme="roman", night_theme="nightvision") == "nightvision"
 
     def test_auto_theme_boundary_dawn_uses_day_override(self):
-        assert runtime_theme.auto_theme_for("06:00", day_theme="scholar", night_theme="nightvision") == "scholar"
+        assert runtime_theme.auto_theme_for("06:00", day_theme="roman", night_theme="nightvision") == "roman"
 
 
 class TestResolveEffectiveTheme:
@@ -985,12 +985,12 @@ class TestResolveEffectiveTheme:
     def test_invalid_manual_override_ignored(self):
         assert runtime_theme.resolve_effective_theme("auto", "21:00", "garbage") == "dark"
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    @pytest.mark.parametrize("theme", ["roman", "newsprint", "nightvision"])
     def test_new_manual_themes_accepted_over_auto(self, theme):
         """Every theme registered in ``render_quote.THEMES`` must be honoured
         as a manual override, not silently stripped back to ``theme_arg``.
         Before the widening this was hardcoded to ('default', 'dark'), so a
-        manual flip to ``scholar`` would fall through to ``auto_theme_for``
+        manual flip to ``roman`` would fall through to ``auto_theme_for``
         and revert on every tick — exactly the symptom that surfaced in
         ``TestActionThemeCycle`` before ``resolve_effective_theme`` was
         fixed. Pinning every new theme here catches the regression before
@@ -998,23 +998,23 @@ class TestResolveEffectiveTheme:
         assert runtime_theme.resolve_effective_theme("auto", "21:00", theme) == theme
         assert runtime_theme.resolve_effective_theme("auto", "10:00", theme) == theme
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    @pytest.mark.parametrize("theme", ["roman", "newsprint", "nightvision"])
     def test_new_manual_themes_accepted_over_explicit_theme_arg(self, theme):
         """Same widening, but when ``--theme`` was explicit (not ``auto``)
         — the manual override must still win. A user running
-        ``--theme default`` who presses B until they reach ``scholar``
+        ``--theme default`` who presses B until they reach ``roman``
         would otherwise revert to ``default`` on every render."""
         assert runtime_theme.resolve_effective_theme("default", "10:00", theme) == theme
         assert runtime_theme.resolve_effective_theme("dark", "21:00", theme) == theme
 
     def test_auto_with_day_theme_kwarg_resolves_to_day_choice(self):
         assert runtime_theme.resolve_effective_theme(
-            "auto", "10:00", None, auto_day_theme="scholar", auto_night_theme="nightvision",
-        ) == "scholar"
+            "auto", "10:00", None, auto_day_theme="roman", auto_night_theme="nightvision",
+        ) == "roman"
 
     def test_auto_with_night_theme_kwarg_resolves_to_night_choice(self):
         assert runtime_theme.resolve_effective_theme(
-            "auto", "22:00", None, auto_day_theme="scholar", auto_night_theme="nightvision",
+            "auto", "22:00", None, auto_day_theme="roman", auto_night_theme="nightvision",
         ) == "nightvision"
 
     def test_manual_override_wins_over_new_auto_kwargs(self):
@@ -1023,18 +1023,18 @@ class TestResolveEffectiveTheme:
         who manually flipped to ``comic`` would revert to nightvision at the
         next 18:00 boundary."""
         assert runtime_theme.resolve_effective_theme(
-            "auto", "10:00", "comic", auto_day_theme="scholar", auto_night_theme="nightvision",
+            "auto", "10:00", "comic", auto_day_theme="roman", auto_night_theme="nightvision",
         ) == "comic"
         assert runtime_theme.resolve_effective_theme(
-            "auto", "22:00", "comic", auto_day_theme="scholar", auto_night_theme="nightvision",
+            "auto", "22:00", "comic", auto_day_theme="roman", auto_night_theme="nightvision",
         ) == "comic"
 
     def test_explicit_theme_arg_ignores_auto_kwargs(self):
-        """``--theme scholar`` is a hard pin, not a wall-clock-derived value;
+        """``--theme roman`` is a hard pin, not a wall-clock-derived value;
         the new auto kwargs must not affect explicit theme args."""
         assert runtime_theme.resolve_effective_theme(
-            "scholar", "22:00", None, auto_day_theme="default", auto_night_theme="dark",
-        ) == "scholar"
+            "roman", "22:00", None, auto_day_theme="default", auto_night_theme="dark",
+        ) == "roman"
 
 
 class TestAutoThemeKwargsHelper:
@@ -1043,9 +1043,9 @@ class TestAutoThemeKwargsHelper:
     Namespaces (typically test fixtures) that predate these flags."""
 
     def test_reads_attrs_when_present(self):
-        ns = argparse.Namespace(auto_day_theme="scholar", auto_night_theme="nightvision")
+        ns = argparse.Namespace(auto_day_theme="roman", auto_night_theme="nightvision")
         assert runtime_theme._auto_theme_kwargs(ns) == {
-            "auto_day_theme": "scholar",
+            "auto_day_theme": "roman",
             "auto_night_theme": "nightvision",
         }
 
@@ -1228,7 +1228,7 @@ class TestRuntimeStatePersistence:
         through ``RuntimeState(persisted=...)``. Previously the validator
         hardcoded the pair ('default', 'dark'), which silently dropped any
         persisted theme that was added later — a user who hit button B to
-        land on ``scholar`` would boot tomorrow with ``manual_theme=None``."""
+        land on ``roman`` would boot tomorrow with ``manual_theme=None``."""
         from idle_hours import render_quote as rq
         for name in rq.THEMES:
             s = run_clock.RuntimeState("auto", persisted={"manual_theme": name, "manual_quiet": False})
@@ -1726,8 +1726,8 @@ class TestAutoThemeLoopIntegration:
     @pytest.mark.parametrize(
         "now,day_theme,night_theme,expected",
         [
-            ("10:00", "scholar", "nightvision", "scholar"),
-            ("22:00", "scholar", "nightvision", "nightvision"),
+            ("10:00", "roman", "nightvision", "roman"),
+            ("22:00", "roman", "nightvision", "nightvision"),
             ("06:00", "comic",   "bauhaus",     "comic"),
             ("18:00", "comic",   "bauhaus",     "bauhaus"),
         ],
@@ -2682,7 +2682,7 @@ class TestStartupImage:
         argv = [
             "run_clock.py",
             "--startup-image", "auto",
-            "--theme", "scholar",
+            "--theme", "roman",
             "--output", str(tmp_path / "out.png"),
             "--buttons-off",
             "--history-path", "", "--telemetry-path", "",
@@ -2709,7 +2709,7 @@ class TestStartupImage:
         first = render_calls[0]
         # render_now signature: (render_script, output, width, height, display_script, mode, theme, ...)
         assert first["args"][5] == "goodnight"
-        assert first["args"][6] == "scholar"
+        assert first["args"][6] == "roman"
         # Static PNG copy path must NOT have run for "auto".
         assert display_calls == []
 
@@ -2720,7 +2720,7 @@ class TestStartupImage:
         argv = [
             "run_clock.py",
             "--startup-image", "auto",
-            "--theme", "scholar",
+            "--theme", "roman",
             "--output", str(tmp_path / "out.png"),
             "--buttons-off",
             "--history-path", "", "--telemetry-path", "",
@@ -2815,7 +2815,7 @@ class TestQuietGoodnightOnTheFly:
         """At 22:00 with --auto-night-theme nightvision, the goodnight render
         uses theme='nightvision' — proving the kwargs thread through to the
         sentinel branch."""
-        args = self._args(tmp_path, auto_day_theme="scholar", auto_night_theme="nightvision")
+        args = self._args(tmp_path, auto_day_theme="roman", auto_night_theme="nightvision")
         state = run_clock.RuntimeState("auto")
         with patch("idle_hours.runtime_render.render_now") as mock_render, \
              patch("idle_hours.runtime_telemetry.append_telemetry"):
@@ -3719,15 +3719,15 @@ class TestActionThemeCycle:
         it was so the operator sees no change."""
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.manual_theme = "scholar"
-        state.last_effective_theme = "scholar"
+        state.manual_theme = "roman"
+        state.last_effective_theme = "roman"
         with patch("idle_hours.runtime_render._render_unlocked") as mock_render, \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
             result = runtime_actions.action_theme(args, state, label="web", target="chartreuse")
         assert result["ok"] is False
         assert result["error"] == "unknown_theme"
         assert result["target"] == "chartreuse"
-        assert state.manual_theme == "scholar"
+        assert state.manual_theme == "roman"
         assert not mock_render.called
 
     def test_stale_manual_theme_outside_cycle_restarts_at_head(self, tmp_path):
@@ -3750,15 +3750,15 @@ class TestActionThemeCycle:
         wanted to adjust something else (e.g. verify the current pick)."""
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.manual_theme = "scholar"
-        state.last_effective_theme = "scholar"
+        state.manual_theme = "roman"
+        state.last_effective_theme = "roman"
         with patch("idle_hours.runtime_render._render_unlocked") as mock_render, \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
-            result = runtime_actions.action_theme(args, state, label="web", target="scholar")
+            result = runtime_actions.action_theme(args, state, label="web", target="roman")
         assert result["ok"] is True
         assert result["noop"] is True
-        assert result["theme"] == "scholar"
-        assert state.manual_theme == "scholar"  # unchanged
+        assert result["theme"] == "roman"
+        assert state.manual_theme == "roman"  # unchanged
         assert not mock_render.called
 
     def test_target_equal_to_auto_resolved_preserves_auto_mode(self, tmp_path):
@@ -3902,12 +3902,12 @@ class TestRandomThemeMode:
 
     def test_resolve_random_uses_current_random_theme(self):
         """When ``current_random_theme`` is set, ``resolve_effective_theme`` returns it."""
-        result = runtime_theme.resolve_effective_theme("random", "10:00", None, current_random_theme="scholar")
-        assert result == "scholar"
+        result = runtime_theme.resolve_effective_theme("random", "10:00", None, current_random_theme="roman")
+        assert result == "roman"
 
     def test_resolve_random_manual_override_wins(self):
         """``manual_theme`` takes priority over the stored random theme."""
-        result = runtime_theme.resolve_effective_theme("random", "10:00", "dark", current_random_theme="scholar")
+        result = runtime_theme.resolve_effective_theme("random", "10:00", "dark", current_random_theme="roman")
         assert result == "dark"
 
     def test_resolve_random_fallback_when_none(self):
@@ -3942,7 +3942,7 @@ class TestRandomThemeMode:
             "--skip-preflight",
         ]
         with patch("sys.argv", argv), \
-             patch("idle_hours.runtime_theme.pick_random_theme", return_value="scholar") as mock_pick, \
+             patch("idle_hours.runtime_theme.pick_random_theme", return_value="roman") as mock_pick, \
              patch("idle_hours.runtime_render.render_now") as mock_render, \
              patch("idle_hours.runtime_render.peek_quote_id", return_value=None), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h12_exact"), \
@@ -3955,7 +3955,7 @@ class TestRandomThemeMode:
         # theme is the 7th positional arg (index 6) or a keyword arg.
         ca = mock_render.call_args
         called_theme = ca.kwargs.get("theme") if ca.kwargs.get("theme") else ca.args[6] if len(ca.args) > 6 else ca.kwargs.get("theme")
-        assert called_theme == "scholar"
+        assert called_theme == "roman"
 
     def test_random_mode_picks_new_theme_on_quote_change(self):
         """``_maybe_pick_random_theme`` updates ``state.current_random_theme``
@@ -3964,13 +3964,13 @@ class TestRandomThemeMode:
         state.last_quote_id = ("111", 10, "old quote", "old match")
         state.current_random_theme = "default"
         # Pre-stuff the bag so the pop is deterministic without patching.
-        state.random_theme_bag = ["scholar"]
+        state.random_theme_bag = ["roman"]
 
         new_quote_id = ("222", 20, "new quote", "new match")
         result = runtime_render._maybe_pick_random_theme(state, new_quote_id)
 
-        assert result == "scholar"
-        assert state.current_random_theme == "scholar"
+        assert result == "roman"
+        assert state.current_random_theme == "roman"
         assert state.random_theme_bag == []
 
     def test_random_mode_stable_on_same_quote(self):
@@ -4179,13 +4179,13 @@ class TestRandomThemeMode:
             state_path=str(tmp_path / "state.json"),
             auto_day_theme="default", auto_night_theme="dark",
         )
-        state.random_theme_bag = ["scholar"]
+        state.random_theme_bag = ["roman"]
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=new_quote_id), \
              patch("idle_hours.runtime_render._render_unlocked"), \
              patch("idle_hours.runtime_render._append_history_after_render"):
             runtime_actions.action_skip(args, state, label="button A")
 
-        assert state.current_random_theme == "scholar"
+        assert state.current_random_theme == "roman"
 
     def test_action_unskip_picks_new_random_theme(self, tmp_path):
         """``action_unskip`` updates ``state.current_random_theme`` when in random mode."""

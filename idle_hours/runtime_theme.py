@@ -29,7 +29,7 @@ def auto_theme_for(time_str: str, day_theme: str = "default", night_theme: str =
     Defaults match the legacy binary contract (``default`` / ``dark``); callers
     that don't pass the kwargs see no behaviour change. Operators can broaden
     the rotation via ``--auto-day-theme`` / ``--auto-night-theme`` (see
-    ``run_clock`` argparse) — e.g. ``scholar`` by day + ``nightvision`` by
+    ``run_clock`` argparse) — e.g. ``newsprint`` by day + ``nightvision`` by
     night. Validation of the theme names lives at argparse / config-load time
     rather than here so the per-tick call stays cheap.
     """
@@ -163,7 +163,7 @@ def resolve_effective_theme(
     derive from the wall clock using the configured day/night picks (default
     ``default`` / ``dark`` — the legacy binary contract). Any registered theme
     from ``render_quote.THEMES`` is accepted as an override — previously this
-    accepted only the legacy pair, so a manual flip to ``scholar`` /
+    accepted only the legacy pair, so a manual flip to ``newsprint`` /
     ``nightvision`` would silently revert to ``theme_arg`` and the cycle never
     advanced past ``dark``.
     """
