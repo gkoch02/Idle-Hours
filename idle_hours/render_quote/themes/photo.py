@@ -22,13 +22,15 @@ from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import (
     SPECTRA6,
     SPECTRA6_PALETTE,
+    BAYER_8x8,
     _load_dithered_plate,
     dither_image_to_palette,
     gray_pixel_access,
+    pixel_access,
     snap_image_to_palette,
 )
+from ..primitives import _flow_stroke_hash
 from ..spec import FrameSpec
-from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_garden_fallback
 
 # ---------------------------------------------------------------------------
 # photo — the operator's own picture
@@ -58,8 +60,15 @@ from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_ga
 # Everything else is defensive. The source is a file or a directory (rotated
 # with the quote via ``_row_digest``), and every operator failure mode — a
 # missing path, a misnamed file, CMYK, EXIF rotation, a decompression bomb, an
-# empty directory — degrades to the bundled ``autochrome`` plate with a
+# empty directory — degrades to the bundled coast plate (``PHOTO_PLATE``) with a
 # latched warning rather than raising into the per-tick render path.
+
+# The picture shown when nothing is configured or the configured source
+# cannot be read: a coast with a lighthouse (scripts/generate_photo_plate.py).
+# It is deliberately not ``autochrome``'s garden, which this theme borrowed
+# until the two read as one theme in the rotation. Dithered against all six
+# inks, like an operator's photograph.
+PHOTO_PLATE = BASE_DIR / "assets" / "photo_coast.png"
 
 # Extensions attempted from a directory listing: an allowlist, because probing
 # every file with Image.open is slow and a wider attack surface.
@@ -370,7 +379,7 @@ def _photo_frame_for(quote_row: dict, width: int, height: int) -> tuple[Image.Im
     smooth regions into high-edge-energy stipple, inverting the score so the
     card lands on the part of the picture worth keeping.
 
-    Falls back to the bundled ``autochrome`` garden when nothing is configured
+    Falls back to the bundled coast plate (``PHOTO_PLATE``) when nothing is configured
     or the source cannot be read, so the theme always renders and, with the
     environment variable unset, is byte-deterministic (it has a golden
     fixture).
@@ -401,20 +410,49 @@ def _photo_frame_for(quote_row: dict, width: int, height: int) -> tuple[Image.Im
 
 
 def _photo_fallback_frame(width: int, height: int) -> tuple[Image.Image, tuple[int, int, int, int]]:
-    """The bundled ``autochrome`` garden, measured for card placement the same
-    way an operator's photograph is - off the continuous-tone source, not the
+    """The bundled coast plate, measured for card placement the same way an
+    operator's photograph is - off the continuous-tone source, not the
     dithered plate."""
-    plate = _load_dithered_plate(AUTOCHROME_PLATE, width, height, palette=_AUTOCHROME_PALETTE)
+    plate = _load_dithered_plate(PHOTO_PLATE, width, height, palette=SPECTRA6_PALETTE)
     try:
-        with Image.open(AUTOCHROME_PLATE) as raw:
+        with Image.open(PHOTO_PLATE) as raw:
             source = raw.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
     except (OSError, ValueError):
         source = None
     if plate is None:
         plate = Image.new("RGB", (width, height), SPECTRA6["white"])
-        _autochrome_paint_garden_fallback(plate)
+        _photo_paint_coast_fallback(plate)
     rect = _photo_card_rect(source if source is not None else plate, width, height)
     return plate, rect
+
+
+def _photo_paint_coast_fallback(image: Image.Image) -> None:
+    """A stripped install still gets a coast-shaped colour picture: sky
+    paling to the horizon, a blue sea, a white surf line and yellow sand, as
+    ``BAYER_8x8`` density ramps, with a dark headland on the left so the card
+    still has a quiet side to find."""
+    px = pixel_access(image)
+    width, height = image.size
+    white, black, blue, green, yellow = (
+        SPECTRA6[c] for c in ("white", "black", "blue", "green", "yellow"))
+    horizon, shore = int(height * 0.47), int(height * 0.70)
+    for y in range(height):
+        row = BAYER_8x8[y % 8]
+        for x in range(width):
+            if y < horizon:
+                density, ink, ground = 0.40 * (1.0 - y / horizon) ** 0.8, blue, white
+            elif y < shore - 3:
+                density, ink, ground = 0.38 + 0.20 * (shore - y) / (shore - horizon), blue, white
+                if _flow_stroke_hash(x // 6, y, 5) < 0.06:
+                    ink = white
+            elif y < shore + 3:
+                density, ink, ground = 0.0, black, white
+            else:
+                density, ink, ground = 0.42, yellow, white
+            cliff = horizon - (height * 0.16) * max(0.0, 1.0 - (x / (width * 0.40)) ** 2.2)
+            if x < width * 0.42 and cliff <= y < shore:
+                density, ink, ground = 0.55, black, green
+            px[x, y] = ink if row[x % 8] < 64 * density else ground
 
 
 def _photo_cost_map(image: Image.Image, cols: int = 20, rows: int = 12) -> list[list[float]]:

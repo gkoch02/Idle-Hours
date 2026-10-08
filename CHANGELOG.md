@@ -17,6 +17,9 @@ these entries under the new dated version heading.
   caption lettered beneath in white, the matched phrase in yellow. `photo`
   keeps its floating card and is now the only one with a card. Both themes
   move to the 0.7 saturation tier for their darker grounds.
+- `photo` has its own default picture: a coast with a lighthouse, shown
+  when no `--photo-path` is set or the configured picture can't be read.
+  It used to borrow `autochrome`'s garden, so the two showed the same image.
 - New `splitflap` theme: a split-flap message board on a wall, in the manner
   of a Vestaboard. The quote is set in capitals on a fixed grid of flap
   tiles, each split by its hinge, with the matched phrase on yellow colour

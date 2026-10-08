@@ -3887,17 +3887,35 @@ class TestPhotoTheme:
             "could never be invalidated"
         )
 
+    def test_the_default_picture_is_not_autochromes(self):
+        """Unconfigured, the theme shows its own coast, not ``autochrome``'s
+        garden: borrowing that plate made the two themes look the same in the
+        rotation. The coast is a blue-and-yellow picture where the garden is
+        a green-and-red one, so the ink mix tells them apart."""
+        assert rq_themes.photo.PHOTO_PLATE != rq.AUTOCHROME_PLATE
+        rq.clear_photo_cache()
+        plate, _ = rq_themes.photo._photo_fallback_frame(800, 480)
+        counts = ink_counts(plate)
+        coast = counts.get(rq.SPECTRA6["blue"], 0) + counts.get(rq.SPECTRA6["yellow"], 0)
+        meadow = counts.get(rq.SPECTRA6["green"], 0) + counts.get(rq.SPECTRA6["red"], 0)
+        assert coast > 2 * meadow, (
+            f"blue+yellow {coast} vs green+red {meadow} — the default picture no "
+            "longer reads as a coast"
+        )
+        for ink in rq.SPECTRA6.values():
+            assert counts.get(ink, 0) > 0, "the coast plate has dropped an ink"
+
     def test_a_stripped_install_still_renders(self, tmp_path, monkeypatch):
         """Fallback of the fallback: nothing configured *and* the bundled plate
-        gone. The synthesised garden keeps the theme a colour picture."""
-        monkeypatch.setattr(rq_themes.photo, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        gone. The synthesised coast keeps the theme a colour picture."""
+        monkeypatch.setattr(rq_themes.photo, "PHOTO_PLATE", tmp_path / "absent.png")
         rq.clear_photo_cache()
         rq._DITHER_CACHE.clear()
         image = self._render()
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
         counts = ink_counts(image)
         total = 800 * 480
-        for ink in ("blue", "green"):
+        for ink in ("blue", "yellow", "green"):
             assert counts.get(rq.SPECTRA6[ink], 0) / total > 0.01, (
                 f"the synthesised fallback has almost no {ink}"
             )
