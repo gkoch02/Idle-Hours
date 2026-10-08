@@ -19,9 +19,8 @@ Semantics:
 - Abstract-namespace sockets (``@...``) and filesystem-path sockets are both
   supported; systemd picks the kind based on the first byte.
 
-See sd_notify(3) for the full protocol. We only implement the two verbs phase 3
-of the appliance-hardening track actually needs: ``READY=1`` at startup and
-``WATCHDOG=1`` from the heartbeat.
+See sd_notify(3) for the full protocol. Only the two verbs the loop needs are
+implemented: ``READY=1`` at startup and ``WATCHDOG=1`` from the heartbeat.
 """
 from __future__ import annotations
 

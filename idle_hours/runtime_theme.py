@@ -43,8 +43,7 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
     """Pluck the auto-theme day/night picks off an argparse Namespace.
 
     Single seam so call sites that thread these into ``resolve_effective_theme``
-    don't each have to reach into ``args``; if we ever add a third dimension
-    (e.g. weekend/weekday split) only this helper changes.
+    don't each have to reach into ``args``.
     """
     return {
         "auto_day_theme": args.auto_day_theme,
@@ -104,25 +103,13 @@ def pick_next_random_theme(
 ) -> tuple[str, list[str]]:
     """Draw the next theme from a shuffled bag of unseen themes.
 
-    Returns ``(theme, updated_bag)`` — the caller stores ``updated_bag``
-    on :class:`RuntimeState`. When ``bag`` is empty it's refilled with a
-    fresh shuffle of the full cycle.
-
-    ``recent`` is the caller's rolling window of the most-recently-drawn
-    themes (most-recent last). On a refill the themes in ``recent`` are
-    moved to the *head* of the new bag — and since the bag is popped from
-    the end (``list.pop`` is O(1)), the head is drawn *last*. The
-    non-recent themes fill the tail and are drawn first, so a theme shown
-    near the end of the previous pass can't reappear at the start of the
-    next one. This is the cross-boundary generalisation of the old
-    "don't replay the single just-played theme" swap: independent
-    per-pass shuffles otherwise let a tail theme recur as the second pick
-    of the next pass (a gap of 2). See :func:`recent_window_size` for why
-    the caller caps ``recent`` at half the pool.
-
-    The refill draws from :func:`random_theme_pool` (= ``theme_cycle()``
-    minus :data:`RANDOM_EXCLUDED_THEMES`) rather than the full cycle, so
-    diagnostic-only themes never sneak in via a random pick.
+    Returns ``(theme, updated_bag)``; the caller stores the bag on
+    :class:`RuntimeState`. An empty bag is refilled from
+    :func:`random_theme_pool` (so diagnostic-only themes never appear), with
+    the themes in ``recent`` (most-recent last) moved to the head, which is
+    drawn last. That keeps a theme from the tail of one pass from reappearing
+    at the start of the next; docs/runtime.md explains the window and why
+    :func:`recent_window_size` caps it at half the pool.
     """
     bag = list(bag)  # never mutate the caller's list
     if not bag:
@@ -188,30 +175,11 @@ def resolve_quiet_theme(
 ) -> str:
     """Resolve the theme for the quiet-hours sleep frame.
 
-    Precedence, highest first:
-
-    1. ``state.manual_theme`` — a button-B / web-dropdown override always wins,
-       here as everywhere else. An operator who deliberately picked a theme did
-       not pick it "except while asleep".
-    2. ``--quiet-theme`` when it is not :data:`QUIET_THEME_INHERIT`:
-
-       * a registered theme name — used as-is;
-       * ``auto`` — derived from the wall clock via the configured day/night
-         picks, same as ``--theme auto``. Nearly always resolves to the night
-         theme for a conventional quiet window, but it costs nothing to honour
-         and it means the flag accepts everything ``--theme`` does;
-       * ``random`` — a fresh pick held on ``state.quiet_theme`` for the
-         lifetime of the quiet window. ``enter_quiet`` is only called on the
-         rising edge and ``exit_quiet`` clears the field, so this rerolls once
-         per night rather than once per tick.
-    3. ``inherit`` (the default) — delegate to
-       :func:`resolve_effective_theme`, i.e. exactly what the clock would be
-       showing had quiet hours not started.
-
-    Note the asymmetry with ``--theme random``: that one rerolls whenever the
-    *displayed quote* changes, which is the right cadence for a clock. The
-    sleep frame's quote never changes, so the quiet window is the only
-    meaningful unit to reroll on.
+    Precedence, highest first: ``state.manual_theme``; ``--quiet-theme`` when
+    it is not :data:`QUIET_THEME_INHERIT` (a theme name, ``auto``, or
+    ``random``, which is held on ``state.quiet_theme`` so it rerolls once per
+    quiet window); otherwise :func:`resolve_effective_theme`, i.e. what the
+    clock would show. Why each rule: docs/runtime.md ("Quiet-hours theme").
     """
     quiet_choice = args.quiet_theme or QUIET_THEME_INHERIT
 

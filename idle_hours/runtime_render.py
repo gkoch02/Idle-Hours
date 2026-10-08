@@ -490,12 +490,8 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
     when the mode is inactive, a manual override is in effect, or the quote
     hasn't changed and a theme is already stored.
 
-    Picks are drained from :attr:`RuntimeState.random_theme_bag` (a shuffled
-    pass through the full cycle) so every theme is shown once before any
-    repeat. When the bag empties it's refilled with a fresh shuffle, and the
-    themes in :attr:`RuntimeState.random_theme_recent` (the last ~half-pool
-    picks) are held out of the new bag's draw-front so a theme shown at the
-    tail of one pass can't reappear at the head of the next.
+    Picks come from :func:`runtime_theme.pick_next_random_theme`'s shuffled
+    bag, so every theme shows once before any repeats.
 
     The gate uses :attr:`RuntimeState.last_random_quote_id` (advanced
     synchronously by this function), not ``last_quote_id`` (advanced only by

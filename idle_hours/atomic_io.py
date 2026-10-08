@@ -1,48 +1,19 @@
 """Durable atomic-write helpers shared across the codebase.
 
-Every helper here implements the same crash-safe contract:
+Every helper implements the same crash-safe contract:
 
     parent dir exists → write payload to a *uniquely named* sibling ``*.tmp`` →
     ``fsync`` data → ``os.replace`` tmp → target → ``fsync`` parent dir.
 
-The final directory fsync is what distinguishes a merely "atomic" rename from
-a *durable* one: without it ``os.replace`` can return with the new dirent still
-in the kernel's cache, and a crash in that window leaves the old or missing
-file despite the rename having "succeeded". Parent-directory fsync failures
-are swallowed on platforms where the operation isn't meaningful (notably
-Windows).
+The final directory fsync is what makes the rename durable rather than merely
+atomic: without it ``os.replace`` can return with the new dirent still in the
+kernel's cache, and a crash in that window leaves the old or missing file.
+It is skipped where the operation isn't meaningful (notably Windows).
 
-The staging name carries a pid + random token (#235). An earlier revision
-derived it deterministically from the target (``quote_database.jsonl.tmp``),
-which made every writer of a given target share one staging file: two
-processes — ``idle-hours bake`` racing the curator UI's ``POST /api/bake``,
-or a re-run of ``scripts/run_dawn_expansion.sh`` against a live appliance —
-would interleave their payloads into that single file and then each
-``os.replace`` it into place, publishing a *blend* of two writes atomically.
-On the corpus that surfaces as quotes quietly vanishing from buckets, since
-``jsonl_io.iter_jsonl`` skips undecodable lines. Unique staging names don't
-make concurrent writes *correct* (last writer still wins, and one operator's
-edit is silently discarded), but they turn "corrupt file" into "one of the two
-intended files" — the guarantee callers already believe they have. It also
-makes the ``except OSError`` cleanup honest: it can no longer unlink another
-writer's staging file.
-
-The one thing unique names cost is the old scheme's accidental self-limiting
-property: a deterministic name meant a process killed mid-write left exactly
-one orphan, which the next write reused. Nothing reclaims a uniquely-named
-one, and no ``except`` block runs when the process is killed outright, so
-``_sweep_stale_tmp`` reaps siblings older than an hour after each successful
-write.
-
-Note the deliberate ``os.open(..., 0o666)`` rather than ``tempfile.mkstemp``:
-mkstemp hardcodes 0600, which would silently tighten the mode of every file
-written through here (the rendered PNG, the baked corpus). Passing 0o666 and
-letting the process umask filter it reproduces ``open(path, "w")`` exactly.
-
-Kept dependency-free (stdlib only) so every caller — ``run_clock`` on the
-appliance loop, ``pick_quote``/``apply_content_overrides`` on the stdlib-only
-pipeline side, ``render_quote`` on the Pillow side, ``web_server`` on the
-curator UI — can import it without pulling in new runtime deps.
+Why the staging name is unique, how ``_sweep_stale_tmp`` reaps orphans, and
+why it opens with ``0o666`` rather than ``mkstemp``: docs/runtime.md ("Atomic
+writes"). Stdlib only, so every caller (the loop, the pipeline, the renderer,
+the curator UI) can import it.
 """
 from __future__ import annotations
 

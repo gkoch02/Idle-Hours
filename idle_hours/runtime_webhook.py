@@ -139,9 +139,7 @@ def get_config() -> tuple[str, bool]:
     """Return ``(url, all_events)`` from the module-level config.
 
     Used by :func:`runtime_telemetry.append_telemetry` to decide whether
-    to fan out a given entry to the webhook. A separate accessor (rather
-    than direct dict reads) so a future implementation could swap to
-    thread-local config without changing call sites.
+    to fan out a given entry to the webhook.
     """
     return str(_CONFIG.get("url", "")), bool(_CONFIG.get("all_events", False))
 
@@ -150,12 +148,10 @@ def _is_render_entry(entry: dict) -> bool:
     """True when ``entry`` is a successful-render telemetry record.
 
     Matches ``idle_hours_health.summarise``'s rule (``render_ms`` is a
-    numeric value), but accepts both ``int`` and ``float`` so a future
-    timer that reports floats doesn't silently start spamming the webhook
-    with one POST per minute. Excludes ``bool`` explicitly because
-    ``isinstance(True, int)`` is True in Python — without the guard, a
-    telemetry entry that accidentally set ``render_ms=True`` would be
-    treated as a successful render.
+    numeric value), accepting ``float`` as well as ``int``: a render
+    misread as a non-render would be POSTed as an alert every minute.
+    ``bool`` is excluded because ``isinstance(True, int)`` holds, so
+    ``render_ms=True`` would otherwise count as a render.
     """
     value = entry.get("render_ms")
     if value is None or isinstance(value, bool):
@@ -239,11 +235,8 @@ def post_event(
         try:
             _post_blocking(webhook_url, entry, timeout_seconds)
         except Exception as exc:  # noqa: BLE001
-            # Defensive: ``_post_blocking`` already swallows everything
-            # internally, but a future refactor that lets it raise must
-            # not crash the daemon thread (would surface as an unhandled
-            # thread exception in the parent process). We log loudly so
-            # the regression is visible.
+            # ``_post_blocking`` swallows its own errors; this guard keeps
+            # one that escapes from dying as an unhandled thread exception.
             _log(f"webhook: worker thread raised: {exc!r}", err=True)
         finally:
             semaphore.release()

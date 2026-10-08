@@ -1041,28 +1041,13 @@ def _install_signal_handlers(state: RuntimeState) -> None:
 
 
 def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None:
-    """Drain the main loop's runtime resources on exit.
+    """Drain the main loop's runtime resources on exit, best-effort.
 
-    Order matters:
-
-    1. Block on ``render_lock`` so any in-flight render/display finishes
-       before we tear down ingress. We then **hold the lock** across the
-       web-server stop and button-close so any late-arriving HTTP POST or
-       GPIO callback that reaches ``_button_render_gate`` sees the lock
-       held and drops with a "busy" response instead of starting a fresh
-       render during shutdown — without this, a press during the teardown
-       window could kick off a new render and reintroduce SIGKILL-mid-
-       render risk under systemd's ``TimeoutStopSec``.
-    2. Stop the web server (joins its thread) while still holding the lock.
-    3. Close GPIO button handles (still under the lock) so the ``gpiozero``
-       listener thread exits instead of being left holding the pins after
-       the process returns.
-    4. Release the render lock and persist runtime state one last time so
-       ``manual_theme`` / ``manual_quiet`` survive even the final pre-exit
-       edit that didn't yet get an explicit ``save_runtime_state`` call.
-
-    Every step is wrapped in ``contextlib.suppress`` so a single teardown
-    failure doesn't prevent the others from running — shutdown is best-effort.
+    Order matters: take ``render_lock`` (so an in-flight render finishes) and
+    hold it while the web server stops and the GPIO buttons close, so a late
+    POST or press drops as "busy" instead of starting a render systemd would
+    SIGKILL; then release it and persist state one last time. Each step is
+    suppressed independently. Why: docs/runtime.md ("Graceful shutdown").
     """
     # Cancel pending timers (currently only the source-card 5s restore) BEFORE
     # draining the render lock so a timer callback doesn't kick off a new
