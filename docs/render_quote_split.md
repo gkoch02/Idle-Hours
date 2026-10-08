@@ -100,7 +100,7 @@ This lands before the split, so the split never touches the runtime and deployed
 
 **PR 2: core extraction. Done**, with these departures from the list below:
 - `primitives` is one module, not a subpackage. At about 780 lines it doesn't need splitting yet.
-- A `theme_tables` layer holds `THEMES`, `THEME_ORDER`, `THEME_FONTS` and the per-theme flags until the registry stage derives them. `THEME_FONTS` is built from the font fallback chains, and `fonts` reads `THEME_FONTS`. So the chains live in `_paths`, below `theme_tables`, and the loader lives in `fonts`, above it.
+- A `theme_tables` layer holds `THEMES`, `THEME_FONTS` and the per-theme flags, and re-exports `THEME_ORDER` from the Pillow-free `idle_hours.theme_names` (issue #393). `THEME_FONTS` is built from the font fallback chains, and `fonts` reads `THEME_FONTS`. So the chains live in `_paths`, below `theme_tables`, and the loader lives in `fonts`, above it.
 - `frames` stays in `_monolith`: the sleep frame and source card call `render()`, so they move with it.
 - The clock seam became `clock.now()`.
 - Every test patch the guard refused was repointed at the module that reads the name: `_monolith` for a theme's call site, `text` for `_draw_text_body`'s. Three helpers (`normalize_dashes`, `_bold_stroke_for_theme`, `fallback_title`) landed one layer lower than first planned, because the layer check found them used from below.

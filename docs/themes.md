@@ -94,7 +94,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 
   **Selection.** `--theme` selects one (plus `auto`, which picks day/night by wall-clock hour, and `random`, which rerolls the theme each time the displayed quote changes); `run_clock.py` forwards it via `--theme`. Button B advances through `THEME_ORDER` one step per press; the web UI dropdown jumps directly.
 
-  **Adding a new theme.** Extend `render_quote.THEMES`, add to `THEME_ORDER`, add a `render_quote.THEME_FONTS` entry (see "Fonts" below — missing themes silently fall back to the Playfair chain, defeating the point of per-theme typography), add a `display_inky.THEME_SATURATION` entry, and update `run_clock.py`'s `--theme` argparse choices (the `TestActionThemeCycle::test_cli_theme_choices_match_theme_order` test pins the sync).
+  **Adding a new theme.** Extend `render_quote.THEMES`, add to `THEME_ORDER`, add a `render_quote.THEME_FONTS` entry (see "Fonts" below — missing themes silently fall back to the Playfair chain, defeating the point of per-theme typography), and add a `display_inky.THEME_SATURATION` entry. `THEME_ORDER` lives in the Pillow-free `theme_names.py`, and `run_clock.py`'s `--theme` choices read it, so there is no second list to update.
   - `default` (white/black/red, Playfair Display).
   - `dark` (black/white/yellow, Playfair Display).
   - `newsprint` (white/black/no-accent, Old Standard TT) — bold-weight differentiation only; broadsheet typography lives entirely in ink weight, not chromatic contrast.

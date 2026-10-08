@@ -85,6 +85,7 @@ from idle_hours import (
     runtime_render,
     runtime_telemetry,
     runtime_theme,
+    theme_names,
 )
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import bucket_for_time, rederive_buckets
@@ -1524,24 +1525,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _api_themes(self) -> None:
         """Expose the theme cycle so the UI dropdown and the Python cycle stay aligned.
 
-        Lazy import via :mod:`theme_names` keeps Pillow off the web-server
-        module's load-time import graph, and a broken renderer install
-        degrades to the historical pair instead of a 500 that would hide the
-        rest of the UI. ``theme_arg`` / ``manual_theme`` / ``effective`` give
+        ``theme_arg`` / ``manual_theme`` / ``effective`` give
         the UI everything it needs to render the dropdown with the current
         value pre-selected without a second request.
 
         State discipline: snapshot the three fields under ``state.lock`` and
-        release it *before* calling ``resolve_effective_theme``. That helper
-        imports ``render_quote`` lazily (to keep PIL off the import graph)
-        and holding the lock across a module import violates the lock
-        discipline in CLAUDE.md even though Python's import lock is
-        reentrant. The snapshot is a consistent-enough view: effective
-        resolution only uses wall time + the snapshotted values.
+        release it *before* calling ``resolve_effective_theme``, which may
+        draw a random theme and need not hold the lock. The snapshot is a
+        consistent-enough view: effective resolution only uses wall time +
+        the snapshotted values.
         """
-        from idle_hours.theme_names import theme_cycle
         ctx = self._ctx()
-        order = list(theme_cycle())
+        order = list(theme_names.theme_cycle())
         now = dt.datetime.now().strftime("%H:%M")
         with ctx.state.lock:
             manual = ctx.state.manual_theme

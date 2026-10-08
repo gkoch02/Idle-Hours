@@ -3797,29 +3797,13 @@ class TestActionThemeCycle:
         assert result.get("noop") is not True
         assert mock_render.called
 
-    def test_cli_theme_choices_match_theme_order(self):
-        """``run_clock.py --theme`` choices are duplicated from
-        render_quote.THEME_ORDER with 'auto' appended. Pin the invariant so
-        a new theme added to THEME_ORDER without updating run_clock argparse
-        fails loudly here instead of silently rejecting the new value on
-        systemd startup.
-        """
-        from idle_hours import render_quote as rq
-        for name in list(rq.THEME_ORDER) + ["auto"]:
-            with patch("sys.argv", ["run_clock.py", "--theme", name, "--once"]):
-                try:
-                    ns = run_clock.parse_args()
-                except SystemExit:
-                    raise AssertionError(f"--theme {name} was rejected by argparse") from None
-                assert ns.theme == name
-
     def test_theme_help_carries_no_per_theme_prose(self):
         """#200: the --theme help used to carry ~90 lines of hand-written
         prose describing a subset of the themes. Nothing pinned it, so it
         drifted: it described lcars with a "STARDATE callout" the design no
         longer has, and firmament with "~80 stars in three magnitude tiers"
         when the design has ~150 in four. argparse already prints the full
-        choices list (guarded by the sync test above); the designs are
+        choices list (read from theme_names.THEME_ORDER); the designs are
         documented next to rendered previews instead.
 
         This pins the *shape*, not the wording: a short help string that
@@ -3867,8 +3851,7 @@ class TestActionThemeCycle:
         registered theme name and reject ``auto``. ``auto`` is rejected
         because the kwargs ARE the broadening hook for ``--theme auto`` —
         nesting auto-into-auto would be a config typo, not a useful
-        recursion. Same drift hazard as the parent test: a new theme in
-        ``THEME_ORDER`` must reach these flags too.
+        recursion.
         """
         from idle_hours import render_quote as rq
         for name in rq.THEME_ORDER:
