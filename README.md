@@ -8,7 +8,9 @@
 
 Idle Hours is a literary clock: every few minutes it shows a sentence from a public-domain novel that names the current time, with the time phrase picked out in bold. Behind it is a pipeline that mines Project Gutenberg for phrases like "a quarter past seven", cleans and scores them, and bakes over two thousand quotes into a database ranked for each five-minute slot of the twelve-hour clock. A Raspberry Pi renders the pick for a six-colour eInk panel and runs unattended as a systemd appliance, with a small web UI for curating the corpus.
 
-<!-- TODO(#354): photo of the physical Inky Impression panel goes here. preview.png below is a render, not the device. -->
+![Idle Hours on its Inky Impression panel, showing the sampler theme at a quarter to three](docs/images/panel.jpg)
+
+The panel on my desk, in the `sampler` theme. Below are four more themes as straight renders:
 
 ![Idle Hours rendered in saloon, gothic, astrarium, and deco themes](idle_hours/assets/preview.png)
 
@@ -42,7 +44,11 @@ flowchart LR
 
 ## How it was built
 
-<!-- TODO(#354): owner-written. Say plainly that most commits are authored by Claude Code, describe the human role (issue specs, review, hardware integration, release process), and link two or three issues where the spec or review changed the outcome. -->
+I saw a similar product for sale, liked the idea, and wanted to see whether I could build my own with agentic development. So I set out to build the mining pipeline to amass quotes from open sources, then built the rest of the appliance, insisting on testing and quality throughout. My own panel lives on my desk, set to `random`, so each update gives me a fresh view of the time.
+
+Most commits here are authored by Claude Code. My part was writing the issue specs, setting the visual design direction, reviewing every change, wiring up the hardware, and running releases. Two examples: testing on the real panel turned up an SPI chip-select conflict that kept the Spectra 6 from refreshing on a fresh Pi, which no amount of desk-side rendering would have caught ([#270](https://github.com/gkoch02/Idle-Hours/issues/270)). And when the `gothic` theme's Fraktur made "o'clock" read closer to "v'clocf", I kept the font anyway: its character outweighs the legibility cost, and it stays until I find a better option ([#326](https://github.com/gkoch02/Idle-Hours/issues/326)).
+
+Now that the system is mature, I mostly build new themes for fun. I'll see a font I like, or get a theme idea, or simply can't sleep one night, and add a few more. That has become the ongoing hobby.
 
 What the project deliberately does not do, and why, is in [`docs/decisions.md`](docs/decisions.md).
 
