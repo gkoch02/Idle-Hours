@@ -94,6 +94,7 @@ THEME_SATURATION: dict[str, float] = {
     "fillmore": 0.7,
     "firmament": 0.7,
     "furies": 0.7,
+    "gantry": 0.7,
     "gothic": 0.7,
     "goya": 0.7,
     "grimdark": 0.7,
@@ -112,6 +113,7 @@ THEME_SATURATION: dict[str, float] = {
     "observation": 0.7,
     "outrun": 0.7,
     "plaque": 0.7,
+    "platform": 0.7,
     "pulp": 0.7,
     "questline": 0.7,
     "risograph": 0.7,  # two spot inks and no black to anchor them

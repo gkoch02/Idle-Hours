@@ -21,7 +21,7 @@ def paint_neon_mask(
     core,
     glow,
     *,
-    radius: int = 5,
+    radius: float = 5,
     gamma: float = 2.4,
     cap: float = 0.5,
     ground=None,
