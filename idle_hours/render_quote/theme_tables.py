@@ -731,12 +731,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["yellow"],
     },
-    # CD Projekt Red's *The Witcher 3: Wild Hunt* (2015) — a bestiary page
-    # under the meditation dial. A custom frame (``render_witcher_frame``):
-    # cream parchment in a dark binding, the entry in Barlow Condensed with
-    # the matched phrase in the interface's tangerine, the hour as the sun
-    # or moon on the dial and the title's claw slashes at its hub. These
-    # Palette serves the palette-only paths (see the note above ``THEMES``).
+    # *The Witcher 3* bestiary page, a custom frame: cream parchment, black
+    # ink, red for the tangerine phrase. Palette serves the palette-only paths.
     "witcher": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -747,13 +743,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
-    # Supergiant Games' *Hades II* (2025) — a boon at the Crossroads under
-    # the moon. A custom frame (``render_hades_frame``): a dithered night
-    # over the witches' camp, the moon's phase as the hour, Hecate's green
-    # witchfire, and the quote as a boon card — black and gold, the author
-    # as the god's name in Caesar Dressing, white Spectral text with the
-    # matched phrase in gold. Palette serves the palette-only paths (see the
-    # note above ``THEMES``).
+    # *Hades II* boon card, a custom frame: black and gold, white text with a
+    # gold phrase. Palette serves the palette-only paths.
     "hades": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -764,13 +755,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # *The Expanse* (2015–2022) — the Rocinante's console. A custom frame
-    # (``render_expanse_frame``): dark glass panels with their corners cut,
-    # a tactical plot whose tracked contact sits at the hour's bearing, and
-    # the quote as an incoming tightbeam — white Barlow with the matched
-    # phrase and the sender in the MCRN's orange, cyan gauges across the
-    # foot. Palette serves the palette-only paths (see the note above
-    # ``THEMES``).
+    # *The Expanse* console, a custom frame: white on black glass, blue
+    # hairlines. Palette serves the palette-only paths.
     "expanse": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -781,13 +767,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Zdzisław Beksiński's fantastic period — a procession across a dead
-    # plain toward a cathedral of bone under a dust-coloured haze. A custom
-    # frame (``render_beksinski_frame``): the haze and the plain dithered
-    # to umber, ochre and bone, the hour as the number of figures in the
-    # file, black Old Standard text in the haze with the matched phrase in
-    # red. Palette serves the palette-only paths (see the note above
-    # ``THEMES``).
+    # Beksiński's cathedral of bone, a custom frame: black text in a pale
+    # haze, red phrase. Palette serves the palette-only paths.
     "beksinski": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -798,14 +779,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
-    # Goya's *Pinturas negras* (1819-1823) — the murals of the Quinta del
-    # Sordo, and *El Perro* above all. A custom frame (``render_goya_frame``):
-    # the ochre void painted in continuous tone and dithered to black, red,
-    # yellow and white, the dark slope at the foot with the dog's head
-    # looking up at the matched phrase, a craquelure over the whole plaster,
-    # the quote in black Libre Baskerville with the matched phrase in Saturn's
-    # red, and the author and title on a Prado gallery label. Palette serves
-    # the palette-only paths (see the note above ``THEMES``).
+    # Goya's *El Perro*, a custom frame: black text on the ochre void, the
+    # phrase in Saturn's red. Palette serves the palette-only paths.
     "goya": {
         "page_bg": SPECTRA6["yellow"],
         "text": SPECTRA6["black"],
@@ -816,19 +791,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # *2001: A Space Odyssey* (1968) — the Discovery One's monitors and HAL
-    # 9000. A custom frame (``render_hal_frame``): a solid blue main monitor
-    # with the hour's subsystem mnemonic in Michroma across its header, the
-    # quote in white Jost with the matched phrase Bold in yellow, the twelve
-    # mnemonic tiles along the foot in the film's flat colours with the
-    # hour's tile white, and HAL's red lens in its white bezel at the right.
-    # Palette serves the palette-only paths (see the note above ``THEMES``).
-    # *Cyberpunk* — a Trauma Team International dispatch screen. A custom
-    # frame (``render_traumateam_frame``): black screen, the drawn wordmark
-    # and mark in white, a red dispatch band with the hour's unit, white
-    # Oxanium body with the matched phrase Bold on a red block, and a vitals
-    # trace along the foot. Palette serves the palette-only paths (see the
-    # note above ``THEMES``).
+    # Trauma Team dispatch screen, a custom frame: white on black, red only
+    # as a ground. Palette serves the palette-only paths.
     "traumateam": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -839,11 +803,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # *Control* — a declassified Federal Bureau of Control document. A custom
-    # frame (``render_redacted_frame``): the Bureau's letterhead, a red
-    # DECLASSIFIED stamp, the quote typed in Special Elite with the matched
-    # phrase in red and seeded black bars over other words. Palette serves the
-    # palette-only paths (see the note above ``THEMES``).
+    # A declassified Bureau document, a custom frame: black type on white, red
+    # phrase. Palette serves the palette-only paths.
     "redacted": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -854,10 +815,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # An overhead highway message sign at night. A custom frame
-    # (``render_gantry_frame``): amber LEDs, the matched phrase lit white,
-    # the source on a green guide sign. Palette serves the palette-only paths
-    # (see the note above ``THEMES``).
+    # A highway LED sign at night, a custom frame: amber (yellow) on black, the
+    # phrase lit white. Palette serves the palette-only paths.
     "gantry": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["yellow"],
@@ -868,10 +827,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # A railway departure board at night. A custom frame
-    # (``render_platform_frame``): amber Round Medium dots, the matched phrase
-    # in Round Bold. Palette serves the palette-only paths (see the note above
-    # ``THEMES``).
+    # A railway departure board, a custom frame: amber (yellow) dots on black.
+    # Palette serves the palette-only paths.
     "platform": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["yellow"],
@@ -882,10 +839,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["yellow"],
     },
-    # A split-flap message board on a wall. A custom frame
-    # (``render_splitflap_frame``): white capitals on charcoal flap tiles,
-    # the matched phrase on yellow tiles. Palette serves the palette-only
-    # paths (see the note above ``THEMES``).
+    # A split-flap board, a custom frame: white capitals on black tiles, the
+    # phrase on yellow. Palette serves the palette-only paths.
     "splitflap": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -896,6 +851,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
+    # *2001*'s Discovery monitors, a custom frame: white on the blue monitor,
+    # yellow phrase. Palette serves the palette-only paths.
     "hal": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -906,14 +863,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # *Severance* (2022–) — the Macrodata Refinement terminal. A custom frame
-    # (``render_lumon_frame``): a vignetted blue CRT dithered to blue and
-    # black in a black bezel, the file's name and completion in the header
-    # (the completion is the hour over twelve), four rows of white digits
-    # with the hour's scary cluster boxed, the quote in white Montserrat with
-    # the matched phrase Bold in yellow inside the refiner's hover box, and
-    # the five bins along the foot. Palette serves the palette-only paths
-    # (see the note above ``THEMES``).
+    # *Severance*'s MDR terminal, a custom frame: white on the blue CRT,
+    # yellow phrase. Palette serves the palette-only paths.
     "lumon": {
         "page_bg": SPECTRA6["blue"],
         "text": SPECTRA6["white"],
@@ -924,10 +875,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # The Apollo DSKY — a custom frame (``render_dsky_frame``): black panel,
-    # the quote typed in Special Elite with a yellow phrase, Jost legends,
-    # the display's segments white in a green bloom. Palette serves the
-    # palette-only paths.
+    # The Apollo DSKY, a custom frame (its card is typed black with a red
+    # phrase). This dark palette serves only the palette-only paths.
     "dsky": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -938,9 +887,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # *Oblivion* (2013) — a custom frame (``render_oblivion_frame``): white
-    # desk, black hairlines, Exo 2 Light quote with the phrase in red.
-    # Palette serves the palette-only paths.
+    # *Oblivion*'s light table, a custom frame: black on white glass, red
+    # phrase. Palette serves the palette-only paths.
     "oblivion": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -951,9 +899,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # *NieR: Automata* — a custom frame (``render_yorha_frame``): cream
-    # dot-grid ground, black EB Garamond, the phrase knocked out white of a
-    # black box. Palette serves the palette-only paths.
+    # *NieR: Automata*'s menu, a custom frame: black on cream, the phrase
+    # knocked out of a black box. Palette serves the palette-only paths.
     "yorha": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -964,9 +911,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # The 1981 BBC Guide — a custom frame (``render_hitchhiker_frame``): black
-    # screen, white Michroma entry with the phrase in yellow, flat-colour
-    # planets. Palette serves the palette-only paths.
+    # The 1981 BBC Guide, a custom frame: white on black, yellow phrase.
+    # Palette serves the palette-only paths.
     "hitchhiker": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -977,10 +923,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # A handwritten letter on a writing desk, seen at an angle: cream paper
-    # on dark mahogany, black ink with the matched phrase in blue, brass out
-    # of focus beyond the sheet. A custom frame (``render_escritoire_frame``);
-    # palette serves the palette-only paths (see the note above ``THEMES``).
+    # A letter on a writing desk, a custom frame: black ink on cream, the
+    # phrase in fountain-pen blue. Palette serves the palette-only paths.
     "escritoire": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -991,10 +935,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
-    # *Blade Runner 2049* (2017) — a custom frame (``render_lasvegas_frame``):
-    # the orange haze of the dead Las Vegas, a colossal statue, K, and an
-    # LAPD archive pane with white Barlow prose and the phrase in yellow.
-    # Palette serves the palette-only paths (see the note above ``THEMES``).
+    # *Blade Runner 2049*'s Las Vegas, a custom frame: white on the black
+    # archive pane, yellow phrase. Palette serves the palette-only paths.
     "lasvegas": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1005,10 +947,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # *Blade Runner 2049* (2017), the systems — a custom frame
-    # (``render_bladerunner_frame``): black glass, white hairlines and
-    # Barlow Condensed, the phrase and the hour's prompt in yellow, the
-    # X-ray in blue and white. Palette serves the palette-only paths.
+    # *Blade Runner 2049*'s LAPD screens, a custom frame: white on black
+    # glass, yellow phrase. Palette serves the palette-only paths.
     "bladerunner": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1308,11 +1248,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
-    # Diagnostic / status panel. Custom layout dispatched from ``render``:
-    # clock, bucket / layout / quality / source fields, and a swatch grid of
-    # the inks and synthesised two-ink tones. White/black/red keeps the
-    # palette-only paths (see the note above ``THEMES``) readable; the frame
-    # also reads it for its status labels.
+    # Diagnostic status panel, a custom frame. White/black/red keeps the
+    # palette-only paths readable; the frame also reads it for its labels.
     "diags": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -2310,53 +2247,36 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [CINZELDECORATIVE_BOLD, CINZELDECORATIVE_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "witcher": {
-        # The Game Font Library lists PF DIN Text Condensed for the game's
-        # interface and Bell Gothic Bold for the WILD HUNT logotype; neither
-        # is open. Barlow Condensed is the bundle's DIN-descended condensed
-        # grotesque: Medium for the entry's black body on cream, Bold for the
-        # matched phrase, which carries the interface's tangerine. Archivo
-        # Narrow, the nearest open face to Bell Gothic, takes the ornament
-        # slot and every label.
+        # Barlow Condensed for PF DIN Text Condensed; Archivo Narrow (for Bell
+        # Gothic) takes the ornament slot. Archivo Narrow is variable: pin it.
         "quote_regular": [BARLOWCOND_MEDIUM, (ARCHIVONARROW_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, (ARCHIVONARROW_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(ARCHIVONARROW_VARIABLE, "Bold"), ARCHIVO_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "hades": {
-        # Spectral — the serif *Hades II* sets its codex and boon text in
-        # (Game Font Library): Medium for the white body on the card's
-        # midnight, SemiBold for the matched phrase, which is the card's
-        # gold-lit key word. Alegreya, the bundle's other literary serif, is
-        # the fallback. The ornament slot is Caesar Dressing, the game's
-        # title-card face, for the god's name and the wordmark.
+        # The game's own Spectral (Medium body, SemiBold phrase); Caesar
+        # Dressing, its title-card face, in the ornament slot.
         "quote_regular": [SPECTRAL_MEDIUM, ALEGREYA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [SPECTRAL_SEMIBOLD, ALEGREYA_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [CAESARDRESSING_REGULAR, CINZELDECORATIVE_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "expanse": {
-        # Barlow — the open DIN, for a console the show sets in a modified
-        # DIN Pro: Regular for the white transmission on black glass,
-        # SemiBold for the matched phrase, which is told apart by its
-        # orange. Barlow Condensed is the fallback and the labels' face.
+        # Barlow for the show's modified DIN Pro: Regular body, SemiBold
+        # phrase (told apart by its orange); Barlow Condensed falls back.
         "quote_regular": [BARLOW_REGULAR, BARLOWCOND_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOW_SEMIBOLD, BARLOWCOND_SEMIBOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOW_BOLD, BARLOWCOND_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "beksinski": {
-        # Old Standard TT — the Didone of Central and Eastern European book
-        # printing through the twentieth century, the letter a Polish novel
-        # of Beksiński's time was set in: Regular for the black body in the
-        # haze, Bold for the matched phrase in red. Shared with ``newsprint``.
+        # Old Standard TT, the period's Didone (shared with ``newsprint``):
+        # Regular body, Bold phrase.
         "quote_regular": [OLDSTANDARD_REGULAR, *QUOTE_FONT_SEMIBOLD_CANDIDATES],
         "quote_bold": [OLDSTANDARD_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [OLDSTANDARD_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "goya": {
-        # Libre Baskerville — a sturdy transitional roman in the register of
-        # Madrid's Imprenta Real in the Black Paintings' own decade (see the
-        # constant). Regular for the black body written into the ochre void,
-        # Bold for the matched phrase, which carries the red; the italic
-        # takes the gallery label's title line. Libre Caslon, the bundle's
-        # other low-contrast old-style, is the fallback.
+        # Libre Baskerville (see the constant): Regular body, Bold phrase, the
+        # italic for the label's title line; Libre Caslon falls back.
         "quote_regular": [(LIBREBASKERVILLE_VARIABLE, "Regular"), (LIBRECASLON_VARIABLE, "Regular"),
                           *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(LIBREBASKERVILLE_VARIABLE, "Bold"), (LIBRECASLON_VARIABLE, "Bold"),
@@ -2365,127 +2285,89 @@ THEME_FONTS: dict[str, dict[str, list]] = {
                      *ORNAMENT_FONT_CANDIDATES],
     },
     "hal": {
-        # Jost — the bundle's Futura, the face of the film's signage and
-        # the register of its 1968 modernism — Regular for the white body on
-        # the blue monitor, Bold for the matched phrase, which carries the
-        # yellow. The chrome (mnemonics, nameplate, tile labels) is Michroma,
-        # the open Microgramma / Eurostile the monitors' squared capitals
-        # were set in; it takes the ornament slot.
+        # Jost (the film's Futura): Regular body, Bold phrase. Michroma (its
+        # Microgramma) takes the ornament slot for the chrome.
         "quote_regular": [(JOST_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(JOST_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "lumon": {
-        # Montserrat — the open Gotham, the face the MDR terminal's number
-        # grid is set in the register of: Regular for the white body, Bold
-        # for the matched phrase in yellow inside the hover box, Medium and
-        # Bold for the digits. The file name, the completion and the byline
-        # are Inter (the open neo-grotesque standing in for the show's Forma
-        # DJR); the wordmark is Michroma (for Manifold Extended CF, itself
-        # drawn after Microgramma).
+        # Montserrat (for the grid's Gotham): Regular body, Bold phrase. Inter
+        # (for Forma DJR) takes the ornament slot; Michroma is the wordmark.
         "quote_regular": [(MONTSERRAT_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(MONTSERRAT_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(INTER_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "dsky": {
-        # Special Elite — the quote is typed on a flight-plan card, and the
-        # flight plans were cut on a typewriter; one weight, so the matched
-        # phrase is told apart by its red ink. Jost Medium (NASA silkscreened
-        # its panels in Futura Demi) for every legend on the unit.
+        # Special Elite, one weight: the phrase differs by its red ink. Jost
+        # Medium (for Futura Demi) is every legend on the unit.
         "quote_regular": [SPECIALELITE_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [SPECIALELITE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(JOST_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "oblivion": {
-        # Exo 2 — the film's screens are set in Blender (Nik Thoenen,
-        # Gestalten; commercial), an angular geometric sans with squared
-        # bowls, and Exo 2 is the bundle's open face in that family. Light
-        # for the body (solid black on the white ink survives a Light stem
-        # where a stipple would not), Medium for the matched phrase in red,
-        # Regular for the chrome.
+        # Exo 2 (for the film's Blender), default instance Thin, so pin one:
+        # Light body (solid black on white holds it), Medium phrase.
         "quote_regular": [(EXO2_VARIABLE, "Light"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(EXO2_VARIABLE, "Medium"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(EXO2_VARIABLE, "Regular"), *ORNAMENT_FONT_CANDIDATES],
     },
     "yorha": {
-        # EB Garamond — Automata's interface is set in a refined classical
-        # serif (unidentified; custom or unreleased), and EB Garamond is the
-        # closest open face to it. Regular body; Bold for the matched
-        # phrase, knocked out white of its black box.
+        # EB Garamond, the nearest open face to the game's unidentified serif:
+        # Regular body, Bold phrase.
         "quote_regular": [EBGARAMOND_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [EBGARAMOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [EBGARAMOND_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "hitchhiker": {
-        # Michroma — the square-shouldered monoline of the series' hand-
-        # lettered computer screens. One static weight, so the matched
-        # phrase is told apart by its yellow, not its weight.
+        # Michroma, one static weight: the phrase differs by its yellow.
         "quote_regular": [MICHROMA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [MICHROMA_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "escritoire": {
-        # The ``letter`` theme's hand: Dancing Script pinned Regular for the
-        # body and Bold for the matched phrase and the signature. Pinyon's
-        # copperplate is closer to a real letter but hairline, and shreds
-        # once the warp has shrunk it.
+        # ``letter``'s Dancing Script, pinned Regular body and Bold phrase;
+        # Pinyon's hairlines shred once the warp shrinks them.
         "quote_regular": _HAND_SCRIPT_REGULAR,
         "quote_bold": _HAND_SCRIPT_BOLD,
         "ornament": [(DANCINGSCRIPT_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "lasvegas": {
-        # Barlow — the film's interfaces (Territory Studio) are set in plain,
-        # low-contrast grotesques, and Barlow's slightly squared curves sit
-        # between that and a highway sign. Medium for the white body on the
-        # black pane (a Regular stem thins once the panel's white bleeds into
-        # the black), Bold for the matched phrase in yellow, Barlow
-        # Condensed for the tracked chrome.
+        # Barlow: Medium body (a Regular stem thins as white bleeds into the
+        # black), Bold phrase; Barlow Condensed for the chrome.
         "quote_regular": [BARLOW_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOW_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_MEDIUM, *ORNAMENT_FONT_CANDIDATES],
     },
     "bladerunner": {
-        # Barlow Condensed — the film's interfaces (Territory Studio) set
-        # their text in narrow, low-contrast grotesques in tracked capitals
-        # and a plain mixed case. Medium for the white body on black, Bold
-        # for the matched phrase in yellow, SemiBold for the chrome.
+        # Barlow Condensed: Medium body, Bold phrase, SemiBold chrome.
         "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "gantry": {
-        # Lumen, a 5x7 LED matrix. The frame reads it as dot bitmaps on the
-        # sign's own lattice (``_gantry_glyph``), so the instance only has to
-        # put a dot clearly over each grid centre: Bold. The matched phrase is
-        # emboldened the matrix way, by doubling columns, not by a heavier
-        # instance. The guide sign sets Barlow Condensed inline.
+        # Lumen, read as dot bitmaps (``_gantry_glyph``), pinned Bold so a dot
+        # sits over every grid centre; the phrase is bolded by doubling columns.
         "quote_regular": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "platform": {
-        # Lumen's Round instances, Medium for the body and Bold for the
-        # matched phrase: on this board weight is dot size. The frame places
-        # the dots from the face's grid and draws them at the diameters
-        # measured from these two instances (``_PLATFORM_MEDIUM_DOT`` /
-        # ``_PLATFORM_BOLD_DOT``); these chains serve the palette-only paths.
+        # Lumen Round Medium body, Bold phrase. The frame draws its own dots
+        # (``_PLATFORM_*_DOT``); these chains serve the palette-only paths.
         "quote_regular": [(LUMEN_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(LUMEN_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "splitflap": {
-        # Bebas Neue, as ``fillmore`` and others: an all-caps condensed
-        # grotesque, the register of the flaps on a split-flap board, which
-        # carry capitals only. One weight, so the matched phrase differs by
-        # its yellow tile, not by a heavier face.
+        # Bebas Neue, one weight: the phrase differs by its yellow tile.
         "quote_regular": [BEBASNEUE_REGULAR, *QUOTE_FONT_SEMIBOLD_CANDIDATES],
         "quote_bold": [BEBASNEUE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BEBASNEUE_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "redacted": {
-        # Special Elite, as ``dispatch``: the Bureau's documents are typed.
-        # One weight, so the matched phrase differs by colour alone. The
-        # letterhead and form labels set their own Archivo Bold.
+        # Special Elite, one weight: the phrase differs by colour alone.
+        # The letterhead and form labels set their own Archivo Bold.
         "quote_regular": [
             SPECIALELITE_REGULAR,
             SPACEMONO_REGULAR,
@@ -2501,9 +2383,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [ARCHIVO_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "traumateam": {
-        # Oxanium — a squared techno sans in the register of the game's
-        # interface faces. Regular for the white body, Bold for the matched
-        # phrase on its red block, SemiBold for the band and the chrome.
+        # Oxanium: Regular body, Bold phrase, SemiBold chrome.
         "quote_regular": [(OXANIUM_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(OXANIUM_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(OXANIUM_VARIABLE, "SemiBold"), *ORNAMENT_FONT_CANDIDATES],
@@ -2810,9 +2690,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # System sans for the diagnostic status panel: a grotesque reads better at
-    # small label sizes than Playfair, and it keeps the palette-only paths
-    # (source card, ``--message`` headline) visibly distinct from default.
+    # System sans: reads better than Playfair at label sizes, and keeps the
+    # palette-only paths visibly distinct from ``default``.
     "diags": {
         "quote_regular": [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

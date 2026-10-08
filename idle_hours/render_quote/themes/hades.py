@@ -1,6 +1,6 @@
-"""The ``hades`` theme's frame and the code only it uses.
+"""The ``hades`` theme: a boon card from *Hades II* at the Crossroads under the moon.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § hades
 """
 
 from __future__ import annotations
@@ -37,43 +37,6 @@ from ..primitives import _lerp_stops, _smooth_noise, _white_noise, paint_neon_ma
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# hades — Supergiant Games' *Hades II* (2025): a boon at the Crossroads under
-# the moon
-# ---------------------------------------------------------------------------
-# The Crossroads at night, lit by the moon and Hecate's green witchfire, and a
-# **boon** card: dark, gold-framed, a portrait medallion at the left, the god's
-# name across the top and the description beneath. The author is the god, the
-# quote is the boon, the matched phrase is lit in gold.
-#
-# **The moon is the hour**: full at twelve, new at six, first quarter at nine,
-# last quarter at three. Hour-only, pinned byte-identical across the minutes
-# of an hour by ``TestHadesFrame``. The terminator is the ellipse
-# ``x = cos(2πp)·√(1-y²)``; the unlit limb keeps a thin blue rim so a new moon
-# is still a moon.
-#
-# **The sky is painted in continuous tone and dithered** against the
-# calibrated inks (the ``expedition`` posture; black, blue, green, white, no
-# red). Stars, ridge and braziers go on after the dither so they stay crisp;
-# the brazier flame is a white core in a green bloom.
-#
-# **The card** is black with a sparse blue fleck (six-ink midnight) in a double
-# gold rule with bossed corners and a **Greek-key frieze** (one continuous line
-# on a 3 px grid). The medallion holds Chronos's **hourglass**, the sand Y with
-# a red lattice so it reads amber rather than lemon.
-#
-# **Type**: Caesar Dressing for the author (yellow with a 1 px red stroke so it
-# reads as beaten gold), Spectral for the body and matched phrase, Spectral SC
-# for the title, Lato for the rarity label, Hammersmith One (the open
-# Johnston) for the chrome.
-#
-# **Rarity is a roll**: ``_row_digest`` picks Common .. Legendary at the
-# game's rough odds; pips are filled in the rarity's colour.
-#
-# The scene is quote- and hour-independent and painted once per process
-# (``_HADES_SCENE``, keyed on the painters). Composed at 800x480 and
-# NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _HADES_SEED = 0x4D454C                 # MEL
 _HADES_HORIZON = 176                   # the card's top edge; the sky ends here
 _HADES_RIDGE_Y = 156
@@ -505,7 +468,7 @@ def _hades_paint_foot(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: 
 
 
 def render_hades_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A boon at the Crossroads under the moon (see the section comment above)."""
+    """A boon at the Crossroads under the moon (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _hades_scene().copy()
     draw = ImageDraw.Draw(image)

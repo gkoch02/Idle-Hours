@@ -1,6 +1,6 @@
-"""The ``lasvegas`` theme's frame and the code only it uses.
+"""The ``lasvegas`` theme: the dead Las Vegas of *Blade Runner 2049*, with K's LAPD archive pane.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § lasvegas
 """
 
 from __future__ import annotations
@@ -17,29 +17,6 @@ from ..primitives import _catmull_rom, _lerp_stops, _smooth_noise, _soft_ellipse
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# lasvegas — *Blade Runner 2049* (2017): the dead Las Vegas
-# ---------------------------------------------------------------------------
-# K stands in the orange haze among the beehives, a skyline of dead casino
-# towers and the Luxor pyramid barely darker than the dust behind him, the
-# sun a pale smear overhead. Over the left of the vista sits his LAPD
-# archive pane, black with a yellow header, holding the quote. Full design
-# notes: docs/themes.md (``lasvegas``).
-#
-# The haze, the sun, the dust bands, the far towers and the ground are
-# painted in continuous tone in the panel's measured ink space and
-# Floyd–Steinberg dithered to red, yellow, black and white
-# (``_dither_calibrated``): orange is a red-heavy red / yellow mix, so the
-# panel's red and yellow carry it with nothing synthesised. K, the hives,
-# the bees, the pane and the scanner tags go on after the dither, in solid
-# ink.
-#
-# The hour is the archive drawer: the twelve cells along the pane's foot,
-# the hour's lit yellow, pinned across the minutes; the matched phrase
-# carries the minute. The DNA strip and the radiation reading are seeded
-# from the quote. Composed at 800x480 and NEAREST-downsampled otherwise
-# (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _LASVEGAS_SEED = 0x32303439        # "2049"
 _LASVEGAS_INKS = ("red", "yellow", "black", "white")
 _LASVEGAS_PANE = (24, 34, 432, 418)
@@ -325,7 +302,7 @@ def _lasvegas_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 
 def render_lasvegas_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The dead Las Vegas with K's archive pane (see the section comment above)."""
+    """The dead Las Vegas with K's archive pane (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _lasvegas_scene().copy()
     _lasvegas_paint_figures(image)

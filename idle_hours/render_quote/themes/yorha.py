@@ -1,6 +1,6 @@
-"""The ``yorha`` theme's frame and the code only it uses.
+"""The ``yorha`` theme: the YoRHa system menu, Intel › Archives, from *NieR: Automata*.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § yorha
 """
 
 from __future__ import annotations
@@ -28,28 +28,6 @@ from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 from ._shared import _lumon_hover_boxes
 
-# ---------------------------------------------------------------------------
-# yorha — *NieR: Automata* (2017): the YoRHa system menu, Intel › Archives
-# ---------------------------------------------------------------------------
-# The pause menu's Intel › Archives: a cream sheet hatched and dotted over
-# the blurred city, a dark tab bar, a boxed menu with the selected row
-# inverted, a content pane, and Pod 042. Full design notes: docs/themes.md
-# (``yorha``).
-#
-# The sheet (vignette, blurred city silhouettes, diagonal hatch, the panels'
-# and the Pod's soft shadows) is painted in continuous tone and Floyd–Steinberg
-# dithered to white, yellow and black (``_dither_calibrated``). Panel faces,
-# hairlines, corner ticks, dot grid, tab bar, crest, the Pod and type go on
-# crisp after the dither.
-#
-# The hour is the open entry: ARCHIVE 01..12, the hour's row inverted with a
-# white pointer and the pane's counter reading ``NN / 12``. The quote is EB
-# Garamond (the closest open face to the game's UI serif), the matched phrase
-# knocked out white of a black box, the game's selected-item mark. Pinned
-# across the minutes; the matched phrase carries the minute. One glitch sliver
-# at the pane's foot is seeded from the quote. Composed at 800x480 and
-# NEAREST-downsampled otherwise (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _YORHA_SEED = 0x594F5248              # YORH
 _YORHA_INKS = ("white", "yellow", "black")
 _YORHA_DOT_PITCH = 16
@@ -414,8 +392,7 @@ def _yorha_paint_glitch(image: Image.Image, quote_row: dict) -> None:
 
 
 def render_yorha_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The YoRHa archives with the hour's entry open (see the section
-    comment above)."""
+    """The YoRHa archives with the hour's entry open (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _yorha_scene().copy()
     draw = ImageDraw.Draw(image)
@@ -431,10 +408,7 @@ def render_yorha_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
 
 # ---------------------------------------------------------------------------
-# The sleep frame: the archive asks to sleep. The same sheet, panels and Pod,
-# the tab bar turned to SYSTEM, the menu's SLEEP MODE row selected, and the
-# pane holding the game's confirmation dialog with Yes chosen, under Pod 042's
-# proposal. No glitch sliver: a resting unit, not a damaged one.
+# The sleep frame: the archive asks to sleep (System › Sleep Mode, Yes chosen).
 # ---------------------------------------------------------------------------
 _YORHA_SLEEP_MENU = ("SAVE", "LOAD", "SETTINGS", "CONTROLS", "SOUND", "SCREEN", "NETWORK",
                      "UNIT DATA", "BACKUP", "SLEEP MODE", "TITLE SCREEN", "CREDITS")

@@ -1,6 +1,6 @@
-"""The ``lumon`` theme's frame and the code only it uses.
+"""The ``lumon`` theme: the Macrodata Refinement terminal from *Severance*.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § lumon
 """
 
 from __future__ import annotations
@@ -29,31 +29,6 @@ from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._shared import _crt_paint_scanlines, _lumon_hover_boxes
 
-# ---------------------------------------------------------------------------
-# lumon — *Severance* (2022–): the Macrodata Refinement terminal
-# ---------------------------------------------------------------------------
-# Macrodata Refinement: a file named after a town as a field of white digits
-# on a blue CRT; the refiner boxes the "scary" cluster and sweeps it into one
-# of five bins. Full design notes: docs/themes.md (``lumon``).
-#
-# The screen is a vignetted blue field computed at quarter resolution,
-# bicubic-upsampled and Floyd–Steinberg dithered to blue and black
-# (``_dither_calibrated``) so the vignette is error-diffused, not latticed. It
-# sits in a recessed black edge inside a beige (W+Y stipple) housing, cached
-# per process (``_LUMON_SCENE``).
-#
-# The hour is the completion, ``N% Complete`` with ``N = hour / 12`` (noon and
-# midnight are 100%), and also the column pair of the boxed scary cluster,
-# which walks left to right across the twelve hours. Both are byte-identical
-# across the minutes of an hour; the matched phrase carries the minute.
-#
-# Faces (the show's are custom, so each register takes the nearest open face):
-# Montserrat (for Gotham) for the digits and the quote, with the matched phrase
-# Bold in yellow inside a white hover box; Inter (for Forma DJR) for the file
-# name, completion and byline; Michroma (for Manifold Extended) for the
-# wordmark. Composed at 800x480 and NEAREST-downsampled otherwise (the
-# ``metro`` convention).
-# ---------------------------------------------------------------------------
 _LUMON_SEED = 0x4C554D4F              # LUMO
 _LUMON_FILES = ("Cold Harbor", "Siena", "Dranesville", "Tumwater", "Allentown", "Sunset Park",
                 "Lexington", "Nanning", "Moonbeam", "Lucknow", "Billings", "Wellington")
@@ -247,7 +222,7 @@ def _lumon_paint_bins(image: Image.Image, quote_row: dict) -> None:
 
 def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Macrodata Refinement terminal with the hour's file completion and
-    the scary cluster in the hour's column (see the section comment above)."""
+    the scary cluster in the hour's column (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _lumon_scene().copy()
     draw = ImageDraw.Draw(image)

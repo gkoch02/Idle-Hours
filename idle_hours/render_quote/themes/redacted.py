@@ -1,6 +1,6 @@
-"""The ``redacted`` theme's frame and the code only it uses.
+"""The ``redacted`` theme: a declassified Federal Bureau of Control document, after Remedy's *Control*.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § redacted
 """
 
 from __future__ import annotations
@@ -19,34 +19,6 @@ from ..primitives import position_noise
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# redacted — a declassified Bureau document, after Remedy's *Control* (2019)
-# ---------------------------------------------------------------------------
-# The quote as one of the collectible documents the Federal Bureau of Control
-# leaves lying around the Oldest House: a typed memo under the Bureau's
-# letterhead, a red DECLASSIFIED stamp, and black bars over words the
-# censor decided you were not cleared for. ``control`` is the game's title
-# card; this is its paperwork.
-#
-# **The censor never touches the time.** Bars land only on non-phrase words
-# of four letters or more that are not function words or time words
-# (``_REDACTED_SPARED``), so the matched phrase and anything that reads as
-# part of a time stay legible. Which words go is seeded from the quote
-# (``_row_digest``): an unchanged quote never redraws differently.
-#
-# **Bars are a felt marker, not a rectangle tool.** Each row of a bar's ends
-# wanders a pixel, and neighbouring redactions on a line join into one bar
-# across the space between them, as a censor's stroke does.
-#
-# **The phrase is red**, the bichrome-ribbon shift ``dispatch`` uses: Special
-# Elite ships one weight, so colour alone carries the difference.
-#
-# **No time surface beyond the matched phrase.** The file number, document
-# type and clearance level are seeded from the quote, never the clock.
-#
-# Composed at the canonical 800x480 and NEAREST-downsampled for other sizes
-# (``metro`` convention): everything is absolute panel coordinates.
-# ---------------------------------------------------------------------------
 _REDACTED_SEAL_CENTRE = (52, 44)
 _REDACTED_SEAL_RADIUS = 22
 _REDACTED_RULE_Y = 80
@@ -320,7 +292,7 @@ def _redacted_paint_foot(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
 
 
 def render_redacted_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A declassified Bureau document (see the module section comment above).
+    """A declassified Bureau document (see docs/themes.md).
 
     ``time_str`` is unused by design: the matched phrase carries the time.
     """
