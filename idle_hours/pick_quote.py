@@ -45,8 +45,8 @@ DEFAULT_INPUT_PATH = str(BASE_DIR / "assets" / "candidates-attributed.jsonl")
 DEFAULT_OVERRIDES_PATH = str(BASE_DIR / "assets" / "selection_overrides.json")
 
 # Order of the ten row-intrinsic score components stored in ``row["baked_score"]``.
-# Kept in sync with ``bake_quote_database.BAKED_SCORE_COMPONENTS``; reordering
-# either list in isolation breaks pick equivalence.
+# The single definition: :mod:`bake_quote_database` reads it from here, and
+# :func:`compose_baked_score_key` depends on this order.
 BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
     "fragment_penalty",
     "cleanup_penalty",
@@ -60,9 +60,9 @@ BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
     "length_tiebreak",
 )
 
-# Schema version that :mod:`bake_quote_database` stamps onto every baked row.
-# Must match ``bake_quote_database.BAKED_SCORE_SCHEMA_VERSION``; a mismatch
-# between the two means the baked file on disk was produced by a different
+# Schema version that :mod:`bake_quote_database` stamps onto every baked row
+# (it reads this constant). Bump it whenever ``BAKED_SCORE_COMPONENTS``
+# changes. A row stamped with another version was baked by a different
 # scoring pipeline than the one loaded here, so :func:`_resolve_corpus` falls
 # back to the raw corpus with a stderr warning rather than silently scoring
 # with a drifted ``baked_score`` layout.
