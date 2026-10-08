@@ -266,12 +266,17 @@ class TestBucketIteration:
         """Every registered render theme must flow cleanly through build_sheet
         into the per-tile render call. Pinned across the whole THEME_ORDER
         tuple so a newly-registered theme is exercised end-to-end by the
-        contact-sheet QA tool, not just by the render_quote smoke tests."""
+        contact-sheet QA tool, not just by the render_quote smoke tests.
+
+        The stand-in frame is a few pixels, not 800x480: the sheet's
+        downscale of a blank frame is all a full-size one would add, ~0.5 s
+        per theme across the whole roster for nothing this checks (issue
+        #397)."""
         seen_themes: list[str] = []
 
         def capture(_t, _q, _w, _h, mode="debug", theme="default"):
             seen_themes.append(theme)
-            return Image.new("RGB", (800, 480))
+            return Image.new("RGB", (8, 5))
 
         with patch("idle_hours.render_quote.core.render", side_effect=capture), \
              patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):

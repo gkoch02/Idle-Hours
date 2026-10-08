@@ -838,6 +838,17 @@ class TestGoldenStructure:
         cheap to detect: render every theme at two well-separated instants and
         see which frames move.
 
+        The second render is spent only where it can show anything (issue
+        #397). Every theme renders once at ``GOLDEN_NOW`` with the seam
+        counting its calls; a theme that never calls ``clock.now`` cannot move
+        at a different instant, because
+        ``test_renderer_reads_the_clock_only_through_now`` holds every clock
+        read in the renderer to that one seam. The themes that do call it are
+        re-rendered at the far instant and compared, so a theme that asks for
+        the time but draws nothing from it still counts as clock-free. That
+        is the same answer the two-renders-per-theme sweep gave, at about half
+        the cost.
+
         The sysinfo strip is pinned because it is the one live input the
         clock freeze does not cover: ``diags`` renders ``/proc/uptime`` at
         minute granularity, and when the machine's uptime minute ticks between
@@ -855,16 +866,23 @@ class TestGoldenStructure:
         row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
         drifted = set()
         original = rq.clock.now
+        reads = []
+
+        def render_at(instant, theme):
+            def counting_now():
+                reads.append(theme)
+                return instant
+            rq.clock.now = counting_now
+            return rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
+                             mode="production", theme=theme).convert("RGB")
+
         try:
             for theme in sorted(rq.THEMES):
-                frames = []
-                for instant in (GOLDEN_NOW, far_future):
-                    rq.clock.now = lambda _i=instant: _i
-                    frames.append(
-                        rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
-                                  mode="production", theme=theme).convert("RGB")
-                    )
-                if ImageChops.difference(*frames).getbbox() is not None:
+                reads.clear()
+                frame = render_at(GOLDEN_NOW, theme)
+                if not reads:
+                    continue
+                if ImageChops.difference(frame, render_at(far_future, theme)).getbbox() is not None:
                     drifted.add(theme)
         finally:
             rq.clock.now = original
