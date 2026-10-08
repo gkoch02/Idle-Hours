@@ -259,6 +259,7 @@ def parse_args() -> argparse.Namespace:
         "redacted",
         "gantry",
         "platform",
+        "splitflap",
         "diags",
     ]
     parser.add_argument(

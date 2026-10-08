@@ -119,6 +119,7 @@ THEME_SATURATION: dict[str, float] = {
     "risograph": 0.7,  # two spot inks and no black to anchor them
     "saros": 0.7,
     "semiotic": 0.7,  # the frame paints a black bulkhead over the white page ground
+    "splitflap": 0.7,
     "traumateam": 0.7,
     "trisolaris": 0.7,
     "vhs": 0.7,

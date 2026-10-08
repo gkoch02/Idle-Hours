@@ -119,6 +119,7 @@ CUSTOM_FRAME_THEMES = (
     "redacted",
     "gantry",
     "platform",
+    "splitflap",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

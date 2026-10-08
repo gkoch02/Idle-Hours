@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `splitflap` theme: a split-flap message board on a wall, in the manner
+  of a Vestaboard. The quote is set in capitals on a fixed grid of flap
+  tiles, each split by its hinge, with the matched phrase on yellow colour
+  tiles, the byline behind a run of colour tiles, and two tiles caught
+  mid-flip. Its sleep frame lays a crescent moon and stars out in colour
+  tiles over GOOD NIGHT.
 - New `platform` theme: a railway departure board after dark, in the Lumen
   face's Round Medium and Round Bold. The book is the 1st train's
   destination, "via" its author; the quote runs as the calling points with

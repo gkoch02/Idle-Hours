@@ -384,6 +384,7 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `redacted` | <img src="idle_hours/assets/previews/redacted.png" width="240" alt="redacted theme preview"> | white       | black | red    | Special Elite + Archivo | *Control*: a declassified Bureau document, words blacked out |
 | `gantry` | <img src="idle_hours/assets/previews/gantry.png" width="240" alt="gantry theme preview"> | black       | amber | white  | Lumen + Barlow Condensed | An overhead LED motorway sign at night, the source on a green exit sign |
 | `platform` | <img src="idle_hours/assets/previews/platform.png" width="240" alt="platform theme preview"> | black       | amber | amber  | Lumen Round Medium + Bold | A railway departure board: the book as the destination, the quote as its calling points |
+| `splitflap` | <img src="idle_hours/assets/previews/splitflap.png" width="240" alt="splitflap theme preview"> | black       | white | yellow | Bebas Neue | A split-flap message board on a wall, the time phrase on yellow tiles |
 | `diags`       | <img src="idle_hours/assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
 
 Most themes share the standard literary layout. A number of them are **custom-render frames** that own their whole composition (a dial, a card, a flag, a transit map…); for those the `--mode debug` overlay does not apply. Almost none print the time as digits (the exceptions are objects that really are clocks: `vhs`'s camcorder on-screen display and `platform`'s departure board): the matched phrase in the quote carries it, sometimes alongside a themed hour marker such as a Roman numeral, a time signature or a depth gauge.
@@ -407,7 +408,7 @@ Button B cycles forward through the list and wraps; the curator web UI at `/api/
 > Regenerate previews: the images under `idle_hours/assets/previews/` are built by looping over `render_quote.THEME_ORDER` and calling the `python -m idle_hours.render_quote` CLI. **Pin the quote** — the table reads as one passage shown eighty-nine ways, so a preview rendered from a fresh pick would show a different quote from its neighbours, and the picker's answer for a given time moves as the corpus grows:
 >
 > ```bash
-> for theme in default dark swiss scholar herbarium newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier mucha chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vinyl vitrail cartograph questline chrono outrun circuit letter grimdark sampler anna_atkins lieder izakaya abyssal pride pulp synoptic vhs bakelite cardcatalog metro intaglio nocturne plaque daguerreotype autochrome photo betweenus betweenus_dark carcosa control observation trisolaris biomech codex culture orbital furies bosch semiotic atropos saros expedition witcher hades expanse beksinski goya hal lumon dsky oblivion yorha hitchhiker escritoire lasvegas bladerunner traumateam redacted gantry platform diags; do
+> for theme in default dark swiss scholar herbarium newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier mucha chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vinyl vitrail cartograph questline chrono outrun circuit letter grimdark sampler anna_atkins lieder izakaya abyssal pride pulp synoptic vhs bakelite cardcatalog metro intaglio nocturne plaque daguerreotype autochrome photo betweenus betweenus_dark carcosa control observation trisolaris biomech codex culture orbital furies bosch semiotic atropos saros expedition witcher hades expanse beksinski goya hal lumon dsky oblivion yorha hitchhiker escritoire lasvegas bladerunner traumateam redacted gantry platform splitflap diags; do
 >   idle-hours render --time 10:00 --theme "$theme" --mode production \
 >     --pin-quote 35:646 --pin-matched-text "ten o’clock" \
 >     --output "idle_hours/assets/previews/$theme.png"
@@ -634,8 +635,9 @@ your theme's borders, fonts, and accent colour like any other frame. A theme can
 also draw a sleep frame of its own instead: `redacted` puts up a SUSPENDED
 Standby Order with every word blacked out but "lights … out", `marquee` reads
 CLOSED, `questline`'s hero rests at the inn, `gantry`'s motorway sign
-asks "TIRED? REST AREA NEXT EXIT →" over an empty road, and `platform`'s board
-reads "No further departures".
+asks "TIRED? REST AREA NEXT EXIT →" over an empty road, `platform`'s board
+reads "No further departures", and `splitflap` lays a crescent moon out in
+colour tiles over GOOD NIGHT.
 
 ```bash
 # Shift or tighten the window
