@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Three passages no longer open with a stray chapter number ("V When Archie
+  got back…", "X June 20th.—Eight o'clock…", "L She plunged into…"). The
+  cleaner already stripped a bare numeral of two or more letters; it now
+  also strips a lone V, X or L with no period when a capitalised sentence
+  follows. A lone I or C is still left alone, as the pronoun or a label.
+  The affected rows were re-cleaned in place and the corpus re-baked (#403).
 - `escritoire`'s letter now sits on its paper. The sheet was drawn with a
   far edge rising to the right and sides leaning as if it were turned the
   other way, so the writing fanned between them and seemed to climb off the
