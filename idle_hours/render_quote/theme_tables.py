@@ -1,9 +1,11 @@
-"""Per-theme data: colours, cycle order, font roles and the small per-theme flags.
-
-Transitional (issue #335): the registry stage derives these from each theme module's spec.
-"""
+"""Per-theme data: colours, cycle order, font roles and the small per-theme flags."""
 
 from __future__ import annotations
+
+# The roster itself lives in the Pillow-free ``theme_names`` (issue #393);
+# re-exported here so ``render_quote.THEME_ORDER`` reads are unchanged.
+from idle_hours.theme_names import CYCLE_EXCLUDED_THEMES as CYCLE_EXCLUDED_THEMES
+from idle_hours.theme_names import THEME_ORDER as THEME_ORDER
 
 from ._paths import (
     _HAND_SCRIPT_BOLD,
@@ -111,100 +113,6 @@ from ._paths import (
 )
 from .palette import SPECTRA6
 
-# Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
-# the cycle is stable regardless of dict-literal ordering in Python; every name
-# here must also appear as a key in ``THEMES`` below (enforced in tests).
-THEME_ORDER: tuple[str, ...] = (
-    "default",
-    "dark",
-    "newsprint",
-    "nightvision",
-    "gothic",
-    "bauhaus",
-    "comic",
-    "dispatch",
-    "atomic",
-    "marker",
-    "saloon",
-    "roman",
-    "alchemy",
-    "deco",
-    "chalkboard",
-    "placard",
-    "chanbara",
-    "lcars",
-    "fillmore",
-    "firmament",
-    "astrarium",
-    "kanagawa",
-    "marquee",
-    "tarot",
-    "vitrail",
-    "cartograph",
-    "questline",
-    "chrono",
-    "outrun",
-    "circuit",
-    "letter",
-    "sampler",
-    "anna_atkins",
-    "lieder",
-    "izakaya",
-    "abyssal",
-    "pride",
-    "pulp",
-    "synoptic",
-    "vhs",
-    "bakelite",
-    "cardcatalog",
-    "metro",
-    "nocturne",
-    "plaque",
-    "daguerreotype",
-    "autochrome",
-    "photo",
-    "betweenus",
-    "betweenus_dark",
-    "carcosa",
-    "control",
-    "observation",
-    "trisolaris",
-    "biomech",
-    "codex",
-    "culture",
-    "orbital",
-    "furies",
-    "bosch",
-    "semiotic",
-    "atropos",
-    "saros",
-    "expedition",
-    "witcher",
-    "hades",
-    "expanse",
-    "beksinski",
-    "goya",
-    "hal",
-    "lumon",
-    "dsky",
-    "oblivion",
-    "yorha",
-    "hitchhiker",
-    "escritoire",
-    "lasvegas",
-    "bladerunner",
-    "traumateam",
-    "redacted",
-    "gantry",
-    "platform",
-    "splitflap",
-    "diags",
-)
-# Themes registered in THEMES but excluded from every rotation (button B, web
-# dropdown, auto, random); reachable only via explicit `--theme NAME`.
-# RANDOM_EXCLUDED_THEMES filters only --theme random. Use this for themes worth
-# keeping as opt-in but not ready for unattended rotation.
-CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset()
 # Who reads a custom-frame theme's palette. A theme with its own
 # ``render_<theme>_frame`` paints its own inks, but still needs a THEMES entry,
 # because three paths draw from the palette alone and never call the frame:

@@ -66,32 +66,12 @@ BASE_DIR = Path(__file__).resolve().parent
 # baked in; minute/override are deferred to the runtime picker.
 _STATIC_SCORE_INDICES: tuple[int, ...] = (0, 1, 3, 4, 5, 6, 8, 9, 10, 11)
 
-# Schema version stamped on every baked row. Bump whenever
-# ``BAKED_SCORE_COMPONENTS`` changes (order, length, or semantics) so the
-# runtime picker can detect a mismatch between a freshly ``git pull``-ed
-# ``pick_quote.py`` and a stale ``assets/quote_database.jsonl`` that was baked
-# under an older schema, instead of silently scoring against a mis-aligned
-# tuple. The runtime picker in :mod:`pick_quote` compares against
-# ``pick_quote.BAKED_SCORE_SCHEMA_VERSION``; when they disagree it warns and
-# falls back to the raw corpus.
-BAKED_SCORE_SCHEMA_VERSION: int = 1
-
-# Human-readable labels for the baked_score tuple, in the order they appear.
-# The runtime picker uses this same order when it reconstructs the full 12-
-# component sort key; changing it breaks pick equivalence, so keep it in sync
-# with ``pick_quote.compose_baked_score_key``.
-BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
-    "fragment_penalty",
-    "cleanup_penalty",
-    "metadata_bonus",
-    "dialogue_penalty",
-    "opening_penalty",
-    "source_bonus",
-    "quality_component",
-    "length_exactness",
-    "source_rarity_penalty",
-    "length_tiebreak",
-)
+# The baked_score layout and its schema version are defined once, in
+# :mod:`pick_quote`, which reads them back at runtime; bound here for the
+# baker's own use and its callers. Bump ``pick_quote.BAKED_SCORE_SCHEMA_VERSION``
+# whenever ``BAKED_SCORE_COMPONENTS`` changes (order, length, or semantics).
+BAKED_SCORE_SCHEMA_VERSION: int = pick_quote.BAKED_SCORE_SCHEMA_VERSION
+BAKED_SCORE_COMPONENTS: tuple[str, ...] = pick_quote.BAKED_SCORE_COMPONENTS
 
 
 def parse_args() -> argparse.Namespace:

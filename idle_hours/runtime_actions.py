@@ -237,7 +237,7 @@ def action_theme(
     """Advance the theme (button B cycle) or jump to ``target`` (web dropdown).
 
     When ``target`` is ``None`` (button B / fire-and-forget web POST), cycle
-    to the next theme in ``render_quote.THEME_ORDER``. When ``target`` is a
+    to the next theme in ``theme_names.theme_cycle()``. When ``target`` is a
     known theme name, jump directly to it — lets the curator UI expose a
     dropdown without forcing the operator to mash B four times to reach
     ``nightvision``. An unknown ``target`` returns 400-equivalent

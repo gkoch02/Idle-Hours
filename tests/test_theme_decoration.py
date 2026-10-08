@@ -294,7 +294,7 @@ class TestThemeDecorationRegistry:
         """A new theme must land in exactly one of three buckets.
 
         The registration checklist (THEMES / THEME_ORDER / THEME_FONTS /
-        THEME_SATURATION / run_clock argparse choices) is already fenced
+        THEME_SATURATION) is already fenced
         elsewhere, but none of those fences notice a theme that registers a
         palette and then ships no decoration — which is how a half-finished
         theme reaches the rotation looking like ``default`` in a different

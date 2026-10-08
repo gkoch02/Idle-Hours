@@ -3797,29 +3797,13 @@ class TestActionThemeCycle:
         assert result.get("noop") is not True
         assert mock_render.called
 
-    def test_cli_theme_choices_match_theme_order(self):
-        """``run_clock.py --theme`` choices are duplicated from
-        render_quote.THEME_ORDER with 'auto' appended. Pin the invariant so
-        a new theme added to THEME_ORDER without updating run_clock argparse
-        fails loudly here instead of silently rejecting the new value on
-        systemd startup.
-        """
-        from idle_hours import render_quote as rq
-        for name in list(rq.THEME_ORDER) + ["auto"]:
-            with patch("sys.argv", ["run_clock.py", "--theme", name, "--once"]):
-                try:
-                    ns = run_clock.parse_args()
-                except SystemExit:
-                    raise AssertionError(f"--theme {name} was rejected by argparse") from None
-                assert ns.theme == name
-
     def test_theme_help_carries_no_per_theme_prose(self):
         """#200: the --theme help used to carry ~90 lines of hand-written
         prose describing a subset of the themes. Nothing pinned it, so it
         drifted: it described lcars with a "STARDATE callout" the design no
         longer has, and firmament with "~80 stars in three magnitude tiers"
         when the design has ~150 in four. argparse already prints the full
-        choices list (guarded by the sync test above); the designs are
+        choices list (read from theme_names.THEME_ORDER); the designs are
         documented next to rendered previews instead.
 
         This pins the *shape*, not the wording: a short help string that
@@ -3867,8 +3851,7 @@ class TestActionThemeCycle:
         registered theme name and reject ``auto``. ``auto`` is rejected
         because the kwargs ARE the broadening hook for ``--theme auto`` —
         nesting auto-into-auto would be a config typo, not a useful
-        recursion. Same drift hazard as the parent test: a new theme in
-        ``THEME_ORDER`` must reach these flags too.
+        recursion.
         """
         from idle_hours import render_quote as rq
         for name in rq.THEME_ORDER:
@@ -4104,22 +4087,43 @@ class TestRandomThemeMode:
             pick = runtime_render._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
         assert pick != just_played, "back-to-back repeat at reshuffle boundary"
 
-    def test_random_mode_no_near_boundary_repeat(self):
+    @pytest.mark.parametrize(
+        ("pool_size", "expected"),
+        [(0, 1), (1, 1), (2, 1), (3, 1), (4, 2), (5, 2), (40, 20), (41, 20)],
+    )
+    def test_recent_window_size_is_half_the_pool_floored_at_one(self, pool_size, expected):
+        """Pin the window with literals (issue #392): half the pool maximises
+        the guaranteed gap, and the floor of one keeps the just-played theme
+        out of the next bag's draw-front even for a tiny pool. A test that
+        reads its threshold back from this function cannot catch it breaking.
+        """
+        from idle_hours.runtime_theme import recent_window_size
+        assert recent_window_size(pool_size) == expected
+
+    @pytest.mark.parametrize("seed", [0, 1, 392, 2026])
+    def test_random_mode_no_near_boundary_repeat(self, seed):
         """A theme shown at the tail of one pass must not reappear within a
         few picks at the head of the next — the gap-2 regression that the
         single-theme swap missed. Drive several full passes and assert the
         guaranteed minimum spacing holds.
+
+        The bound is written out (half the pool), not read from
+        ``recent_window_size``, and the shuffle is seeded, so a broken window
+        fails deterministically rather than weakening the assertion with it.
         """
-        from idle_hours.runtime_theme import random_theme_pool, recent_window_size
+        import random
+
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
-        window = recent_window_size(len(themes))
+        window = len(themes) // 2
         state = run_clock.RuntimeState("random")
         seq: list[str] = []
-        for i in range(len(themes) * 4):
-            new_quote_id = ("src", i, "q", "m")
-            pick = runtime_render._maybe_pick_random_theme(state, new_quote_id)
-            seq.append(pick)
-            state.last_quote_id = new_quote_id
+        with patch("idle_hours.runtime_theme.random", random.Random(seed)):
+            for i in range(len(themes) * 4):
+                new_quote_id = ("src", i, "q", "m")
+                pick = runtime_render._maybe_pick_random_theme(state, new_quote_id)
+                seq.append(pick)
+                state.last_quote_id = new_quote_id
         last_seen: dict[str, int] = {}
         min_gap = len(seq)
         for i, theme in enumerate(seq):

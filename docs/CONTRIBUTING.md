@@ -205,10 +205,14 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
   rule. Don't reintroduce a second copy of the state table in a new script.
 - JSONL rows accumulate fields as they flow through — preserve the existing
   schema, add new fields rather than renaming.
-- The baked DB's scoring components are cross-checked between
-  `bake_quote_database.py` and `pick_quote.py` via `BAKED_SCORE_COMPONENTS`.
-  Bump `BAKED_SCORE_SCHEMA_VERSION` if you change order, length, or
-  semantics.
+- The baked DB's scoring components (`BAKED_SCORE_COMPONENTS`) and
+  `BAKED_SCORE_SCHEMA_VERSION` are defined once in `pick_quote.py`;
+  `bake_quote_database.py` imports them. Bump the version if you change
+  order, length, or semantics.
+- When two modules need the same list or constant, import it from one place
+  rather than copying it and adding a test to keep the copies in sync. Sync
+  tests are for copies that must live outside Python (README rosters,
+  `config.toml.*`, docs tables).
 
 ### Rendering / typography
 
@@ -221,18 +225,17 @@ behind each one. Some are palette + font
 swaps on the shared literary layout, some add a border painter, and the
 custom-render frames (`tarot`, `vitrail`, `questline`, `pride`, `bosch`, …)
 own their whole composition. Adding another means wiring it into all of
-(the three `render_quote.*` tables below are defined in
+(the two `render_quote.*` tables below are defined in
 `idle_hours/render_quote/theme_tables.py`):
 
 - `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
-- `render_quote.THEME_ORDER` — append; this is what button B cycles through
+- `theme_names.THEME_ORDER` — append; this is what button B cycles through,
+  and `run_clock.py`'s `--theme` choices read it (re-exported as
+  `render_quote.THEME_ORDER`)
 - `render_quote.THEME_FONTS` — typeface chain (otherwise the renderer falls
   back to Playfair Display, defeating the per-theme typography)
 - `display_inky.THEME_SATURATION` — `0.5` for light grounds, `0.7` for
   dark / coloured grounds
-- `--theme` argparse `choices` in `run_clock.py` (the
-  `TestActionThemeCycle::test_cli_theme_choices_match_theme_order` test
-  pins this in lockstep with `THEME_ORDER`)
 - a golden fixture — the sweep in `tests/test_render_golden.py` generates a
   `standard_<theme>_production` scenario for every registered theme, so a new
   theme arrives with a *failing* test until you run

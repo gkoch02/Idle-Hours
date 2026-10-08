@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import random
 
-from idle_hours import runtime_store
+from idle_hours import runtime_store, theme_names
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.theme_names import known_theme_names as _registered_themes
@@ -73,8 +73,7 @@ def random_theme_pool() -> tuple[str, ...]:
     :func:`pick_next_random_theme` (the main-loop bag refill) agree on
     which entries can show up.
     """
-    from idle_hours.theme_names import theme_cycle
-    return tuple(name for name in theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
+    return tuple(name for name in theme_names.theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
 
 
 def pick_random_theme() -> str:

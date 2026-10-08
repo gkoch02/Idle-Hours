@@ -23,11 +23,12 @@ Design notes:
   (``/api/history``, ``/api/search``, ``/api/bucket/*``, ``/api/overrides``,
   ``/api/content-overrides``, ...). Those all reach the browser through
   ``main.js``'s ``jsonFetch``, which already attaches the header, so this is
-  invisible to the UI. Four routes stay open by necessity, not by judgement:
-  the static shell (``/``, ``/main.js``, ``/style.css``), ``/current.png`` and
-  ``/api/preview`` — the browser loads the last two as ``<img src>``, and a tag
-  cannot attach a request header — and ``/metrics``, for the scraper; pass
-  ``--web-metrics-token`` to gate that one too.
+  invisible to the UI. ``/current.png`` and ``/api/preview`` are gated too
+  (issue #286): ``main.js`` fetches both with the header and shows them
+  through object URLs. Only the static shell (``/``, ``/main.js``,
+  ``/style.css``, i.e. ``UNGATED_GET_PATHS``) stays open, because the
+  navigation and tags that load it cannot attach a request header, plus
+  ``/metrics`` for the scraper unless ``--web-metrics-token`` gates it.
 
 CSRF / DNS-rebinding defence (#233). On the deployment the docs recommend —
 ``--web-bind 127.0.0.1:8080``, where loopback binds skip auth entirely — any
@@ -84,6 +85,7 @@ from idle_hours import (
     runtime_render,
     runtime_telemetry,
     runtime_theme,
+    theme_names,
 )
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import bucket_for_time, rederive_buckets
@@ -1523,24 +1525,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _api_themes(self) -> None:
         """Expose the theme cycle so the UI dropdown and the Python cycle stay aligned.
 
-        Lazy import via :mod:`theme_names` keeps Pillow off the web-server
-        module's load-time import graph, and a broken renderer install
-        degrades to the historical pair instead of a 500 that would hide the
-        rest of the UI. ``theme_arg`` / ``manual_theme`` / ``effective`` give
+        ``theme_arg`` / ``manual_theme`` / ``effective`` give
         the UI everything it needs to render the dropdown with the current
         value pre-selected without a second request.
 
         State discipline: snapshot the three fields under ``state.lock`` and
-        release it *before* calling ``resolve_effective_theme``. That helper
-        imports ``render_quote`` lazily (to keep PIL off the import graph)
-        and holding the lock across a module import violates the lock
-        discipline in CLAUDE.md even though Python's import lock is
-        reentrant. The snapshot is a consistent-enough view: effective
-        resolution only uses wall time + the snapshotted values.
+        release it *before* calling ``resolve_effective_theme``, which may
+        draw a random theme and need not hold the lock. The snapshot is a
+        consistent-enough view: effective resolution only uses wall time +
+        the snapshotted values.
         """
-        from idle_hours.theme_names import theme_cycle
         ctx = self._ctx()
-        order = list(theme_cycle())
+        order = list(theme_names.theme_cycle())
         now = dt.datetime.now().strftime("%H:%M")
         with ctx.state.lock:
             manual = ctx.state.manual_theme
