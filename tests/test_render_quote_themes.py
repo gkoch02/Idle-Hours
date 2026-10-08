@@ -8869,3 +8869,92 @@ class TestVhsSleepFrame:
     def test_quote_frame_keeps_its_camcorder_osd(self):
         quote = rq.render("14:30", make_row(), 800, 480, mode="production", theme="vhs")
         assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestSplitflapFrame:
+    """``splitflap`` — a split-flap message board: capitals in the board's
+    character set on a fixed tile grid, the matched phrase on yellow tiles,
+    two tiles caught mid-flip."""
+
+    THEME = "splitflap"
+    ROW = dict(
+        display_quote="It was at ten o'clock today that the first of all Time Machines began its career.",
+        matched_text="ten o'clock",
+        author="H. G. Wells",
+        title="The Time Machine",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="10:00", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.7
+        assert rq.FRAME_SPECS[self.THEME].render is rq.render_splitflap_frame
+
+    def test_only_the_boards_characters(self):
+        assert rq._splitflap_chars("a") == "A"
+        assert rq._splitflap_chars("’") == "'"
+        assert rq._splitflap_chars("—") == "-"
+        assert rq._splitflap_chars("é") == "E"
+        assert rq._splitflap_chars("*") == ""
+        tiles = rq._splitflap_layout(make_row(display_quote="Café *at* “ten”", matched_text="ten"))
+        assert {ch for ch, _ in tiles.values()} <= rq._SPLITFLAP_CHARSET | {" "}
+
+    def test_every_corpus_quote_fits_the_fixed_grid(self):
+        """The grid never changes size, so the quote's rows are a hard budget."""
+        for row in iter_jsonl(pathlib.Path(pq.DEFAULT_DATABASE_PATH)):
+            words = rq._splitflap_words([(row["display_quote"], False)])
+            assert len(rq._splitflap_wrap(words, rq._SPLITFLAP_COLS)) <= rq._SPLITFLAP_QUOTE_ROWS, row["display_quote"]
+
+    def test_matched_phrase_is_on_yellow_tiles_with_its_spaces(self):
+        tiles = rq._splitflap_layout(make_row(**self.ROW))
+        lit = "".join(ch for (col, row), (ch, matched) in sorted(tiles.items(), key=lambda t: (t[0][1], t[0][0]))
+                      if matched)
+        assert lit == "TEN O'CLOCK"
+        assert ink_counts(self._render().crop((*rq._SPLITFLAP_ORIGIN, 780, 460))).get(rq.SPECTRA6["yellow"], 0) > 1500
+
+    def test_byline_drops_the_title_before_cutting_the_author(self):
+        row = make_row(author="Fyodor Dostoyevsky", title="Crime and Punishment")
+        assert "".join(ch for ch, _ in rq._splitflap_byline(row, 24)) == "-FYODOR DOSTOYEVSKY"
+        assert "".join(ch for ch, _ in rq._splitflap_byline(row, 60)) == "-FYODOR DOSTOYEVSKY, CRIME AND PUNISHMENT"
+
+    def test_mid_flip_tiles_leave_the_letter_before(self):
+        tiles = rq._splitflap_layout(make_row(**self.ROW))
+        flips = rq._splitflap_flips(tiles, 1234)
+        assert len(flips) == rq._SPLITFLAP_FLIPS
+        for pos, old in flips.items():
+            new, matched = tiles[pos]
+            assert not matched and new.isalpha()
+            assert old == "ZABCDEFGHIJKLMNOPQRSTUVWXYZ"["ZABCDEFGHIJKLMNOPQRSTUVWXYZ".index(new, 1) - 1]
+        assert rq._splitflap_flips(tiles, 1234) == flips
+
+    def test_never_reads_the_time_and_downscales(self):
+        image = self._render()
+        assert pixel_bytes(self._render(time_str="17:45")) == pixel_bytes(image)
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        small = self._render(size=(320, 192))
+        assert pixel_bytes(small) == pixel_bytes(image.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestSplitflapSleepFrame:
+    """``splitflap``'s own sleep frame: tile art, a moon and stars over GOOD
+    NIGHT."""
+
+    def test_is_the_spec_sleep_renderer(self):
+        assert rq.FRAME_SPECS["splitflap"].sleep is rq.render_splitflap_sleep
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_splitflap_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "03:00", "bogus"):
+            assert pixel_bytes(rq.render_splitflap_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_splitflap_sleep("22:00", 320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_moon_is_yellow_tiles(self):
+        image = rq.render_splitflap_sleep("22:00", 800, 480)
+        for col, row in rq._SPLITFLAP_MOON:
+            x, y = rq._splitflap_tile_xy(col, row)
+            assert image.getpixel((x + 4, y + 4)) == rq.SPECTRA6["yellow"]

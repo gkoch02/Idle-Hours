@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `splitflap` theme: a split-flap message board on a wall, in the manner
+  of a Vestaboard. The quote is set in capitals on a fixed grid of flap
+  tiles, each split by its hinge, with the matched phrase on yellow colour
+  tiles, the byline behind a run of colour tiles, and two tiles caught
+  mid-flip. Its sleep frame lays a crescent moon and stars out in colour
+  tiles over GOOD NIGHT.
 - `vhs` draws its own sleep frame: the tape has run on into the station
   sign-off, colour bars over "THIS CONCLUDES OUR BROADCAST DAY" / GOOD NIGHT,
   under the quote frame's tape wear, with the deck's PLAY in place of the

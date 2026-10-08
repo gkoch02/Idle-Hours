@@ -621,6 +621,11 @@ SCENARIOS: list[dict] = [
         "theme": "redacted",
     },
     {
+        "name": "sleep_splitflap",
+        "mode": "sleep",
+        "theme": "splitflap",
+    },
+    {
         "name": "sleep_lieder",
         "mode": "sleep",
         "theme": "lieder",

@@ -29,6 +29,7 @@ from ._paths import (
     BARLOWCOND_MEDIUM,
     BARLOWCOND_REGULAR,
     BARLOWCOND_SEMIBOLD,
+    BEBASNEUE_REGULAR,
     BERKSHIRE_SWASH_REGULAR,
     BITTER_VARIABLE,
     BUNGEE_SHADE_REGULAR,
@@ -211,6 +212,7 @@ THEME_ORDER: tuple[str, ...] = (
     "bladerunner",
     "traumateam",
     "redacted",
+    "splitflap",
     "diags",
 )
 # Themes registered in THEMES but excluded from every rotation (button B, web
@@ -1181,6 +1183,20 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
+    },
+    # A split-flap message board on a wall. A custom frame
+    # (``render_splitflap_frame``): white capitals on charcoal flap tiles,
+    # the matched phrase on yellow tiles. Palette serves the palette-only
+    # paths (see the note above ``THEMES``).
+    "splitflap": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
     },
     "hal": {
         "page_bg": SPECTRA6["black"],
@@ -3110,6 +3126,15 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "splitflap": {
+        # Bebas Neue, as ``fillmore`` and others: an all-caps condensed
+        # grotesque, the register of the flaps on a split-flap board, which
+        # carry capitals only. One weight, so the matched phrase differs by
+        # its yellow tile, not by a heavier face.
+        "quote_regular": [BEBASNEUE_REGULAR, *QUOTE_FONT_SEMIBOLD_CANDIDATES],
+        "quote_bold": [BEBASNEUE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BEBASNEUE_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "redacted": {
         # Special Elite, as ``dispatch``: the Bureau's documents are typed.
