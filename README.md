@@ -42,7 +42,9 @@ flowchart LR
 
 ## How it was built
 
-<!-- TODO(#354): owner-written. Say plainly that most commits are authored by Claude Code, describe the human role (issue specs, review, hardware integration, release process), and link two or three issues where the spec or review changed the outcome. -->
+I saw a similar product for sale, liked the idea, and wanted to see whether I could build my own with agentic development. So I set out to build the mining pipeline to amass quotes from open sources, then built the rest of the appliance, insisting on testing and quality throughout. My own panel lives on my desk, set to `random`, so each update gives me a fresh view of the time.
+
+Now that the system is mature, I mostly build new themes for fun. I'll see a font I like, or get a theme idea, or simply can't sleep one night, and add a few more. That has become the ongoing hobby.
 
 What the project deliberately does not do, and why, is in [`docs/decisions.md`](docs/decisions.md).
 
