@@ -17,6 +17,9 @@ these entries under the new dated version heading.
   unchanged). The curator web server also stops within 50 ms of being asked
   instead of half a second. Together they take about a third off the test
   suite's wall time.
+
+## [3.1.0] - 2026-10-08
+
 - Three passages no longer open with a stray chapter number ("V When Archie
   got back…", "X June 20th.—Eight o'clock…", "L She plunged into…"). The
   cleaner already stripped a bare numeral of two or more letters; it now
