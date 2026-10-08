@@ -470,9 +470,8 @@ def _photo_card_rect(image: Image.Image, width: int, height: int) -> tuple[int, 
 
 def _photo_paint_card(image: Image.Image, draw: ImageDraw.ImageDraw,
                       rect: tuple[int, int, int, int], quote_row: dict) -> None:
-    """The caption card: the shared cream mount, keylined heavier than
-    ``daguerreotype``'s because an arbitrary photograph may be pale right up
-    against the card's edge, where a controlled plate never is."""
+    """The caption card: the shared cream mount, keylined at 2 px because an
+    arbitrary photograph may be pale right up against the card's edge."""
     x0, y0, x1, y1 = rect
     black, red = SPECTRA6["black"], SPECTRA6["red"]
     paint_mount_card(image, draw, rect, ledge=3, outline_width=2)

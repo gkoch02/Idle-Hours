@@ -9,6 +9,14 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `daguerreotype` and `autochrome` have new compositions, so the three
+  photographic themes no longer look alike. `daguerreotype` is now a case
+  lying open: the plate sits in a portrait oval behind the brass mat, and
+  the quote is stamped in gold on the lid's red velvet. `autochrome` is now
+  a lantern slide: the plate sits in a wide window in a black mask, with the
+  caption lettered beneath in white, the matched phrase in yellow. `photo`
+  keeps its floating card and is now the only one with a card. Both themes
+  move to the 0.7 saturation tier for their darker grounds.
 - New `splitflap` theme: a split-flap message board on a wall, in the manner
   of a Vestaboard. The quote is set in capitals on a fixed grid of flap
   tiles, each split by its hinge, with the matched phrase on yellow colour
