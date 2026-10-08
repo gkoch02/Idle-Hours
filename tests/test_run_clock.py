@@ -3080,7 +3080,7 @@ class TestShutdown:
         """If render lock can't be acquired within the drain window, shutdown still proceeds.
 
         Swap in a stub lock whose ``acquire`` returns False immediately (simulating
-        a 30s drain timeout) so the test doesn't wait.
+        the drain timeout expiring) so the test doesn't wait.
         """
         args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")

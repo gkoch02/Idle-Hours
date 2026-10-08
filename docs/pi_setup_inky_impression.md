@@ -99,6 +99,7 @@ Notes:
   `python3-rpi-lgpio`, and create the virtualenv with `--system-site-packages`;
   `gpiozero` alone does not provide a pin backend
 - the unit uses `Type=notify` + `WatchdogSec=180s` so systemd restarts a wedged-but-breathing loop, not just a fully-dead one. The `sd_notify` client in `sd_notify.py` is pure stdlib (no `systemd-python` dep); off systemd it is a no-op so `idle-hours run` on a dev host behaves identically.
+- the unit sets `KillMode=mixed` and a `TimeoutStopSec` above the loop's shutdown drain, so `systemctl restart` lets a render or panel push that is already in flight finish instead of cutting it off (a half-refreshed panel and a `terminated with signal 15` display error in the journal are what the default kill mode produced)
 - the unit declares `StateDirectory=idle-hours`. systemd creates `/var/lib/idle-hours/` owned by `pi` before the service starts, and the sample config's `state_path` / `history_path` / `telemetry_path` / `pidfile` / `web_token_file` all point into that directory.
 
 After `sudo systemctl status idle-hours.service` reports `Active: active (running); notify`, confirm the supervisor is actually supervising:
