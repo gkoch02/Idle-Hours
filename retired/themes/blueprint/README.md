@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `blueprint`   | <img src="idle_hours/assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | blue/white  | white | red    | Archivo (sans)       | Cyanotype drafting sheet      |
+| `blueprint`   | <img src="preview.png" width="240" alt="blueprint theme preview">     | blue/white  | white | red    | Archivo (sans)       | Cyanotype drafting sheet      |
 
 ## Design notes (from `docs/themes.md`)
 

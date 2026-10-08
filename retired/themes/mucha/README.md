@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `mucha`       | <img src="idle_hours/assets/previews/mucha.png" width="240" alt="mucha theme preview">             | cream/white | maroon | teal  | Cormorant Garamond + Berkshire Swash | Art Nouveau (Mucha vines)  |
+| `mucha`       | <img src="preview.png" width="240" alt="mucha theme preview">             | cream/white | maroon | teal  | Cormorant Garamond + Berkshire Swash | Art Nouveau (Mucha vines)  |
 
 ## Design notes (from `docs/themes.md`)
 
