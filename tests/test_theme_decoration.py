@@ -117,6 +117,8 @@ CUSTOM_FRAME_THEMES = (
     "bladerunner",
     "traumateam",
     "redacted",
+    "gantry",
+    "platform",
     "splitflap",
 )
 

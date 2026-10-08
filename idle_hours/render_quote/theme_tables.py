@@ -70,6 +70,7 @@ from ._paths import (
     LIBRECASLON_VARIABLE,
     LIBREFRANKLIN_ITALIC_VARIABLE,
     LIBREFRANKLIN_VARIABLE,
+    LUMEN_VARIABLE,
     MEDIEVALSHARP_REGULAR,
     META_FONT_BOLD_CANDIDATES,
     META_FONT_CANDIDATES,
@@ -212,6 +213,8 @@ THEME_ORDER: tuple[str, ...] = (
     "bladerunner",
     "traumateam",
     "redacted",
+    "gantry",
+    "platform",
     "splitflap",
     "diags",
 )
@@ -1183,6 +1186,34 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
+    },
+    # An overhead highway message sign at night. A custom frame
+    # (``render_gantry_frame``): amber LEDs, the matched phrase lit white,
+    # the source on a green guide sign. Palette serves the palette-only paths
+    # (see the note above ``THEMES``).
+    "gantry": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["white"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
+    },
+    # A railway departure board at night. A custom frame
+    # (``render_platform_frame``): amber Round Medium dots, the matched phrase
+    # in Round Bold. Palette serves the palette-only paths (see the note above
+    # ``THEMES``).
+    "platform": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["yellow"],
     },
     # A split-flap message board on a wall. A custom frame
     # (``render_splitflap_frame``): white capitals on charcoal flap tiles,
@@ -3126,6 +3157,26 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "gantry": {
+        # Lumen, a 5x7 LED matrix. The frame reads it as dot bitmaps on the
+        # sign's own lattice (``_gantry_glyph``), so the instance only has to
+        # put a dot clearly over each grid centre: Bold. The matched phrase is
+        # emboldened the matrix way, by doubling columns, not by a heavier
+        # instance. The guide sign sets Barlow Condensed inline.
+        "quote_regular": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "platform": {
+        # Lumen's Round instances, Medium for the body and Bold for the
+        # matched phrase: on this board weight is dot size. The frame places
+        # the dots from the face's grid and draws them at the diameters
+        # measured from these two instances (``_PLATFORM_MEDIUM_DOT`` /
+        # ``_PLATFORM_BOLD_DOT``); these chains serve the palette-only paths.
+        "quote_regular": [(LUMEN_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(LUMEN_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "splitflap": {
         # Bebas Neue, as ``fillmore`` and others: an all-caps condensed

@@ -257,6 +257,8 @@ def parse_args() -> argparse.Namespace:
         "bladerunner",
         "traumateam",
         "redacted",
+        "gantry",
+        "platform",
         "splitflap",
         "diags",
     ]

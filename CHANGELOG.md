@@ -15,6 +15,21 @@ these entries under the new dated version heading.
   tiles, the byline behind a run of colour tiles, and two tiles caught
   mid-flip. Its sleep frame lays a crescent moon and stars out in colour
   tiles over GOOD NIGHT.
+- New `platform` theme: a railway departure board after dark, in the Lumen
+  face's Round Medium and Round Bold. The book is the 1st train's
+  destination, "via" its author; the quote runs as the calling points with
+  the matched phrase in heavier dots; the station clock sits underneath. Its
+  sleep frame reads "No further departures". Every dot is placed from the
+  face's grid at the size each weight draws it.
+- New `gantry` theme: an overhead motorway message sign at night. The quote
+  runs in amber LEDs on a full-matrix sign hung from a steel truss, the
+  matched phrase lit white and bold, with tail-light streaks running off
+  under it and the source posted on a green guide sign whose exit number is
+  the hour. The dot pitch is chosen per quote, so short quotes get big round
+  LEDs and the longest still fit whole. Its sleep frame empties the road and
+  sets the sign to TIRED? / REST AREA / NEXT EXIT →. Bundles the Lumen LED
+  dot-matrix font (Font Studio, OFL).
+
 - `vhs` draws its own sleep frame: the tape has run on into the station
   sign-off, colour bars over "THIS CONCLUDES OUR BROADCAST DAY" / GOOD NIGHT,
   under the quote frame's tape wear, with the deck's PLAY in place of the

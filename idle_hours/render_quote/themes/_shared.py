@@ -2,20 +2,23 @@
 
 Each piece keeps the name it had in the theme that grew it: tarot's numerals,
 astrarium's cream wash, vitrail's glass fill, codex's asemic script, metro's
-ellipsis, lumon's phrase boxes, the CRT raster, the autochrome plate photo falls
+ellipsis, lumon's phrase boxes, gantry's Lumen dot reader, the CRT raster, the autochrome plate photo falls
 back to, and the gunmetal ink pair grimdark and control share. Renaming would
 churn the design notes and tests that cite them for no change in behaviour.
 """
 
 from __future__ import annotations
 
+import functools
 import math
 import random
+import unicodedata
 
 from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, pixel_access
+from ..fonts import GLYPH_FALLBACKS, font_has_glyph, load_font, theme_font_candidates
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access
 from ..primitives import _flow_stroke_hash
 
 # The autochrome garden is dithered against the FULL six-ink palette — the
@@ -300,3 +303,93 @@ def _autochrome_paint_garden_fallback(image: Image.Image) -> None:
                 px[x, y] = yellow
             elif h < 0.044:
                 px[x, y] = black
+
+
+# ---------------------------------------------------------------------------
+# The Lumen dot-matrix reader (gantry, platform)
+# ---------------------------------------------------------------------------
+# Lumen is a 5x7 LED matrix with its dots on a strict grid a tenth of an em
+# apart. Rather than set it as type, the LED themes render each glyph once,
+# supersampled, read the grid centres back as lit cells, and draw the dots
+# themselves on a pitch of their own choosing (see ``gantry`` in
+# docs/themes.md).
+
+_GANTRY_SAMPLE = 8           # supersampling factor when reading the font's dots
+# Characters the face lacks, beyond what render's glyph fallbacks already
+# replaced: a sign can only show what its font carries.
+_GANTRY_STANDINS = {**GLYPH_FALLBACKS, "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE",
+                    "£": "L", "ß": "ss"}
+# Two-character sequences the face shapes into one glyph. Only the arrows: a
+# motorway sign points, and the face's other ligatures (a heart, a smiley,
+# maths operators) would turn the sign into a font demo.
+_GANTRY_LIGATURES = ("->", "<-", "=>")
+
+
+def _gantry_font():
+    return load_font(theme_font_candidates("gantry", "quote_regular"), size=10 * _GANTRY_SAMPLE)
+
+
+@functools.lru_cache(maxsize=1024)
+def _gantry_glyph(ch: str) -> tuple[int, frozenset[tuple[int, int]]]:
+    """``(ink width, lit cells)`` of one character or ligature, cells as
+    ``(col, row)`` with the leftmost ink column at 0. Blank glyphs come back
+    as width 0.
+
+    A ligature (``_GANTRY_LIGATURES``) is drawn as its two-character string,
+    which the face's ``liga`` feature shapes into one wide glyph; Pillow's
+    wheels carry the raqm shaper that applies it. Without raqm the pair is
+    read as its two characters, still legible.
+    """
+    s = _GANTRY_SAMPLE
+    font = _gantry_font()
+    span = 7 * len(ch) + 3
+    canvas = Image.new("L", (s * span, s * 12), 0)
+    # One cell of slack on the left catches any negative side bearing.
+    ImageDraw.Draw(canvas).text((s, 0), ch, font=font, fill=255)
+    px = gray_pixel_access(canvas)
+    cells = set()
+    for row in range(12):
+        for col in range(span):
+            if px[col * s + s // 2, row * s + s // 2] > 127:
+                cells.add((col, row))
+    if not cells:
+        return 0, frozenset()
+    left = min(c for c, _ in cells)
+    right = max(c for c, _ in cells)
+    return right - left + 1, frozenset((c - left, r) for c, r in cells)
+
+
+def _gantry_chars(ch: str) -> str:
+    """``ch`` as characters the sign's face can show."""
+    if ch in _GANTRY_STANDINS:
+        return _GANTRY_STANDINS[ch]
+    if font_has_glyph(_gantry_font(), ch):
+        return ch
+    base = unicodedata.normalize("NFKD", ch).encode("ascii", "ignore").decode("ascii")
+    return base or "?"
+
+
+def _gantry_tokens(text: str) -> list[str]:
+    """``text`` as the glyphs the sign draws: the arrow ligatures as one
+    token each, every other character as what the face can show."""
+    tokens: list[str] = []
+    i = 0
+    while i < len(text):
+        pair = text[i:i + 2]
+        if pair in _GANTRY_LIGATURES:
+            tokens.append(pair)
+            i += 2
+            continue
+        ch = text[i]
+        tokens.extend([ch] if ch.isspace() else list(_gantry_chars(ch)))
+        i += 1
+    return tokens
+
+
+@functools.lru_cache(maxsize=16)
+def _gantry_dot(diameter: int) -> tuple[tuple[int, int], ...]:
+    """Pixel offsets of one round LED of ``diameter``."""
+    centre = (diameter - 1) / 2
+    limit = (diameter / 2) ** 2 - 0.2
+    return tuple((dx, dy) for dy in range(diameter) for dx in range(diameter)
+                 if diameter <= 2 or (dx - centre) ** 2 + (dy - centre) ** 2 <= limit)

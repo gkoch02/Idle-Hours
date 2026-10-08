@@ -8871,6 +8871,263 @@ class TestVhsSleepFrame:
         assert pixel_bytes(quote) != pixel_bytes(self._render())
 
 
+class TestGantryFrame:
+    """``gantry`` — an overhead motorway message sign at night: the quote in
+    amber LEDs on one lattice, the matched phrase lit white and bold, and the
+    source on a green guide sign whose exit number is the hour."""
+
+    THEME = "gantry"
+    ROW = dict(
+        display_quote="It was at ten o'clock today that the first of all Time Machines began its career.",
+        matched_text="ten o'clock",
+        author="H. G. Wells",
+        title="The Time Machine",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="10:00", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    @staticmethod
+    def _fit(text, matched=""):
+        x0, y0, x1, y1 = rq._GANTRY_FACE
+        words = rq._gantry_words(make_row(display_quote=text, matched_text=matched))
+        return words, rq._gantry_fit(words, x1 - x0, y1 - y0)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert self.THEME not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.7
+        assert rq.FRAME_SPECS[self.THEME].render is rq.render_gantry_frame
+
+    def test_the_font_is_read_as_a_five_by_seven_matrix(self):
+        """Lumen's dots sit a tenth of an em apart, so sampling the grid
+        centres gives the classic matrix: caps five columns by seven rows on
+        rows 2-8, descenders down to row 10, narrow glyphs trimmed to their ink."""
+        width, cells = rq._gantry_glyph("H")
+        assert width == 5
+        assert {r for _, r in cells} == set(range(2, 9))
+        assert {(0, r) for r in range(2, 9)} <= cells and {(4, r) for r in range(2, 9)} <= cells
+        assert max(r for _, r in rq._gantry_glyph("g")[1]) == 10
+        assert rq._gantry_glyph(".") == (1, frozenset({(0, 8)}))
+        assert rq._gantry_glyph(" ") == (0, frozenset())
+
+    def test_characters_the_face_lacks_get_stand_ins(self):
+        assert rq._gantry_chars("£") == "L"
+        assert rq._gantry_chars("œ") == "oe"
+        assert rq._gantry_chars("—") == "-"
+        assert rq._gantry_chars("é") == "é"     # the face carries it
+        for ch in "£œ—’":
+            assert all(rq._gantry_glyph(sub)[0] for sub in rq._gantry_chars(ch)), ch
+
+    def test_arrows_are_the_faces_own_ligatures(self):
+        """``->`` is one glyph: the face's 12-dot arrow, not a hyphen and a
+        chevron side by side. Only the arrows are tokenised."""
+        width, cells = rq._gantry_glyph("->")
+        assert width == 12
+        assert width > rq._gantry_glyph("-")[0] + 1 + rq._gantry_glyph(">")[0]
+        assert {r for _, r in cells} == set(range(3, 8))
+        assert rq._gantry_tokens("go -> now <3") == ["g", "o", " ", "->", " ", "n", "o", "w", " ", "<", "3"]
+
+    def test_short_quotes_get_big_dots_and_long_ones_still_fit_whole(self):
+        _, (pitch, *_rest) = self._fit("It was a little after four now.")
+        assert pitch == rq._GANTRY_PITCHES[0]
+        longest = max((row["display_quote"] for row in iter_jsonl(pathlib.Path(pq.DEFAULT_DATABASE_PATH))), key=len)
+        words, (pitch, cols, _rows, _line_rows, lines) = self._fit(longest)
+        assert pitch >= 4, "the longest corpus quote should not need the 3 px fallback"
+        assert sum(len(line) for line in lines) == len(words), "a word was dropped"
+        assert all(rq._gantry_line_width(line) <= cols - 2 for line in lines)
+
+    def test_lines_are_balanced(self):
+        """The narrowest measure that keeps the line count: no line ends up a
+        stub under a full one."""
+        _, (_pitch, _cols, _rows, _line_rows, lines) = self._fit(self.ROW["display_quote"])
+        widths = [rq._gantry_line_width(line) for line in lines]
+        assert len(widths) > 1 and min(widths) > 0.6 * max(widths)
+
+    def test_matched_phrase_is_bold_and_the_only_white_on_the_face(self):
+        def white_on_face(image):
+            return ink_counts(image.crop(rq._GANTRY_FACE)).get(rq.SPECTRA6["white"], 0)
+        assert white_on_face(self._render()) > 500
+        assert white_on_face(self._render(row={**self.ROW, "matched_text": ""})) == 0
+        _, (_p, cols, rows, line_rows, lines) = self._fit(self.ROW["display_quote"], self.ROW["matched_text"])
+        body, lit = rq._gantry_lit_cells(lines, cols, rows, line_rows)
+        plain_cells = sum(len(rq._gantry_glyph(ch)[1]) for ch in "tenoclock")
+        assert len(lit) > 1.5 * plain_cells, "the phrase should be doubled-column bold"
+        assert not body & lit
+
+    def test_dead_leds_are_seeded_from_the_quote(self):
+        a, b = self._render(), self._render()
+        assert pixel_bytes(a) == pixel_bytes(b)
+        other = {**self.ROW, "display_quote": self.ROW["display_quote"].replace("career.", "career!")}
+        assert pixel_bytes(self._render(row=other)) != pixel_bytes(a)
+
+    def test_exit_number_is_the_hour_and_nothing_else_reads_the_time(self):
+        ten = self._render(time_str="10:05")
+        assert pixel_bytes(self._render(time_str="10:55")) == pixel_bytes(ten)
+        assert pixel_bytes(self._render(time_str="22:30")) == pixel_bytes(ten)
+        eleven = self._render(time_str="11:05")
+        diff = ImageChops.difference(ten, eleven).getbbox()
+        assert diff is not None
+        x0, y0, x1, _y1 = rq._GANTRY_GUIDE
+        assert x0 <= diff[0] and diff[2] <= x1 and y0 - 24 <= diff[1] and diff[3] <= y0 + 6
+
+    def test_on_palette_and_downscales(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        small = self._render(size=(320, 192))
+        assert pixel_bytes(small) == pixel_bytes(image.resize((320, 192), Image.Resampling.NEAREST))
+
+
+_GANTRY_ARROW = "->"
+
+
+class TestGantrySleepFrame:
+    """``gantry``'s own sleep frame: the small hours on the same motorway, the
+    traffic gone, the beacons dark, TIRED? REST AREA NEXT EXIT on the sign."""
+
+    def test_is_the_spec_sleep_renderer(self):
+        assert rq.FRAME_SPECS["gantry"].sleep is rq.render_gantry_sleep
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_gantry_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "03:00", "bogus"):
+            assert pixel_bytes(rq.render_gantry_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_gantry_sleep("22:00", 320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_sign_points_to_the_exit(self):
+        assert _GANTRY_ARROW in [w for line in self._lines() for word in line for w, _ in word]
+
+    @staticmethod
+    def _lines():
+        return [rq._gantry_segment_words([(text, lit)]) for text, lit in rq._GANTRY_SLEEP_MESSAGE]
+
+    def test_the_road_is_empty_and_the_question_is_lit(self):
+        sleep = rq.render_gantry_sleep("22:00", 800, 480)
+        quote = rq.render("22:00", make_row(**TestGantryFrame.ROW), 800, 480, mode="production", theme="gantry")
+        # The middle lane's tail-light pair, near the foot of the frame. The
+        # asphalt's dither carries a little red of its own, so compare, not zero.
+        lane = (380, 430, 480, 480)
+        red = rq.SPECTRA6["red"]
+        assert ink_counts(quote.crop(lane)).get(red, 0) > 6 * ink_counts(sleep.crop(lane)).get(red, 0)
+        # TIRED? is the white line: white LEDs sit only in the top third of the face.
+        x0, y0, x1, y1 = rq._GANTRY_FACE
+        top = ink_counts(sleep.crop((x0, y0, x1, y0 + (y1 - y0) // 3))).get(rq.SPECTRA6["white"], 0)
+        rest = ink_counts(sleep.crop((x0, y0 + (y1 - y0) // 3, x1, y1))).get(rq.SPECTRA6["white"], 0)
+        assert top > 500 and rest == 0
+
+
+class TestPlatformFrame:
+    """``platform`` — a railway departure board after dark: Lumen Round
+    Medium dots for the body, Round Bold for the matched phrase, the book as
+    the destination and the station clock underneath."""
+
+    THEME = "platform"
+    ROW = dict(
+        display_quote="It was at ten o'clock today that the first of all Time Machines began its career.",
+        matched_text="ten o'clock",
+        author="H. G. Wells",
+        title="The Time Machine",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="10:00", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.7
+        assert rq.FRAME_SPECS[self.THEME].render is rq.render_platform_frame
+
+    @pytest.mark.parametrize("instance, share", [("Medium", "_PLATFORM_MEDIUM_DOT"), ("Bold", "_PLATFORM_BOLD_DOT")])
+    def test_dot_shares_are_measured_from_the_face(self, instance, share):
+        """A full stop is one dot: its width at 1000 px is the instance's dot
+        in thousandths of the 100-unit cell."""
+        font = rq.load_font([(rq.LUMEN_VARIABLE, instance)], size=1000)
+        canvas = Image.new("L", (1000, 1200), 0)
+        ImageDraw.Draw(canvas).text((0, 0), ".", font=font, fill=255)
+        box = canvas.getbbox()
+        assert box is not None
+        assert abs((box[2] - box[0]) / 100 - getattr(rq, share)) < 0.02
+
+    def test_bold_dots_are_always_bigger(self):
+        for pitch in rq._PLATFORM_MESSAGE_PITCHES:
+            medium, bold = rq._platform_diameter(pitch, False), rq._platform_diameter(pitch, True)
+            assert medium < bold <= pitch, pitch
+            assert pitch - medium >= 1, "Medium dots must leave a gap"
+
+    def test_matched_phrase_is_drawn_in_bigger_dots(self):
+        """With and without the matched phrase, the same words: Bold dots put
+        more amber on the board than Medium ones."""
+        x0, y0, x1, y1 = rq._PLATFORM_WINDOW
+        message = (x0, rq._PLATFORM_MESSAGE[0], x1, rq._PLATFORM_MESSAGE[1])
+        yellow = rq.SPECTRA6["yellow"]
+        lit = ink_counts(self._render().crop(message)).get(yellow, 0)
+        plain = ink_counts(self._render(row={**self.ROW, "matched_text": ""}).crop(message)).get(yellow, 0)
+        assert lit > plain * 1.05
+
+    def test_short_quotes_get_big_dots_and_the_longest_still_fits(self):
+        width = rq._PLATFORM_WINDOW[2] - rq._PLATFORM_WINDOW[0] - 2 * rq._PLATFORM_INSET
+        height = rq._PLATFORM_MESSAGE[1] - rq._PLATFORM_MESSAGE[0]
+        short = rq._platform_message_words(make_row(display_quote="It was a little after four now."))
+        assert rq._platform_fit_message(short, width, height)[0] == rq._PLATFORM_MESSAGE_PITCHES[0]
+        longest = max((r["display_quote"] for r in iter_jsonl(pathlib.Path(pq.DEFAULT_DATABASE_PATH))), key=len)
+        words = rq._platform_message_words(make_row(display_quote=longest, matched_text=""))
+        pitch, _rows, lines = rq._platform_fit_message(words, width, height)
+        assert sum(len(line) for line in lines) == len(words), "a word was dropped"
+
+    def test_long_destinations_are_truncated_with_dots(self):
+        words = rq._platform_words("Around the World in Eighty Days", bold=True)
+        line = rq._platform_truncate(words, 60)
+        assert rq._platform_line_width(line) <= 60
+        assert [g for g, _ in line[-1][-3:]] == ["."] * 3
+        assert rq._platform_truncate(words, 1000) == words
+
+    def test_the_board_is_a_clock(self):
+        """The render time is the departure and the clock; the board changes
+        with every minute, and nothing else about it does."""
+        a, b = self._render(time_str="10:00"), self._render(time_str="10:05")
+        diff = ImageChops.difference(a, b).getbbox()
+        assert diff is not None
+        assert diff[1] >= rq._PLATFORM_HEAD_TOP and diff[3] <= rq._PLATFORM_WINDOW[3]
+        assert not ImageChops.difference(a.crop((0, rq._PLATFORM_LABEL_TOP, 800, rq._PLATFORM_CLOCK_TOP)),
+                                         b.crop((0, rq._PLATFORM_LABEL_TOP, 800, rq._PLATFORM_CLOCK_TOP))).getbbox()
+        assert pixel_bytes(self._render(time_str="10:00")) == pixel_bytes(a)
+
+    def test_on_palette_and_downscales(self):
+        image = self._render()
+        assert distinct_inks(image) <= {rq.SPECTRA6[k] for k in ("black", "yellow", "red", "blue", "white")}
+        small = self._render(size=(320, 192))
+        assert pixel_bytes(small) == pixel_bytes(image.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestPlatformSleepFrame:
+    """``platform``'s own sleep frame: no further departures, a good-night
+    message, and the clock dark."""
+
+    def test_is_the_spec_sleep_renderer(self):
+        assert rq.FRAME_SPECS["platform"].sleep is rq.render_platform_sleep
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_platform_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "03:00", "bogus"):
+            assert pixel_bytes(rq.render_platform_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_platform_sleep("22:00", 320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_clock_is_dark(self):
+        x0, _, x1, y1 = rq._PLATFORM_WINDOW
+        clock = (x0, rq._PLATFORM_MESSAGE[1] + 8, x1, y1)
+        sleep = rq.render_platform_sleep("22:00", 800, 480).crop(clock)
+        day = rq.render("22:00", make_row(**TestPlatformFrame.ROW), 800, 480, mode="production",
+                        theme="platform").crop(clock)
+        assert rq.SPECTRA6["yellow"] not in ink_counts(sleep)
+        assert ink_counts(day).get(rq.SPECTRA6["yellow"], 0) > 300
+
+
 class TestSplitflapFrame:
     """``splitflap`` — a split-flap message board: capitals in the board's
     character set on a fixed tile grid, the matched phrase on yellow tiles,

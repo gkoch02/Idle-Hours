@@ -172,6 +172,10 @@ SHOJUMARU_REGULAR = str(BASE_DIR / "fonts/shojumaru/Shojumaru-Regular.ttf")
 # The condensed proportions are what read as console UI. Falls back through
 # heavy sans before the Playfair chain.
 ANTONIO_VARIABLE = str(BASE_DIR / "fonts/antonio/Antonio-Variable.ttf")
+# Lumen (Font Studio, OFL) — a 5x7 LED dot-matrix face on a strict grid, one
+# dot every tenth of an em. Variable Weight (dot size, 100..900) and
+# Roundness axes. ``gantry`` reads it as dot bitmaps, not as outlines.
+LUMEN_VARIABLE = str(BASE_DIR / "fonts/lumen/Lumen-Variable.ttf")
 # Oswald (Vernon Adams / Kalapi Gajjar / Cyreal, OFL) — the free stand-in for
 # the heavy condensed grotesque of *Control*'s title cards; variable Weight
 # axis with ExtraLight..Bold named instances. Used by ``control``.
