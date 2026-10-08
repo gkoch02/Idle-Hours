@@ -8931,3 +8931,45 @@ class TestSplitflapSleepFrame:
         for col, row in rq._SPLITFLAP_MOON:
             x, y = rq._splitflap_tile_xy(col, row)
             assert image.getpixel((x + 4, y + 4)) == rq.SPECTRA6["yellow"]
+
+
+class TestPaintHatchedTone:
+    """``paint_hatched_tone``: a parallel line family whose weight tracks a
+    tone field at constant pitch (``witcher`` uses it)."""
+
+    def test_hatch_weight_tracks_tone(self):
+        img = Image.new("RGB", (300, 100), rq.SPECTRA6["white"])
+        rq.paint_hatched_tone(img, (0, 0, 300, 100), lambda x, y: x / 300.0,
+                              33.0, 5.0, rq.SPECTRA6["black"])
+        px = img.load()
+        thirds = [0, 0, 0]
+        for y in range(100):
+            for x in range(300):
+                if px[x, y] == rq.SPECTRA6["black"]:
+                    thirds[x // 100] += 1
+        assert thirds[0] < thirds[1] < thirds[2], (
+            f"hatch ink per tone third is {thirds} — line weight is not tracking the tone field"
+        )
+        # The mean tones of the outer thirds are 1/6 and 5/6; the painted-ink
+        # ratio should sit in that neighbourhood, not merely be ordered.
+        assert thirds[2] > 3 * thirds[0], f"tone contrast collapsed: {thirds}"
+
+    def test_hatch_never_saturates(self):
+        img = Image.new("RGB", (120, 120), rq.SPECTRA6["white"])
+        rq.paint_hatched_tone(img, (0, 0, 120, 120), lambda x, y: 1.0,
+                              33.0, 5.0, rq.SPECTRA6["black"])
+        black = ink_counts(img).get(rq.SPECTRA6["black"], 0)
+        assert black / (120 * 120) <= 0.85 + 0.05, (
+            "a full-tone hatch filled past max_duty — paper must survive between the "
+            "lines or the mechanism collapses to flat ink"
+        )
+        assert ink_counts(img).get(rq.SPECTRA6["white"], 0) > 0
+
+    def test_hatch_respects_ground(self):
+        img = Image.new("RGB", (60, 60), rq.SPECTRA6["white"])
+        ImageDraw.Draw(img).rectangle((20, 20, 39, 39), fill=rq.SPECTRA6["red"])
+        rq.paint_hatched_tone(img, (0, 0, 60, 60), lambda x, y: 1.0,
+                              33.0, 5.0, rq.SPECTRA6["black"],
+                              ground=frozenset({rq.SPECTRA6["white"]}))
+        counts = ink_counts(img.crop((20, 20, 40, 40)))
+        assert counts == {rq.SPECTRA6["red"]: 400}, "hatch painted over a non-ground ink"

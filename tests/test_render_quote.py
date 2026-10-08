@@ -3662,3 +3662,150 @@ class TestMalformedTime:
             rq.parse_args()
         assert exc.value.code == 2
         assert "not a valid HH:MM time" in capsys.readouterr().err
+
+
+class TestSourceCardFontRole:
+    """The ``card_<base>`` font roles the source card reads."""
+
+    def test_no_theme_overrides_card_quote_bold(self):
+        """``card_quote_bold`` is a per-theme escape hatch nobody needs today.
+
+        It existed for one theme whose display face was ASCII-only, to keep
+        that face off the source card; no theme needs it now, so every theme
+        falls through to ``quote_bold``. The seam stays because
+        the hazard is a property of PIL rather than of that one font — but
+        docs/themes.md states no theme uses it, so this fails the moment that
+        stops being true and the doc needs updating with it.
+        """
+        for theme in sorted(rq.THEMES):
+            bold = rq.theme_font_candidates(theme, "quote_bold")
+            card = rq.theme_font_candidates(theme, "card_quote_bold")
+            assert card == bold, (
+                f"theme {theme} overrides card_quote_bold. That is a supported "
+                f"escape hatch, but docs/themes.md says no theme uses it — update the "
+                f"'no theme uses it today' note in the fonts section alongside it."
+            )
+
+    def test_card_role_fallback_chain_handles_unknown_themes(self):
+        """``theme_font_candidates`` resolves a ``card_<base>`` role
+        through three layers: theme's override, theme's base role, then
+        default's base role. A typoed theme name should still produce
+        the default's ``quote_bold`` chain rather than raising
+        ``KeyError`` mid-render."""
+        chain = rq.theme_font_candidates("nonexistent_theme", "card_quote_bold")
+        assert chain == rq.THEME_FONTS["default"]["quote_bold"], (
+            "unknown theme's card_quote_bold didn't fall through to default's quote_bold"
+        )
+
+
+class TestRigidMatchSpacing:
+    """Themes in ``_THEMES_RIGID_MATCH_SPACING`` keep the matched phrase's
+    inter-word gaps at the bold face's natural width; only the body's gaps
+    absorb justification slack."""
+
+    def test_gothic_in_rigid_match_spacing_set(self):
+        """``_THEMES_RIGID_MATCH_SPACING`` controls whether a line's
+        bold-internal inter-word gaps absorb justification slack.
+        ``gothic`` must be in this set; pin it explicitly so a future
+        rename or reshuffle doesn't silently drop the rigid contract and
+        stretch its blackletter phrase into separate clauses."""
+        assert "gothic" in rq._THEMES_RIGID_MATCH_SPACING
+
+    def test_rigid_match_spacing_keeps_bold_internal_spaces_at_zero(self):
+        """The helper splits slack across only the elastic (non-bold)
+        spaces when ``rigid_match`` is True. Two bold-internal spaces
+        out of five must contribute zero; the remaining three split
+        20 px of slack into 7 / 7 / 6 (base=6, remainder=2 distributed
+        to the first two elastic positions)."""
+        space_is_bold = [False, True, True, False, False]
+        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=True)
+        assert distribute == [7, 0, 0, 7, 6], distribute
+
+    def test_loose_match_spacing_distributes_evenly(self):
+        """Default contract (``rigid_match=False``) treats every space
+        equally — slack=20 across 5 spaces is 4 each."""
+        space_is_bold = [False, True, True, False, False]
+        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=False)
+        assert distribute == [4, 4, 4, 4, 4], distribute
+
+    def test_rigid_match_falls_through_to_ragged_when_all_spaces_bold(self):
+        """If every inter-word space on a line happens to sit inside
+        the matched phrase (a long matched phrase wrapping onto its
+        own line), there's nothing elastic left to absorb slack. The
+        helper returns an empty list so the call site short-circuits
+        to ragged-right rather than awkwardly stretching the bold
+        face's gaps."""
+        space_is_bold = [True, True, True]
+        distribute = rq._justify_distribution(space_is_bold, slack=30, rigid_match=True)
+        assert distribute == [], distribute
+
+    def test_loose_match_falls_through_to_ragged_when_no_spaces(self):
+        """Empty space list (no inter-word gaps on the line) → empty
+        distribution either way; the call site uses
+        ``space_is_bold and …`` to guard."""
+        assert rq._justify_distribution([], slack=15, rigid_match=False) == []
+        assert rq._justify_distribution([], slack=15, rigid_match=True) == []
+
+    def test_rigid_match_render_packs_matched_phrase_tighter_than_loose_baseline(self, monkeypatch):
+        """End-to-end pin of the bold-internal-spacing contract, driven
+        through ``gothic``: a member of ``_THEMES_RIGID_MATCH_SPACING`` whose
+        matched phrase paints as a red-and-yellow dither, so the red-pixel
+        sweep below finds the matched-phrase line. The invariant (rigid
+        bold-internal spacing packs the bold run tighter than loose
+        justification) is theme-agnostic."""
+        # Sized so the block justifies under ``justify_flags``: every
+        # non-last line carries well over three gaps and stretches each
+        # by far less than 0.45 em, and the phrase sits on the first,
+        # justified line.
+        row = {
+            "display_quote": (
+                "At a quarter past two the wind fell away to nothing, "
+                "and such a stillness lay on the sea and on the men at "
+                "the rail that no one of us spoke a word for an hour."
+            ),
+            "matched_text": "quarter past two",
+            "title": "T",
+            "author": "A",
+            "source_id": "1",
+            "bucket": "h2_quarter_past",
+            "resolved_bucket": "h2_quarter_past",
+            "quality_score": 80,
+            "used_fallback": False,
+        }
+        rigid = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
+
+        monkeypatch.setattr(rq_core, "_THEMES_RIGID_MATCH_SPACING", frozenset())
+        loose = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
+
+        red = rq.SPECTRA6["red"]
+
+        def matched_phrase_span(img) -> tuple[int, int]:
+            """Return (leftmost, rightmost) x-coordinate of the red
+            band that holds the matched phrase. We skip the canvas
+            border (gothic's outer red rectangle at y=14 and quatrefoil
+            lobes at the corners) by sampling only the dense quote-body
+            region (y in [80, 380]) and picking the row with the most
+            red pixels — the matched-phrase line."""
+            best_row = (0, 0, 0)  # (count, left, right)
+            for y in range(80, 380):
+                red_xs = [x for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN) if img.getpixel((x, y)) == red]
+                if len(red_xs) > best_row[0]:
+                    best_row = (len(red_xs), red_xs[0], red_xs[-1])
+            return best_row[1], best_row[2]
+
+        rigid_l, rigid_r = matched_phrase_span(rigid)
+        loose_l, loose_r = matched_phrase_span(loose)
+        rigid_span = rigid_r - rigid_l
+        loose_span = loose_r - loose_l
+        # Rigid run must occupy strictly fewer x-pixels than the loose
+        # baseline on this particular row (the matched-phrase line is
+        # justified by construction — the test quote was sized so the
+        # phrase lands on a non-last 75%+-full line). At least 4 px
+        # narrower for the typical two-bold-spaces / ~30 px-of-slack
+        # case; 1 px is too tight (PIL line-break math at the wrap
+        # boundary can shift by ±1 due to the elastic-only base+1
+        # distribution).
+        assert rigid_span + 4 <= loose_span, (
+            f"rigid bold-phrase span {rigid_span}px did not pack tighter than "
+            f"loose baseline {loose_span}px — bold-internal spaces are still elastic"
+        )

@@ -2,6 +2,8 @@
 
 Not collected (pytest only collects ``tests/``); restore them with the theme.
 """
+# Theme-agnostic tests that sat in this class (they test live code) were
+# kept in the live suite rather than archived.
 # Original module header, kept so the tests read as they did:
 """Smoke tests for the custom-render themes that bypass the standard literary layout.
 
@@ -62,43 +64,6 @@ class TestIntaglioEngraving:
 
     def _frame(self, time_str):
         return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="intaglio"))
-
-    def test_hatch_weight_tracks_tone(self):
-        img = Image.new("RGB", (300, 100), rq.SPECTRA6["white"])
-        rq.paint_hatched_tone(img, (0, 0, 300, 100), lambda x, y: x / 300.0,
-                              33.0, 5.0, rq.SPECTRA6["black"])
-        px = img.load()
-        thirds = [0, 0, 0]
-        for y in range(100):
-            for x in range(300):
-                if px[x, y] == rq.SPECTRA6["black"]:
-                    thirds[x // 100] += 1
-        assert thirds[0] < thirds[1] < thirds[2], (
-            f"hatch ink per tone third is {thirds} — line weight is not tracking the tone field"
-        )
-        # The mean tones of the outer thirds are 1/6 and 5/6; the painted-ink
-        # ratio should sit in that neighbourhood, not merely be ordered.
-        assert thirds[2] > 3 * thirds[0], f"tone contrast collapsed: {thirds}"
-
-    def test_hatch_never_saturates(self):
-        img = Image.new("RGB", (120, 120), rq.SPECTRA6["white"])
-        rq.paint_hatched_tone(img, (0, 0, 120, 120), lambda x, y: 1.0,
-                              33.0, 5.0, rq.SPECTRA6["black"])
-        black = ink_counts(img).get(rq.SPECTRA6["black"], 0)
-        assert black / (120 * 120) <= 0.85 + 0.05, (
-            "a full-tone hatch filled past max_duty — paper must survive between the "
-            "lines or the mechanism collapses to flat ink"
-        )
-        assert ink_counts(img).get(rq.SPECTRA6["white"], 0) > 0
-
-    def test_hatch_respects_ground(self):
-        img = Image.new("RGB", (60, 60), rq.SPECTRA6["white"])
-        ImageDraw.Draw(img).rectangle((20, 20, 39, 39), fill=rq.SPECTRA6["red"])
-        rq.paint_hatched_tone(img, (0, 0, 60, 60), lambda x, y: 1.0,
-                              33.0, 5.0, rq.SPECTRA6["black"],
-                              ground=frozenset({rq.SPECTRA6["white"]}))
-        counts = ink_counts(img.crop((20, 20, 40, 40)))
-        assert counts == {rq.SPECTRA6["red"]: 400}, "hatch painted over a non-ground ink"
 
     def test_roulette_curve_closes_and_stays_dense(self):
         pts = rq._intaglio_roulette_points(0.0, 0.0, 34, 10, 8.0)
