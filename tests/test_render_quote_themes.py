@@ -7088,14 +7088,27 @@ class TestYorhaFrame(_CustomFrameCase):
         above = ink_counts(scene.crop((x0 + 40, y0 - 8, x1 - 40, y0 - 2))).get(rq.SPECTRA6["black"], 0)
         assert below > above * 1.5
 
-    def test_pod_is_modelled_with_a_lens(self):
+    def test_pod_is_lit_from_the_upper_left(self):
         image = self._render()
+        faces = rq._yorha_pod_faces()
+
+        def black_share(name):
+            xs, ys = [p[0] for p in faces[name]], [p[1] for p in faces[name]]
+            # The face's interior, clear of its outline.
+            counts = ink_counts(image.crop((min(xs) + 3, min(ys) + 2, max(xs) - 2, max(ys) - 1)))
+            return counts.get(rq.SPECTRA6["black"], 0) / sum(counts.values())
+
+        top = image.crop((min(p[0] for p in faces["top"]) + 12, faces["top"][2][1] + 2,
+                          faces["top"][1][0] - 2, faces["top"][0][1] - 1))
+        assert set(ink_counts(top)) == {rq.SPECTRA6["white"]}               # the lit top
+        assert black_share("front") > 0.15                                   # the shaded end, and its port
+        hands = [arm[-1] for arm in faces["arms"]]
+        for hx, hy in hands:
+            assert ink_counts(image.crop((hx - 3, hy - 1, hx, hy + 2))) == {rq.SPECTRA6["black"]: 9}
+        # The white keyline lifts it off the stippled sheet, and nothing reaches the menu.
         cx, cy = rq._YORHA_POD_CENTRE
-        pod = ink_counts(image.crop((cx - 60, cy - 42, cx + 48, cy + 22)))
-        assert pod.get(rq.SPECTRA6["black"], 0) > 900
-        assert pod.get(rq.SPECTRA6["white"], 0) > 1500
-        lens = ink_counts(image.crop((cx + 24, cy - 8, cx + 41, cy + 9)))
-        assert lens.get(rq.SPECTRA6["black"], 0) > 120 and lens.get(rq.SPECTRA6["white"], 0) > 4
+        assert min(p[1] for p in faces["top"]) - 3 > rq._YORHA_MENU_RECT[3]
+        assert image.getpixel((faces["side"][0][0] - 2, cy)) == rq.SPECTRA6["white"]
 
     def test_hour_is_the_inverted_row(self):
         rows = rq._yorha_menu_rows()
@@ -7108,10 +7121,35 @@ class TestYorhaFrame(_CustomFrameCase):
                 black = counts.get(rq.SPECTRA6["black"], 0)
                 assert (black > area * 0.6) == (i + 1 == hour), (hour, i)
 
+    def test_menu_labels_sit_centred_in_their_rows(self):
+        """EB Garamond's ascent carries accent room over the caps, so a
+        top-anchored label sat low; the cap height is centred instead."""
+        image = self._render(time_str="05:00")
+        for i, (x0, y0, _x1, y1) in enumerate(rq._yorha_menu_rows()):
+            ink = rq.SPECTRA6["white" if i == 4 else "black"]
+            rows = [y for y in range(y0 + 2, y1 - 1)
+                    if any(image.getpixel((x, y)) == ink for x in range(x0 + 24, x0 + 60))]
+            above, below = rows[0] - y0, y1 - rows[-1]
+            assert abs(above - below) <= 2, (i, above, below)
+
+    def test_phrase_box_hugs_the_ink(self):
+        """The bar spans the bold face's ascender top to its descender foot
+        with an even margin, not the whole line height."""
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        placed = rq._yorha_layout(draw, make_row(**self.ROW))
+        bold = next(item[3] for item in placed if item[4])
+        (bx0, by0, bx1, by1), = rq._yorha_phrase_boxes(draw, placed)
+        y = next(item[1] for item in placed if item[4])
+        _l, ink_top, _r, ink_foot = bold.getbbox("hp", anchor="la")
+        assert 0 < (y + ink_top) - by0 <= bold.size * 0.15
+        assert 0 < by1 - (y + ink_foot) <= bold.size * 0.15
+        assert abs(((y + ink_top) - by0) - (by1 - (y + ink_foot))) <= 1
+        assert (by1 - by0) < bold.size * 1.3
+
     def test_phrase_is_knocked_out_of_a_black_box(self):
         image = self._render()
         draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
-        boxes = rq._lumon_hover_boxes(draw, rq._yorha_layout(draw, make_row(**self.ROW)))
+        boxes = rq._yorha_phrase_boxes(draw, rq._yorha_layout(draw, make_row(**self.ROW)))
         assert len(boxes) == 1
         box = ink_counts(image.crop(boxes[0]))
         area = (boxes[0][2] - boxes[0][0]) * (boxes[0][3] - boxes[0][1])
