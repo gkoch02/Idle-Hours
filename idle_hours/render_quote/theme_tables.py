@@ -213,6 +213,7 @@ THEME_ORDER: tuple[str, ...] = (
     "traumateam",
     "redacted",
     "gantry",
+    "platform",
     "diags",
 )
 # Themes registered in THEMES but excluded from every rotation (button B, web
@@ -1197,6 +1198,20 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
+    },
+    # A railway departure board at night. A custom frame
+    # (``render_platform_frame``): amber Round Medium dots, the matched phrase
+    # in Round Bold. Palette serves the palette-only paths (see the note above
+    # ``THEMES``).
+    "platform": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["yellow"],
     },
     "hal": {
         "page_bg": SPECTRA6["black"],
@@ -3136,6 +3151,16 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "platform": {
+        # Lumen's Round instances, Medium for the body and Bold for the
+        # matched phrase: on this board weight is dot size. The frame places
+        # the dots from the face's grid and draws them at the diameters
+        # measured from these two instances (``_PLATFORM_MEDIUM_DOT`` /
+        # ``_PLATFORM_BOLD_DOT``); these chains serve the palette-only paths.
+        "quote_regular": [(LUMEN_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(LUMEN_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "redacted": {
         # Special Elite, as ``dispatch``: the Bureau's documents are typed.

@@ -626,6 +626,11 @@ SCENARIOS: list[dict] = [
         "theme": "gantry",
     },
     {
+        "name": "sleep_platform",
+        "mode": "sleep",
+        "theme": "platform",
+    },
+    {
         "name": "sleep_lieder",
         "mode": "sleep",
         "theme": "lieder",

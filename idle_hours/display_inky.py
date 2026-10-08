@@ -113,6 +113,7 @@ THEME_SATURATION: dict[str, float] = {
     "observation": 0.7,
     "outrun": 0.7,
     "plaque": 0.7,
+    "platform": 0.7,
     "pulp": 0.7,
     "questline": 0.7,
     "risograph": 0.7,  # two spot inks and no black to anchor them

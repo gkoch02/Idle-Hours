@@ -258,6 +258,7 @@ def parse_args() -> argparse.Namespace:
         "traumateam",
         "redacted",
         "gantry",
+        "platform",
         "diags",
     ]
     parser.add_argument(

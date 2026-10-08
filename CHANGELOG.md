@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `platform` theme: a railway departure board after dark, in the Lumen
+  face's Round Medium and Round Bold. The book is the 1st train's
+  destination, "via" its author; the quote runs as the calling points with
+  the matched phrase in heavier dots; the station clock sits underneath. Its
+  sleep frame reads "No further departures". Every dot is placed from the
+  face's grid at the size each weight draws it.
 - New `gantry` theme: an overhead motorway message sign at night. The quote
   runs in amber LEDs on a full-matrix sign hung from a steel truss, the
   matched phrase lit white and bold, with tail-light streaks running off

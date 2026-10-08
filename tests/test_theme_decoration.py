@@ -118,6 +118,7 @@ CUSTOM_FRAME_THEMES = (
     "traumateam",
     "redacted",
     "gantry",
+    "platform",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its
