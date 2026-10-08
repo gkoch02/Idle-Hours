@@ -78,6 +78,11 @@ HEADING_PREFIX = re.compile(
     # period the next word has to be capitalised prose, so a lone numeral in
     # running text is never taken.
     r"(?!LIV\b)(?=[CLXVI]{2})C?(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?=\s+[A-Z][a-z])"
+    r"|"
+    # ...and a single-letter numeral with no period: "V When Archie got back",
+    # "L She plunged into" (issue #403). Only V / X / L: a lone I is the
+    # pronoun, and a lone C is as often a label ("C Company").
+    r"[VXL](?=\s+[A-Z][a-z])"
     r")\s*",
 )
 
