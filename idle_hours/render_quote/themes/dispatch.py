@@ -1,6 +1,7 @@
-"""The ``dispatch`` theme's border painter and the code only it uses.
+"""The ``dispatch`` theme's border painter, a typewritten field dossier: cream paper,
+tractor-feed perforations, a maroon rubber stamp and filing punches.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § dispatch
 """
 
 from __future__ import annotations

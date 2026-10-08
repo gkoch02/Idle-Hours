@@ -1,6 +1,7 @@
-"""The ``saloon`` theme's border painter and the code only it uses.
+"""The ``saloon`` theme's border painter, a Wild West "WANTED" broadside: foxed paper,
+banner bands, a rusted double-rule frame, fleurons and drop pendants.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § saloon
 """
 
 from __future__ import annotations

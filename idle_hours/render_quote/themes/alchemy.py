@@ -1,6 +1,7 @@
-"""The ``alchemy`` theme's border painter and the code only it uses.
+"""The ``alchemy`` theme's border painter, a parchment grimoire: a red ritual rule
+and pentagrams round a stippled blue transmutation circle.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § alchemy
 """
 
 from __future__ import annotations
@@ -98,34 +99,10 @@ def _draw_alchemical_triangle(
 
 
 def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
-    """Paint a full transmutation-circle ritual diagram on the panel:
-    rectangular ritual boundary + four corner pentagrams + big
-    inscribed transmutation circle (double ring + incantation
-    tick-band + inscribed pentagram + inner pentagon) + the four
-    classical-element glyphs at the outer corners of the inner figure.
-
-    0. **Parchment halftone**: 14 of every 16 yellow ``page_bg`` pixels
-       become white on a 4×4 Bayer tile, leaving pale ivory flecked with
-       yellow instead of the panel's vivid yellow.
-    1. **Outer ritual rule**: a red rectangle, line width 2.
-    2. **Four corner pentagrams** in red, radius 22, each in its circle,
-       inside the rule.
-    3. **Inscribed transmutation circle** centred on the canvas: two
-       concentric rings with radial ticks between them (standing in for
-       inscribed incantation text), a large inscribed pentagram, and the
-       inner pentagon it generates. The body quote overlays it, so the
-       whole figure is a 50% blue stipple (dotted hairlines) the black
-       serif sits on.
-    4. **Four classical-element glyphs** at the outer corners of the
-       inner figure, each in its own stippled colour: 🜃 Earth (olive,
-       top-left), 🜄 Water (sky, top-right), 🜂 Fire (tangerine,
-       bottom-left), 🜁 Air (violet, bottom-right). The heavy downward
-       elements sit on top, the light upward ones below; the centre
-       positions are left to the circle's arcs.
-
-    The red boundary and corner sigils frame the text; the blue circle
-    stands behind it (the red operative / blue philosophical split of
-    alchemical manuscripts).
+    """Paint the transmutation-circle ritual diagram: parchment halftone, red
+    ritual rule and corner pentagrams, the inscribed circle as a 50% blue
+    stipple behind the body quote, and the four classical-element glyphs.
+    Design notes: docs/themes.md § alchemy.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size

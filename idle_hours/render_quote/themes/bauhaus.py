@@ -1,6 +1,7 @@
-"""The ``bauhaus`` theme's border painter and the code only it uses.
+"""The ``bauhaus`` theme's border painter, a Bauhaus poster frame in the three primaries:
+corner shapes, concentric rings, semicircles and floating elements.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § bauhaus
 """
 
 from __future__ import annotations

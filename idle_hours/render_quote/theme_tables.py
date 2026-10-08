@@ -173,11 +173,8 @@ THEMES = {
         "ornament_light": SPECTRA6["black"],
         "source": SPECTRA6["white"],
     },
-    # Pure typography: no colour accent at all. Matched phrase differentiates by
-    # bold weight against the same ink colour, like an old broadsheet. The
-    # white ground is softened by a 12.5% black Bayer halftone painted in
-    # ``draw_newsprint_border``'s Layer 0 so the page reads as cheap newsprint
-    # pulp rather than the panel's flat pure white. Quiet.
+    # Pure typography: no colour accent; the matched phrase differs by bold
+    # weight alone, like an old broadsheet. The paper tone lives in the border.
     "newsprint": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -188,13 +185,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Retro terminal / Apollo-era mission monitor. Green body on black with a
-    # yellow accent for the matched phrase. Pure green reads dim and muddy on
-    # black at viewing distance, so ``_draw_text_body`` stipples green body
-    # glyphs 50/50 with white (``draw_text_dithered``) to lift them to a
-    # brighter mint. The quote marks dither green/white for the same tone.
-    # The corner brackets and scanlines in ``draw_nightvision_border`` stay
-    # solid green: their HUD silhouette would break under stippling.
+    # Green on black. Pure green reads dim on black at distance, so
+    # ``_draw_text_body`` stipples the body (and quote marks) 50/50 with white.
     "nightvision": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["green"],
@@ -205,10 +197,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["green"],
     },
-    # Cathedral chronicle. Black ground, white body, red rubric for the
-    # matched phrase and the oversized blackletter quote marks.
-    # UnifrakturMaguntia fills both the ornament and quote-bold slots; body
-    # stays in EB Garamond so dense layouts still read.
+    # Cathedral chronicle: black ground, white body, red rubric.
     "gothic": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -223,11 +212,8 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
-    # Bauhaus poster. White ground, black body, blue for the matched time
-    # phrase, red for the oversized quotation marks — the three primaries
-    # used simultaneously, as in the Bauhaus palette. Jost (a Futura-adjacent
-    # geometric sans) carries the architectural-typography vibe and sits
-    # visually distinct from the serif-heavy themes.
+    # Bauhaus poster: blue matched phrase, red quote marks; the border adds
+    # the yellow, so all three primaries appear at once.
     "bauhaus": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -238,9 +224,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Golden-age comic panel. Yellow ground, black body for speech-bubble
-    # legibility, red matched phrase like a sound-effect callout. Bangers is
-    # an all-caps comic hand; the body shouting slightly is the point.
+    # Golden-age comic: yellow ground, black body for speech-bubble
+    # legibility, red matched phrase like a sound-effect callout.
     "comic": {
         "page_bg": SPECTRA6["yellow"],
         "text": SPECTRA6["black"],
@@ -251,11 +236,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
-    # Field dispatch / typewritten dossier. White paper, black typewriter
-    # ink, red matched phrase — the bichrome ribbon. Special Elite's uneven
-    # inking does most of the work; ``draw_dispatch_border`` adds the frame,
-    # tractor-feed perforations and red rubber stamp. Same palette as
-    # ``default``, different silhouette.
+    # Typewritten dossier: black ink, red matched phrase — the bichrome
+    # ribbon. Same palette as ``default``.
     "dispatch": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -268,12 +250,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Mid-century atomic age. The only theme with flat green as its ground,
-    # softened by ``draw_atomic_border``'s Layer 0 (one white pixel per 2×2
-    # tile — a 50/50 checkerboard reads minty pastel; 1-in-4 stays vivid).
-    # Black body in Atomic Age, red matched phrase and graphics: a
-    # rounded-corner Googie frame, an atom symbol at the top, and starbursts
-    # at the mid-edges.
+    # Atomic age: flat green ground, softened by the border's 1-in-4 white
+    # dither (a 50/50 checkerboard reads minty pastel; 1-in-4 stays vivid).
     "atomic": {
         "page_bg": SPECTRA6["green"],
         "text": SPECTRA6["black"],
@@ -299,10 +277,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Permanent-marker fridge doodle. White paper, black Sharpie body in
-    # Permanent Marker, blue matched phrase (a second marker), red quote
-    # marks. ``draw_marker_border`` paints in all four spot inks plus black —
-    # the one theme that uses every colour the panel has.
+    # Fridge doodle: black Sharpie body, blue matched phrase (a second
+    # marker), red quote marks; the border adds the other inks.
     "marker": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -313,10 +289,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Wild West saloon / "WANTED" broadside. Default palette shape (white,
-    # black, red) with the Rye slab face and a layered ground from
-    # ``draw_saloon_border``: red foxing speckles, a double-rule frame, banner
-    # bands, corner fleurons and mid-edge diamonds.
+    # "WANTED" broadside: the default palette shape; face and border differ.
     "saloon": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -327,12 +300,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Roman lapidary inscription. White stone ground, black body, red accent
-    # (the red lead carvers painted into the grooves) for the matched phrase
-    # and the SPQR cartouche. Cinzel Decorative is modelled on Trajan's
-    # Column. ``draw_roman_border`` adds limestone speckles, a tabula ansata
-    # with dovetail handles, the interpunct SPQR cartouche, mid-edge
-    # interpuncts and a laurel sprig.
+    # Roman inscription: red accent as rubrum, the red lead carvers painted
+    # into the grooves.
     "roman": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -343,11 +312,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Parchment alchemical manuscript: yellow ground, black body, red
-    # rubricated matched phrase, blue Hermetic ornaments (quote marks and
-    # the magic-circle sigils) — the blue mercury / red sulphur split of the
-    # Mutus Liber and Splendor Solis. IM Fell English body, MedievalSharp for
-    # the matched phrase and quote marks.
+    # Alchemical manuscript: red rubricated matched phrase, blue Hermetic
+    # ornaments — the blue mercury / red sulphur split of the Mutus Liber.
     "alchemy": {
         "page_bg": SPECTRA6["yellow"],
         "text": SPECTRA6["black"],
@@ -358,14 +324,9 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
-    # Art-deco poster: white ground, black body, Righteous display sans and a
-    # tangerine accent synthesised from red and yellow: 5/8 red : 3/8 yellow on
-    # ``BAYER_4x4`` (threshold 6/16). Don't use 50/50 — yellow's higher
-    # luminance makes it read washed-out amber. The dither is applied in two
-    # places that must share the tone: ``_draw_text_body`` stipples fills
-    # equal to ``accent``, and ``draw_deco_border``'s final pass flips its red
-    # pixels on the same threshold. Border: stepped-corner L-shapes plus a
-    # rising-sun motif on the top edge.
+    # Red accent stippled to tangerine (5/8 R : 3/8 Y on ``BAYER_4x4``,
+    # threshold 6) in two places that must share the tone: ``_draw_text_body``
+    # and ``draw_deco_border``'s final pass. 50/50 reads washed-out amber.
     "deco": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -376,10 +337,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Classroom chalkboard: black slate, white chalk body in Playwrite GB
-    # Joined Guides (British school joined cursive), yellow chalk accent.
-    # Same palette as ``dark``; the font and ``draw_chalkboard_border``'s
-    # wooden frame differentiate it.
+    # Chalkboard: same palette as ``dark``; the face and the border differ.
     "chalkboard": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -390,9 +348,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Hand-painted shop placard: white ground, black Patrick Hand SC body
-    # (hand-lettered small caps), red matched phrase. ``draw_placard_border``
-    # adds a doubled sign-painter's frame and red thumbtack corners.
+    # Hand-painted shop placard: black body, red matched phrase.
     "placard": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -403,9 +359,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Samurai cinema title card: black ground, white Shojumaru brush body, red
-    # matched phrase. ``draw_chanbara_border`` adds an off-canvas rising-sun
-    # disc bottom-right and a red chop seal top-left.
+    # Samurai cinema title card: white on black, red matched phrase.
     "chanbara": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -418,12 +372,8 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
-    # LCARS (Star Trek TNG-era interface). Black canvas, a tangerine "elbow"
-    # sidebar top-left and bottom-left, stacked yellow / coral / red pills
-    # with white callouts, condensed Antonio body. Tangerine uses the `deco`
-    # recipe (red sentinel + bbox post-pass flipping ~3/8 to yellow on
-    # BAYER_4x4 at threshold 6); the coral pill uses red + white per
-    # `(x+y)&1`. The yellow accent renders solid — no body reroute.
+    # LCARS console: the yellow accent renders solid (no body reroute); the
+    # chrome's tangerine is synthesised from the ornament slots below.
     "lcars": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -437,12 +387,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # 1960s Fillmore concert poster. Yellow ground, red-sentinel body that
-    # ``_draw_text_body`` stipples R+K to maroon to tame the
-    # red-on-yellow clash, saturated blue matched phrase, green and blue
-    # corner blob panels. ``draw_fillmore_border``'s 1-in-8 white-on-yellow
-    # Layer 0 makes the yellow read sun-faded. All six inks appear. Body in
-    # Bungee Shade, a 3D-blocked display face.
+    # Fillmore poster: ``text`` is a red sentinel ``_draw_text_body``
+    # stipples R+K to maroon, taming the red-on-yellow clash.
     "fillmore": {
         "page_bg": SPECTRA6["yellow"],
         "text": SPECTRA6["red"],
@@ -453,15 +399,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
-    # 17th-century celestial atlas (*Uranometria*, *Harmonia Macrocosmica*).
-    # White Cardo body on a navy ground, yellow stars in three magnitudes,
-    # Cassiopeia and Orion's Belt, and four corner ornaments (sun, crescent,
-    # compass rose, Saturn). ``page_bg`` is black; ``draw_firmament_border``
-    # synthesises navy (B+K 1:1) in Layer 0 by flipping ``(x+y) & 1`` pixels
-    # to blue. The yellow accent is a sentinel ``_draw_text_body`` reroutes to
-    # Y+W cream. The Milky Way's R+B+W lavender is painted as a sentinel and
-    # post-passed within its bbox, because ``_fill_swatch_stipple_3way``
-    # overwrites every rect pixel and would wipe the navy.
+    # Celestial atlas: white body on a navy ground the border synthesises
+    # from the black ``page_bg``; the yellow accent is a sentinel.
     "firmament": {
         "page_bg": SPECTRA6["black"],   # navy synthesised in Layer 0
         "text": SPECTRA6["white"],
@@ -472,11 +411,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Astrarium — astronomical-clock dashboard, a custom two-column layout
-    # (dial left, quote right, datum strip below) dispatched from ``render``.
-    # The dial's quadrants are tangerine (R+Y) / olive (Y+G) / teal (G+B) /
-    # black; the matched phrase uses the same R+Y 5/8:3/8 tangerine as the
-    # dial. The palette stays white/black/red for the palette-only paths
+    # Astrarium: custom frame; the palette serves the palette-only paths
     # (see the note above ``THEMES``).
     "astrarium": {
         "page_bg": SPECTRA6["white"],
@@ -488,23 +423,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Kanagawa — Japanese seascape built on the seigaiha (青海波) wave
-    # pattern rather than a literal Great Wave (polygon fills on six inks
-    # can't carry the print's brushwork; the silhouette read as rolling
-    # hills). Overlapping indigo fish-scale half-disks with three white arcs
-    # fill the bottom ~34% of the canvas; the deepest row gets a B+K navy
-    # post-pass.
-    #
-    # Above it: a vertically graduated sky-blue Bayer wash, five ink-stroke
-    # birds at fixed anchors, a faint stippled horizon, and a red hanko seal
-    # with a white 川 bottom-right whose base is post-passed to R+K maroon.
-    #
-    # The body sits in a cream rounded paper panel knocked out of the
-    # seigaiha (the clear-rect knockout) with a 1 px frame and a 2 px
-    # drop shadow. The cream is a sparse off-grid yellow scatter (~6%) rather
-    # than a Bayer pattern, which lattices visibly against the indigo.
-    #
-    # Yuji Boku sumi-brush body; solid red matched phrase tied to the hanko.
+    # Kanagawa seascape: black brush body on the cream paper card.
     "kanagawa": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -517,12 +436,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Cinema marquee. Custom frame (``render_marquee_frame``): a 1930s
-    # movie-palace facade — black ground, yellow bulb border, the book title
-    # as the Bungee Shade feature title, the quote below in white Cormorant
-    # Italic with a red matched phrase, and WRITTEN BY credit chrome in
-    # yellow. No HH:MM is drawn. Palette serves the palette-only paths (see
-    # the note above ``THEMES``).
+    # Cinema marquee: custom frame; the palette serves the palette-only
+    # paths (see the note above ``THEMES``).
     "marquee": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -533,11 +448,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["yellow"],
     },
-    # Major-arcana tarot card. Custom frame (``render_tarot_frame``): a
-    # centred card with a cream Y+W wash, doubled red+black border, the
-    # Roman-numeral hour above the trump's plate and the trump's own name at
-    # the foot, and the quote in EB Garamond with the matched phrase in
-    # Tyrian purple (R+B 1:1). Mirror-symmetric chrome.
+    # Tarot: custom frame; red + blue rubricated chrome, the matched phrase
+    # in Tyrian purple (R+B 1:1).
     "tarot": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -548,13 +460,8 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
-    # Gothic stained-glass lancet window. Custom frame
-    # (``render_vitrail_frame``): black lead came dividing jewel-toned panes
-    # in every solid ink and documented stipple recipe, a rose-window
-    # medallion with the Roman-numeral hour, and the quote in a clear
-    # white-glass cartouche. Matched phrase in R+B violet. The frame hardcodes
-    # its inks; this palette is for the palette-only paths (see the note
-    # above ``THEMES``).
+    # Stained-glass window: custom frame that hardcodes its inks; this
+    # palette is for the palette-only paths (see the note above ``THEMES``).
     "vitrail": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -565,14 +472,8 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
-    # Antique cartographer's chart. Cream Y+W Layer 0 plus a sparse R+G
-    # sepia foxing scatter (the ``newsprint`` / ``tarot`` aged-paper recipe).
-    # ``draw_cartograph_border`` paints two corner coastlines in R+G sepia, a
-    # 32 px R+Y compass rose bottom-left, a sea-serpent in the right margin,
-    # three italic Latin place labels, and knocks the body back to a cream
-    # cartouche via ``clear_rect`` (doubled red+black rule, registration
-    # corners). Body in IM Fell English Italic; the matched phrase is IM Fell
-    # Regular in red, so roman/italic plus colour do the differentiation.
+    # Antique chart: black italic body, upright red matched phrase, so
+    # roman/italic plus colour do the differentiation.
     "cartograph": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -585,12 +486,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Pixel RPG dialogue. Custom frame (``render_questline_frame``): a
-    # dithered pixel sky, a sprite, and a bordered dialogue box with the
-    # quote as NPC speech (matched phrase yellow), the author as nameplate
-    # and the title as footer. The frame hardcodes its inks; ``fit_quote``
-    # takes the theme name only to pick fonts. Palette serves the
-    # palette-only paths (see the note above ``THEMES``).
+    # Pixel RPG: custom frame that hardcodes its inks (``fit_quote`` takes
+    # the theme name only for fonts); see the note above ``THEMES``.
     "questline": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -601,12 +498,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # 16-bit SNES JRPG (FF VI / Chrono Trigger). Custom frame
-    # (``render_chrono_frame``): gradient twilight sky, stars, moon,
-    # mountains, the translucent-blue gradient dialogue window with a bevel,
-    # a portrait sub-window, and the quote as dialogue (matched phrase in
-    # yellow Pixelify Sans Bold). Palette serves the palette-only paths (see
-    # the note above ``THEMES``).
+    # 16-bit JRPG: custom frame; the palette serves the palette-only paths
+    # (see the note above ``THEMES``).
     "chrono": {
         "page_bg": SPECTRA6["blue"],
         "text": SPECTRA6["white"],
@@ -617,12 +510,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Synthwave / Outrun. Custom frame (``render_outrun_frame``): a Bayer
-    # gradient sky from navy to a magenta horizon, a banded half-sun, and a
-    # cyan/magenta neon perspective grid. White Oxanium quote in the upper
-    # sky, matched phrase in red-biased magenta (R+B 5/8:3/8; a G+B teal read
-    # dim on the cool sky), Antonio credit line. Palette serves the
-    # palette-only paths (see the note above ``THEMES``).
+    # Synthwave: custom frame; the matched phrase is red-biased magenta
+    # (R+B 5/8:3/8). The palette serves the palette-only paths.
     "outrun": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1507,10 +1396,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "gothic": {
-        # UnifrakturMaguntia covers the matched-phrase bold as well as the
-        # ornament, so short phrases sit in the body like a red blackletter
-        # heading; the body stays EB Garamond for legibility. EB Garamond Bold
-        # is the second rank for a missing-Unifraktur install.
+        # Blackletter for the matched phrase and quote marks; EB Garamond
+        # body for legibility, and its Bold behind a missing Unifraktur.
         "quote_regular": [
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
@@ -1575,10 +1462,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "dispatch": {
-        # Special Elite ships one weight and its uneven inking is the point,
-        # so the matched phrase differs by colour alone — a bichrome ribbon
-        # shifting black to red. Falls back through Space Mono / DejaVu Sans
-        # Mono so a missing install stays typewriter-adjacent.
+        # Single weight: the matched phrase differs by colour alone. Mono
+        # fallbacks keep a missing install typewriter-adjacent.
         "quote_regular": [
             SPECIALELITE_REGULAR,
             SPACEMONO_REGULAR,
@@ -1598,9 +1483,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "atomic": {
-        # Atomic Age (OFL) — chunky 1950s display face. Regular only, so the
-        # matched phrase differs by colour. Falls back through heavy sans
-        # before the Playfair chain.
+        # Regular only, so the matched phrase differs by colour.
         "quote_regular": [
             ATOMICAGE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1622,9 +1505,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "marker": {
-        # Permanent Marker (Apache 2.0) — single-weight marker hand; the
-        # matched phrase differs by its blue. Falls back through heavy sans
-        # before the Playfair chain.
+        # Single weight; the matched phrase differs by its blue.
         "quote_regular": [
             PERMANENTMARKER_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1646,10 +1527,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "roman": {
-        # Cinzel Decorative (OFL) — Trajan's Column capitalis revival. The
-        # matched phrase steps up one weight (Regular → Bold) rather than
-        # switching face, which would break the inscription; Black carries the
-        # SPQR cartouche and quote marks. Falls back through heavy serifs.
+        # The matched phrase steps up a weight rather than switching face,
+        # which would break the inscription; Black carries the marks.
         "quote_regular": [
             CINZELDECORATIVE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
@@ -1673,9 +1552,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "saloon": {
-        # Rye (OFL) — wood-engraved Western display slab. Regular only, so the
-        # matched phrase differs by its red, as on a two-colour broadside.
-        # Falls back through heavy serifs.
+        # Regular only: the matched phrase differs by its red, as on a
+        # two-colour broadside.
         "quote_regular": [
             RYE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
@@ -1697,16 +1575,9 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "alchemy": {
-        # Body — IM Fell English, the 17th-century Oxford types of the era
-        # England printed real alchemical treatises (OFL).
-        #
-        # Matched phrase + ornament — MedievalSharp (OFL), a ritual scribe's
-        # hand. Regular only, so the matched phrase differs by its red
-        # rubrication alone.
-        #
-        # Fallbacks: EB Garamond / system serifs for a missing IM Fell, and
-        # UnifrakturMaguntia (the next-nearest ritual hand) for a missing
-        # MedievalSharp.
+        # IM Fell English body; MedievalSharp (Regular only) for the matched
+        # phrase and marks, with UnifrakturMaguntia, the next-nearest ritual
+        # hand, behind it.
         "quote_regular": [
             IMFELLENGLISH_REGULAR,
             EBGARAMOND_REGULAR,
@@ -1725,8 +1596,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "deco": {
-        # Righteous (OFL) — 1930s art-deco display sans, Regular only; the
-        # matched phrase differs by its accent. Heavy-sans fallbacks.
+        # Regular only; the matched phrase differs by its accent.
         "quote_regular": [
             RIGHTEOUS_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1748,8 +1618,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "placard": {
-        # Patrick Hand SC (OFL) — hand-printed small caps, single weight; the
-        # matched phrase differs by its red. Heavy-sans fallbacks.
+        # Single weight; the matched phrase differs by its red.
         "quote_regular": [
             PATRICK_HAND_SC_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1771,8 +1640,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "chanbara": {
-        # Shojumaru (OFL) — brush display face, single weight; the matched
-        # phrase differs by its red. Heavy-sans fallbacks before Playfair.
+        # Single weight; the matched phrase differs by its red.
         "quote_regular": [
             SHOJUMARU_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1794,9 +1662,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "chalkboard": {
-        # Playwrite GB J Guides (OFL) — joined cursive with dotted guide
-        # letters, single weight; the matched phrase differs by its yellow.
-        # Italic fallbacks keep a missing install slanted.
+        # Single weight; the matched phrase differs by its yellow. Italic
+        # fallbacks keep a missing install slanted.
         "quote_regular": [
             PLAYWRITE_GB_J_GUIDES_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
@@ -1818,12 +1685,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "fillmore": {
-        # Bungee Shade, single weight; the matched phrase differs by its blue.
-        # Falls back through Bangers and Atomic Age before heavy sans.
-        # The whole body is set in Bungee Shade on purpose: under the maroon
-        # stipple it is borderline illegible, and that is the Fillmore
-        # register — the posters made you work for the band's name. (A Rubik
-        # Black body was tried and reverted as too polite.)
+        # Bungee Shade for the whole body on purpose: borderline illegible
+        # under the maroon stipple, which is the Fillmore register.
         "quote_regular": [
             BUNGEE_SHADE_REGULAR,
             BANGERS_REGULAR,
@@ -1850,9 +1713,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "firmament": {
-        # Cardo (OFL) — humanist Renaissance serif. Italic fills the ornament
-        # role for the opening quote mark. Falls back through EB Garamond →
-        # DejaVu Serif → Liberation Serif → Playfair.
+        # Cardo; the Italic fills the ornament role for the opening mark.
         "quote_regular": [
             CARDO_REGULAR,
             EBGARAMOND_REGULAR,
@@ -1877,9 +1738,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "lcars": {
-        # Antonio (OFL) — the free LCARS substitute. Default axis instance is
-        # Regular, but Regular / Bold are pinned by name so an upstream
-        # default change can't shift the weight. Heavy-sans fallbacks.
+        # The default axis instance is Regular, but Regular / Bold are pinned
+        # by name so an upstream default change can't shift the weight.
         "quote_regular": [
             (ANTONIO_VARIABLE, "Regular"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1894,22 +1754,15 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
-        # The stardate callouts, the elbow wordmark and the oversized quote
-        # marks all use the same condensed Antonio so the console stays
-        # consistent.
+        # Wordmark, callouts and quote marks share the condensed Antonio.
         "ornament": [
             (ANTONIO_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Astrarium — EB Garamond body. Cormorant's hairlines drop below 1 px at
-    # the 18-38 pt fit range and vanish into the washed ground; EB Garamond's
-    # moderate contrast survives the pixel grid. (Playfair would erase the
-    # difference from default; Cardo belongs to firmament.) Bold carries the
-    # matched phrase and the quote marks. The dashboard's sans chrome loads
-    # directly from ``META_FONT_BOLD_CANDIDATES`` in
-    # ``render_astrarium_frame``.
+    # Astrarium — EB Garamond, not Cormorant: Cormorant's hairlines drop below
+    # 1 px at the 18-38 pt fit range and vanish into the washed ground.
     "astrarium": {
         "quote_regular": [
             EBGARAMOND_REGULAR,
@@ -1925,12 +1778,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "kanagawa": {
-        # Yuji Boku for body and matched phrase, single weight; the matched
-        # phrase differs by its red.
-        #
-        # Fallbacks favour humanist serifs (Cormorant Garamond → EB Garamond
-        # → Playfair) over sans: a grotesque would clash with the brush
-        # register.
+        # Single weight; the matched phrase differs by its red. Serif
+        # fallbacks: a grotesque would clash with the brush register.
         "quote_regular": [
             YUJI_BOKU_REGULAR,
             (CORMORANT_VARIABLE, "Regular"),
@@ -1950,10 +1799,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Marquee — Cardo Italic for the body (the "feature copy" register),
-    # Cardo Bold for the matched phrase so weight differs independently of
-    # the red. Bungee Shade (ornament slot) carries the feature title — the
-    # book title as 3D relief letters on the canopy.
+    # Marquee — Cardo Italic body, Cardo Bold matched phrase; Bungee Shade in
+    # the ornament slot carries the feature title.
     "marquee": {
         "quote_regular": [
             CARDO_ITALIC,
@@ -1971,9 +1818,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Tarot — EB Garamond body (17th-century treatise type), Cinzel
-    # Decorative Bold for the matched phrase, Cinzel Decorative Black for the
-    # Roman-numeral hour so it reads as carved relief at chrome scale.
+    # Tarot — EB Garamond body; Cinzel Decorative Bold matched phrase and
+    # Black Roman-numeral hour.
     "tarot": {
         "quote_regular": [
             EBGARAMOND_REGULAR,
@@ -1990,14 +1836,10 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Vitrail — the ornament slot prefers Uncial Antiqua for the rose-window
-    # numeral, falling back through MedievalSharp → UnifrakturMaguntia so a
-    # missing install stays medieval. The matched phrase differs by its R+B
-    # violet accent.
+    # Vitrail — Uncial Antiqua for the rose-window numeral only, with medieval
+    # fallbacks; it shatters at byline sizes.
     "vitrail": {
-        # Body, cartouche attribution and matched phrase use Liberation Serif,
-        # an even-weight serif that stays crisp at the 15-30 px cartouche
-        # sizes, falling back through the default Playfair chains.
+        # Liberation Serif stays crisp at the 15-30 px cartouche sizes.
         "quote_regular": [
             "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
@@ -2015,10 +1857,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Cartograph — IM Fell English Italic body with an upright Roman matched
-    # phrase: the period mapmakers' convention of italic legends and upright
-    # place names. The ornament reuses Regular so the quote marks match the
-    # matched phrase. DejaVu Serif Italic fallback keeps it slanted.
+    # Cartograph — italic body, upright matched phrase and quote marks (the
+    # mapmakers' italic legends and upright place names).
     "cartograph": {
         "quote_regular": [
             IMFELLENGLISH_ITALIC,
@@ -2036,9 +1876,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Press Start 2P everywhere — body, matched phrase and chrome. Single
-    # weight, so the matched phrase differs by its yellow. Falls back through
-    # sans faces (no other pixel face is bundled).
+    # Press Start 2P everywhere; single weight, so the matched phrase
+    # differs by its yellow.
     "questline": {
         "quote_regular": [
             PRESSSTART2P_REGULAR,
@@ -2087,11 +1926,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Oxanium (OFL) — squared techno sans in the 1980s retro-future register.
-    # Chosen over Orbitron because Orbitron is so wide that a dense quote
-    # shrinks unreadably; Oxanium's narrower proportions hold long lines.
-    # Variable; the matched phrase pins Bold for a weight step on top of the
-    # magenta accent. Sans fallbacks before the Playfair chain.
+    # Oxanium, not Orbitron: Orbitron is so wide that a dense quote shrinks
+    # unreadably. Variable; the matched phrase pins Bold.
     "outrun": {
         "quote_regular": [
             (OXANIUM_VARIABLE, "Regular"),

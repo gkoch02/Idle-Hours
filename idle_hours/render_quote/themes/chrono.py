@@ -1,6 +1,7 @@
-"""The ``chrono`` theme's frame and the code only it uses.
+"""The ``chrono`` theme's frame, a 16-bit SNES JRPG dialogue scene with an
+hourglass portrait, and its End of Time sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § chrono
 """
 
 from __future__ import annotations
@@ -18,21 +19,8 @@ from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, gray_pix
 from ..primitives import _bayer_threshold_field, _fill_swatch_stipple, _soft_ellipse_mask, paint_neon_mask
 from ..spec import FrameSpec
 
-# ─── chrono (16-bit SNES JRPG dialogue) ──────────────────────────────────────
-#
-# The 16-bit counterpart to questline's 8-bit scene (Final Fantasy VI /
-# Chrono Trigger era): a gradient twilight sky, the translucent-blue gradient
-# dialogue window with a rounded border, and a portrait sub-window. Pixelify
-# Sans gives the matched phrase a real Bold weight on top of the yellow
-# accent. HH:MM is never shown — the matched phrase carries the time.
-
-# Portrait motif — an ornate hourglass (a drawn face reads as crude on six
-# inks). Each material carries a multi-tone shading ramp so brass, glass and
-# sand read as lit volumes. Sculpted at a low logical resolution into a
-# tone-indexed 'L' image (`_chrono_build_hourglass`), then upscaled and
-# dither-mapped to Spectra-6 tones.
-#
-# Tone index → fill rule. "solid" = one ink; "mix2"/"mix3" = ordered-Bayer
+# Portrait hourglass tone index → fill rule (``_chrono_build_hourglass``
+# sculpts in these indices). "solid" = one ink; "mix2"/"mix3" = ordered-Bayer
 # dithers (the recipes in spectra6_color_recipes.md): cream/gold/bronze brass
 # (Y+W / Y / R+Y), amber sand (R+Y at varying density), sky-tint glass (B+W).
 _CHRONO_ART_TONES = {
@@ -352,7 +340,7 @@ def _chrono_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
 
 
 def render_chrono_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """16-bit SNES JRPG dialogue scene (see the module section comment above).
+    """16-bit SNES JRPG dialogue scene (docs/themes.md § chrono).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.
@@ -373,12 +361,6 @@ def render_chrono_frame(time_str: str, quote_row: dict, width: int, height: int)
 
 
 # ─── chrono sleep frame: the End of Time ─────────────────────────────────────
-#
-# Chrono Trigger's hub between eras: one lamppost burning on a stone platform
-# in a dark void. The portrait hourglass has run out, which is the frame's
-# whole joke for a clock that has stopped for the night; the narrator promises
-# the gates open again at dawn, so it reads as resting rather than ended.
-# No figure: the lamp alone carries the scene.
 _CHRONO_SLEEP_ROW = {
     "author": "Narrator",
     "display_quote": "You have reached the End of Time. Rest here, traveller; the gates open again at dawn.",
@@ -455,7 +437,7 @@ def _chrono_paint_lamppost(image: Image.Image, draw: ImageDraw.ImageDraw) -> Non
 
 
 def render_chrono_sleep(time_str: str, width: int, height: int) -> Image.Image:
-    """The sleep frame: the End of Time (see the section comment above).
+    """The sleep frame: the End of Time (docs/themes.md § chrono).
 
     Composed at the canonical 800×480 and NEAREST-downsampled, so a preview
     thumbnail shows the whole scene. ``time_str`` is unused: the run-out

@@ -1,6 +1,7 @@
-"""The ``chanbara`` theme's border painter and the code only it uses.
+"""The ``chanbara`` theme's border painter, a samurai-cinema title card: an off-canvas
+rising sun, a chop seal and a brush-tick signature column.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § chanbara
 """
 
 from __future__ import annotations

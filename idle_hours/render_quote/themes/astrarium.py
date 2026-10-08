@@ -1,6 +1,7 @@
-"""The ``astrarium`` theme's frame and the code only it uses.
+"""The ``astrarium`` theme's frame, a mid-century astronomical-instrument
+dashboard: a dated dial on the left, the quote on the right.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § astrarium
 """
 
 from __future__ import annotations
@@ -435,8 +436,8 @@ def _astrarium_paint_quote_panel(
         pattern_offset=(1, 0),
     )
 
-    # Attribution in the dashboard's sans, not the body's Cormorant: its
-    # hairline serifs break up after palette snapping at byline sizes.
+    # Attribution in the dashboard's sans, not the body serif: hairline
+    # serifs break up after palette snapping at byline sizes.
     author = quote_row.get("author") or None
     title = quote_row.get("title") or fallback_title(quote_row)
     author_font = load_font(META_FONT_BOLD_CANDIDATES, size=13)
@@ -529,32 +530,14 @@ def _astrarium_paint_datum_strip(
 
 
 def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Render the astrarium-theme dashboard frame.
+    """Render the astrarium-theme dashboard frame: header strip, dial in the
+    left half, quote panel in the right half, datum strip beneath.
 
-    Composition (designed at the canonical 800×480; other sizes use the
-    same layout proportions so contact-sheet and curator-preview renders
-    still produce a recognisable thumbnail):
-
-      ┌────────────────────────────────────────────────────────────────┐
-      │ IDLE HOURS // ASTRARIUM         SAT · MAY 19  | S6 │ 800×480   │
-      │ ─────────────────────────────────────────────────────────────  │
-      │                                                                │
-      │         ╭──────────╮                  ★                        │
-      │       60│   ┌──┐   │15                                          │
-      │         │   │  │   │     “It was at  ten o'clock                │
-      │         │   └──┘   │      today that the first                  │
-      │       45│  May 19  │30    of all Time Machines                  │
-      │         │ TUESDAY  │      began its career.                     │
-      │         ╰──────────╯                                             │
-      │                                                                │
-      │ ─────────────────────────────────────────────────────────────  │
-      │ SOLAR ELEVATION │ LUNAR PHASE │                                │
-      │      53.2°      │     18%     │                                │
-      └────────────────────────────────────────────────────────────────┘
-
-    Fully on-palette: the ring quadrants are two-ink Bayer stipples
-    (tangerine / sepia / teal) or solid black, so the closing
-    ``snap_image_to_palette`` is a no-op on the painted regions.
+    Designed at the canonical 800×480; other sizes use the same layout
+    proportions so contact-sheet and curator-preview renders still produce a
+    recognisable thumbnail. Fully on-palette (two-ink Bayer stipples or solid
+    inks), so the closing ``snap_image_to_palette`` is a no-op on the painted
+    regions. Design notes: docs/themes.md § astrarium.
     """
     image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
     # Layer 0: cream wash background.
@@ -569,23 +552,22 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     # Top-strip dashboard chrome.
     _astrarium_paint_header(image, draw, width, time_str, now)
     # Dial centred in the left half, positioned proportionally so
-    # thumbnails still work. The 50 px reserve covers the datum strip.
-    # strip (height − 44, plus a small breathing gap).
+    # thumbnails still work. The 50 px reserve covers the datum strip
+    # (height − 44, plus a small breathing gap).
     dial_zone_w = int(width * 0.5)
     dial_cx = dial_zone_w // 2 + 8
     dial_cy = 64 + (height - 64 - 50) // 2
     _astrarium_paint_dial(image, draw, dial_cx, dial_cy, time_str, now)
     # Quote panel in the right half: 12 px right of the divider (plus the
     # panel's own 4–8 px padding), between the header rule (y=50) and the
-    # datum strip (y=height−44).
-    # two horizontal rules without crowding either of them.
+    # datum strip (y=height−44), without crowding either rule.
     panel_left = int(width * 0.5) + 12
     panel_right = width - 24
     panel_top = 54
     panel_bottom = height - 46
     _astrarium_paint_quote_panel(image, draw, quote_row, panel_left, panel_right, panel_top, panel_bottom)
-    # Dotted vertical divider between the dial and the quote panel.
-    # (a faint dotted line, similar to the dashed header rule).
+    # Faint dotted vertical divider between the dial and the quote panel,
+    # like the dashed header rule.
     div_x = int(width * 0.5)
     for y in range(64, height - 48, 4):
         draw.point((div_x, y), fill=SPECTRA6["black"])

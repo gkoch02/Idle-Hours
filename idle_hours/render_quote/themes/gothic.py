@@ -1,6 +1,7 @@
-"""The ``gothic`` theme's border painter and the code only it uses.
+"""The ``gothic`` theme's border painter, cathedral-chronicle tracery: a doubled rubric
+rule, maroon corner quatrefoils, cream mid-edge diamonds and trefoil finials.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § gothic
 """
 
 from __future__ import annotations

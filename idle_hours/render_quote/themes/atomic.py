@@ -1,6 +1,7 @@
-"""The ``atomic`` theme's border painter and the code only it uses.
+"""The ``atomic`` theme's border painter, a 1950s Atomic Age advertisement: a rounded
+Googie frame, an atom, tangerine starbursts and a boomerang on green.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § atomic
 """
 
 from __future__ import annotations

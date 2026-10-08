@@ -1,6 +1,7 @@
-"""The ``nightvision`` theme's border painter and the code only it uses.
+"""The ``nightvision`` theme's border painter, a night-vision HUD: open corner brackets, scanlines
+and a bearing-scale ruler over a black field.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § nightvision
 """
 
 from __future__ import annotations
