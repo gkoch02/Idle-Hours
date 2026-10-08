@@ -9,6 +9,14 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Every render finishes about a quarter of a second sooner on a desktop,
+  and far more on a Pi: the final snap of the frame to the six panel inks
+  ran a Python loop over all 384,000 pixels and now runs in Pillow's C
+  routines. The output is byte-identical (checked against every one of the
+  16.7 million RGB colours, and the render fingerprint of every theme is
+  unchanged). The curator web server also stops within 50 ms of being asked
+  instead of half a second. Together they take about a third off the test
+  suite's wall time.
 - Three passages no longer open with a stray chapter number ("V When Archie
   got back…", "X June 20th.—Eight o'clock…", "L She plunged into…"). The
   cleaner already stripped a bare numeral of two or more letters; it now
