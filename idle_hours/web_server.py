@@ -2124,6 +2124,10 @@ def start_web_server(
             "or set a token before starting the server."
         )
     server = _IdleHoursHTTPServer((host, port), CuratorHandler, ctx)
-    thread = threading.Thread(target=server.serve_forever, name="idle-hours-web", daemon=True)
+    # ``serve_forever`` wakes every ``poll_interval`` to notice ``shutdown()``;
+    # the default half second is what every test's teardown used to wait for.
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, name="idle-hours-web", daemon=True,
+    )
     thread.start()
     return server, thread

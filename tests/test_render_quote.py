@@ -296,6 +296,75 @@ class TestSnapImageToPalette:
             assert self._inks(result) == {color}, f"Color {color} did not round-trip"
 
 
+class TestSnapFastPath:
+    """The six-ink snap runs in Pillow's C ops; the per-pixel loop is the oracle.
+
+    The fast path is a derivation (round each channel, then settle the pixels
+    whose nearest cube corner is the missing cyan or magenta), and every one of
+    its comparisons sits on a boundary a derivation can get off by one: ``r +
+    b >= 255`` versus ``> 255``, ``g <= b`` versus ``<``, the 127 / 128 split.
+    The sweep therefore covers every colour whose channels are all drawn from a
+    boundary-dense value set, every pixel on the ``r + b`` / ``r + g`` /
+    ``g + b`` sum boundaries and the ``g = b`` / ``b = r`` difference
+    boundaries, and a seeded random sample. The oracle is the rule written out
+    by hand, not the fallback loop. The full 16.7M-colour comparison was run
+    once by hand; this is the fast standing fence.
+    """
+
+    PALETTE = [(255, 255, 255), (0, 0, 0), (255, 0, 0), (255, 255, 0), (0, 0, 255), (0, 255, 0)]
+    EDGE_VALUES = (0, 1, 2, 63, 64, 65, 126, 127, 128, 129, 190, 191, 192, 253, 254, 255)
+
+    @classmethod
+    def _oracle(cls, pixel):
+        # First palette entry wins a tie: min() keeps the first minimal element.
+        return min(cls.PALETTE, key=lambda c: (pixel[0] - c[0]) ** 2 + (pixel[1] - c[1]) ** 2 + (pixel[2] - c[2]) ** 2)
+
+    @classmethod
+    def _colours(cls):
+        import random
+
+        colours = {(r, g, b) for r in cls.EDGE_VALUES for g in cls.EDGE_VALUES for b in cls.EDGE_VALUES}
+        step = range(0, 256, 5)
+        for a in range(256):
+            for total in (254, 255, 256):
+                c = total - a
+                if 0 <= c <= 255:
+                    for other in step:
+                        colours.update({(a, other, c), (a, c, other), (other, a, c)})
+            for delta in (-1, 0, 1):
+                c = a + delta
+                if 0 <= c <= 255:
+                    for other in step:
+                        colours.update({(other, a, c), (a, other, c), (c, other, a)})
+        rng = random.Random(2026)
+        colours.update((rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(40_000))
+        return sorted(colours)
+
+    def test_matches_the_nearest_colour_rule_on_every_boundary(self):
+        colours = self._colours()
+        assert len(colours) > 100_000, "the sweep shrank; it no longer covers the decision boundaries"
+        width = 512
+        height = -(-len(colours) // width)
+        img = Image.new("RGB", (width, height), colours[0])
+        img.putdata(colours + [colours[0]] * (width * height - len(colours)))
+        assert rq_palette.SPECTRA6_PALETTE == self.PALETTE, "the palette changed; re-derive the fast path"
+        snapped = rq.snap_image_to_palette(img, rq_palette.SPECTRA6_PALETTE)
+        px = rq_palette.rgb_pixel_access(snapped)
+        got = [px[i % width, i // width] for i in range(len(colours))]
+        wrong = [(c, self._oracle(c), g) for c, g in zip(colours, got, strict=True) if g != self._oracle(c)]
+        assert not wrong, f"{len(wrong)} colours snap differently from the nearest-colour rule, first: {wrong[:5]}"
+
+    def test_rgba_input_ignores_alpha(self):
+        img = Image.new("RGBA", (3, 2), (10, 250, 250, 7))
+        snapped = rq.snap_image_to_palette(img, rq_palette.SPECTRA6_PALETTE)
+        assert snapped.mode == "RGB" and snapped.size == (3, 2)
+        assert distinct_inks(snapped) == {(255, 255, 255)}
+
+    def test_other_palettes_still_take_the_loop(self):
+        img = Image.new("RGB", (2, 2), (10, 250, 250))
+        assert distinct_inks(rq.snap_image_to_palette(img, [(0, 0, 0), (0, 255, 255)])) == {(0, 255, 255)}
+
+
 class TestTypedPixelAccess:
     """The mode check is what makes ``gray_pixel_access`` / ``rgb_pixel_access``'s types true (issue #350)."""
 
