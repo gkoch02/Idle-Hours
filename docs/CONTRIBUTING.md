@@ -75,10 +75,10 @@ Start from a clean, current `main` checkout whose Unreleased changelog section
 contains at least one bullet, then prepare a release branch and PR:
 
 ```bash
-python scripts/release.py prepare 3.0.0 --open-pr
+python scripts/release.py prepare 3.1.0 --open-pr
 ```
 
-The command validates that the version increases, creates `release/v3.0.0`,
+The command validates that the version increases, creates `release/v3.1.0`,
 updates the package version and changelog, runs the non-golden test suite,
 builds a wheel, verifies its embedded metadata, commits, pushes, and opens the
 PR. Omit `--open-pr` to keep the branch and commit local; `--push` pushes the
@@ -88,12 +88,12 @@ normal releases.
 After the release PR merges, return to a clean, current `main` and finalize:
 
 ```bash
-python scripts/release.py finalize 3.0.0 --push
+python scripts/release.py finalize 3.1.0 --push
 ```
 
 Finalization rechecks the merged version and dated changelog entry, rebuilds
 and inspects the wheel, rejects existing local or remote tags, and creates an
-annotated `v3.0.0` tag. `--push` asks for confirmation before sending only that
+annotated `v3.1.0` tag. `--push` asks for confirmation before sending only that
 tag to `origin`; automation must also pass `--yes`. The tag-triggered CI
 `release-version` job independently checks the tag against package metadata.
 The helper deliberately does not upload to PyPI or create a GitHub Release.
