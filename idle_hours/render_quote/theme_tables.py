@@ -54,6 +54,7 @@ from ._paths import (
     IMFELLDOUBLEPICA_REGULAR,
     IMFELLENGLISH_ITALIC,
     IMFELLENGLISH_REGULAR,
+    IMFELLENGLISHSC_REGULAR,
     INTER_VARIABLE,
     JOST_VARIABLE,
     JURA_BOLD,
@@ -739,6 +740,18 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
+    },
+    # A red-ruled 17th-century Oxford page, a custom frame: Fell black on
+    # white, the phrase rubricated. Palette serves the palette-only paths.
+    "imprimatur": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["black"],
     },
     # *2001*'s Discovery monitors, a custom frame: white on the blue monitor,
     # yellow phrase. Palette serves the palette-only paths.
@@ -2200,6 +2213,13 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [BEBASNEUE_REGULAR, *QUOTE_FONT_SEMIBOLD_CANDIDATES],
         "quote_bold": [BEBASNEUE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BEBASNEUE_REGULAR, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "imprimatur": {
+        # Fell roman body; the SC cut (one weight) for the phrase, so it
+        # differs by letterform as well as by its red.
+        "quote_regular": [IMFELLENGLISH_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [IMFELLENGLISHSC_REGULAR, IMFELLENGLISH_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [IMFELLENGLISHSC_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "redacted": {
         # Special Elite, one weight: the phrase differs by colour alone.
