@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The baker and picker now skip a quote whose time phrase sits inside a
+  hyphenated compound ("struck three-quarters", "twenty-three o'clock"),
+  which the panel showed with no highlighted phrase. Two such quotes left
+  the rotation.
 - New `splitflap` theme: a split-flap message board on a wall, in the manner
   of a Vestaboard. The quote is set in capitals on a fixed grid of flap
   tiles, each split by its hinge, with the matched phrase on yellow colour

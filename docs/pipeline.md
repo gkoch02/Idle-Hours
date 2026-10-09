@@ -64,7 +64,7 @@ idle-hours merge output/run1.jsonl output/run2.jsonl
 bash scripts/run_dawn_expansion.sh
 
 # Analyze which time buckets have few/no quotes. Counts DISPLAYABLE rows
-# (quality ≥ 60, not banned — the baker's and picker's own gates); raw
+# (quality ≥ 60, highlightable, not banned — the baker's and picker's own gates); raw
 # tallies ride alongside as raw_bucket_counts.
 idle-hours coverage output/candidates-merged.jsonl
 idle-hours coverage idle_hours/assets/candidates-attributed.jsonl --min-quality 60 \
@@ -109,7 +109,8 @@ idle-hours apply-overrides idle_hours/assets/candidates-attributed.jsonl
 # → idle_hours/assets/candidates-attributed.jsonl (raw attributed corpus)
 
 # Final stage: bake the display-ready runtime quote database.
-# Drops daypart-only rows and rows below --min-quality, pre-computes the
+# Drops daypart-only rows, rows below --min-quality and rows whose
+# matched_text the renderer cannot highlight (issue #411), pre-computes the
 # nine row-intrinsic score components + source rarity (against the full raw
 # corpus so picks stay equivalent) into baked_score, caches
 # inferred_quote_minute, and assigns a per-bucket baked_rank. The runtime
@@ -261,7 +262,7 @@ Allowed override fields: `display_quote`, `matched_text`, `author`, `title`, `qu
 
 Final pipeline stage output, produced by `bake_quote_database.py` from the raw attributed corpus. This is the *display-ready database* the runtime picker consults by default; `candidates-attributed.jsonl` stays on disk as the raw corpus and is used by the curator UI's bucket inspector (`/api/bucket`).
 
-**Why it exists.** Of the twelve score components in `pick_quote.score_row`, nine are row-intrinsic (`fragment`, `cleanup`, `metadata`, `dialogue`, `opening`, `source_bonus`, `quality`, `length_exactness`, `length_tiebreak`) and one more — `source_rarity_penalty` — depends only on the corpus as a whole; only `minute_penalty` and `override_bonus` actually change per request. Computing those ten components once at bake time, shipping them inline on each row, and dropping rows the picker would have filtered anyway (daypart-only rows with no `fuzzy_bucket`, rows below `--min-quality`) makes the runtime pick deterministic, smaller, and git-diffable: a regression in the scorer shows up as a diff to the committed database, not a silent drift in what the clock displays.
+**Why it exists.** Of the twelve score components in `pick_quote.score_row`, nine are row-intrinsic (`fragment`, `cleanup`, `metadata`, `dialogue`, `opening`, `source_bonus`, `quality`, `length_exactness`, `length_tiebreak`) and one more — `source_rarity_penalty` — depends only on the corpus as a whole; only `minute_penalty` and `override_bonus` actually change per request. Computing those ten components once at bake time, shipping them inline on each row, and dropping rows the picker would have filtered anyway (daypart-only rows with no `fuzzy_bucket`, rows below `--min-quality`, rows whose `matched_text` the renderer cannot highlight) makes the runtime pick deterministic, smaller, and git-diffable: a regression in the scorer shows up as a diff to the committed database, not a silent drift in what the clock displays.
 
 **Row schema additions.** Every baked row keeps its original fields plus:
 
@@ -269,6 +270,8 @@ Final pipeline stage output, produced by `bake_quote_database.py` from the raw a
 - `inferred_quote_minute` — what minute this row claims, cached once so `minute_penalty` doesn't re-run the regex sweep per tick.
 - `baked_rank` — 0-based ordinal within the row's bucket after sorting ascending by `baked_score`. Purely for curator readability (the file is `(bucket, rank)`-ordered on disk); the runtime picker still sorts again once it has the two request-time components.
 - `schema_version` — integer marker matching `BAKED_SCORE_SCHEMA_VERSION` in `bake_quote_database.py` / `pick_quote.py`. Bump whenever `BAKED_SCORE_COMPONENTS` changes (order, length, or semantics). `pick_quote._resolve_corpus` reads this field on the first baked row it encounters; a mismatch (stale `quote_database.jsonl` paired with a freshly `git pull`-ed `pick_quote.py`, or vice versa) triggers a fallback to the raw corpus with a stderr warning instead of silently scoring against a mis-aligned tuple. A baked DB pre-dating the field is treated as version 0 so upgrades surface loudly on first boot.
+
+**A row must highlight its matched phrase (issue #411).** The renderer bolds `matched_text` only where it stands as whole words in `display_quote`; a phrase joined to a neighbour by a hyphen ("struck three-quarters", "twenty-three o'clock", "one-quarter to one-third") is not the time the row was filed under, and the panel would show it with no accent. `match_span.has_display_match` is that test, shared by the renderer's `tokenize_quote`, the baker's `filter_rows`, the raw path of `pick_best` (so raw and baked picks stay equal) and `bucket_coverage.is_displayable`. It lives outside `render_quote` so the stdlib-only stages can import it without Pillow. The miner still emits such rows (its patterns use `\b`, which a hyphen satisfies) and they stay in the raw corpus, where the curator UI shows them; widening the miner's boundary would also reject genuine digital ranges such as "7:15-8:15". `TestBakedDatabaseInvariants::test_every_row_highlights_its_matched_phrase` fences the committed DB.
 
 **Rarity is baked against the raw corpus**, not the baked subset — otherwise a source whose low-quality rows get dropped at bake time would count lower in the baked rarity than in the live one, and pick-equivalence between the two paths would break for that source's surviving rows. `tests/test_bake_quote_database.TestBakeRows::test_rarity_uses_full_input_corpus` pins this.
 

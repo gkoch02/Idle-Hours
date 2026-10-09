@@ -245,16 +245,28 @@ class TestPickBest:
 
     def test_falls_back_to_neighbor_when_empty(self):
         rows = [
-            make_row(fuzzy_bucket="h3_five_past", quality_score=80, display_quote="A few minutes past three."),
+            make_row(fuzzy_bucket="h3_five_past", quality_score=80, matched_text="past three",
+                     display_quote="A few minutes past three."),
         ]
         best, bucket = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
         assert bucket == "h3_five_past"
         assert best["fuzzy_bucket"] == "h3_five_past"
 
+    def test_skips_a_row_the_renderer_cannot_highlight(self):
+        """Issue #411: the baker drops these, so the raw path must skip them too."""
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", quality_score=99, matched_text="struck three",
+                     display_quote="The clock struck three-quarters, when it actually struck but one."),
+            make_row(fuzzy_bucket="h3_exact", source_id="2", quality_score=70),
+        ]
+        best, _ = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
+        assert best["source_id"] == "2"
+
     def test_respects_min_quality(self):
         rows = [
             make_row(fuzzy_bucket="h3_exact", quality_score=40, display_quote="Three."),
-            make_row(fuzzy_bucket="h3_five_past", quality_score=70, display_quote="Just after three the bell rang."),
+            make_row(fuzzy_bucket="h3_five_past", quality_score=70, matched_text="Just after three",
+                     display_quote="Just after three the bell rang."),
         ]
         best, bucket = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
         assert bucket == "h3_five_past"
@@ -266,7 +278,7 @@ class TestPickBest:
             make_row(fuzzy_bucket="h3_exact", source_id="1234", quality_score=90,
                      display_quote="It was three o'clock."),
             make_row(fuzzy_bucket="h3_exact", source_id="5678", quality_score=70,
-                     display_quote="She arrived at three."),
+                     display_quote="She arrived at three o'clock."),
         ]
         best, _ = pq.pick_best(rows, "h3_exact", 0, 60, overrides)
         assert best["source_id"] == "5678"
@@ -287,7 +299,7 @@ class TestPickBest:
         assert best1["display_quote"] == best2["display_quote"]
 
     def test_used_fallback_flag_reflected_in_returned_bucket(self):
-        rows = [make_row(fuzzy_bucket="h3_ten_past", quality_score=80,
+        rows = [make_row(fuzzy_bucket="h3_ten_past", quality_score=80, matched_text="ten past three",
                          display_quote="It was about ten past three.")]
         _, resolved = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
         assert resolved == "h3_ten_past"
@@ -1649,7 +1661,8 @@ class TestSelectQuotePinAmbiguity:
         rows = self._dup_rows()
         rows.append(make_row(fuzzy_bucket="h9_five_to", source_id="7", line_number=3,
                              normalized_time="09:55", quality_score=80,
-                             display_quote="A perfectly serviceable replacement quote."))
+                             matched_text="five to ten",
+                             display_quote="A perfectly serviceable replacement quote at five to ten."))
         overrides = {"ban_quote_keys": ["155:19656"]}
         result = pq.select_quote(
             time_str="09:55", rows=rows, overrides=overrides,
@@ -1662,7 +1675,8 @@ class TestSelectQuotePinAmbiguity:
         rows = self._dup_rows()
         rows.append(make_row(fuzzy_bucket="h9_five_to", source_id="7", line_number=3,
                              normalized_time="09:55", quality_score=80,
-                             display_quote="A perfectly serviceable replacement quote."))
+                             matched_text="five to ten",
+                             display_quote="A perfectly serviceable replacement quote at five to ten."))
         result = pq.select_quote(
             time_str="09:55", rows=rows, overrides={"ban_source_ids": ["155"]},
             pin_key=("155", 19656, "close on ten o'clock"),
@@ -1841,6 +1855,7 @@ class TestPickBestBucketIndex:
     def test_neighbour_fallback_still_resolves(self):
         rows = [
             make_row(fuzzy_bucket="h3_five_past", source_id="1", line_number=1, quality_score=90,
+                     matched_text="Five past three",
                      display_quote="Five past three, and the household had not yet stirred at all."),
         ]
         chosen, resolved = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
@@ -2146,8 +2161,10 @@ class TestDuplicateText:
     """Issue #294: the same display text under different keys is one quote."""
 
     def _twins(self):
-        a = make_row(source_id="98", line_number=3534, display_quote="Ten o\u2019clock, sir,\u201d said the man.")
-        b = make_row(source_id="98", line_number=3541, display_quote="ten o'clock, sir,\" said the  man.")
+        a = make_row(source_id="98", line_number=3534, matched_text="Ten o\u2019clock",
+                     display_quote="Ten o\u2019clock, sir,\u201d said the man.")
+        b = make_row(source_id="98", line_number=3541, matched_text="ten o'clock",
+                     display_quote="ten o'clock, sir,\" said the  man.")
         other = make_row(source_id="7", line_number=1, display_quote="A different sentence at three o'clock.")
         return a, b, other
 

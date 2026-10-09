@@ -17,7 +17,11 @@ Baking drops rows that the runtime picker would have filtered anyway:
   ``h{1..12}_{state}`` bucket, so ``pick_best`` can never surface them;
 * missing / empty ``display_quote`` — same filter ``pick_best`` applies today;
 * ``quality_score < --min-quality`` — same gate the picker applies on every
-  tick, paid once at bake time instead of per-render.
+  tick, paid once at bake time instead of per-render;
+* a ``matched_text`` the renderer cannot find as whole words in
+  ``display_quote`` (``match_span.has_display_match``) — a phrase inside a
+  hyphenated compound such as "struck three-quarters" is not a time, and the
+  picker skips the row too (issue #411).
 
 Each kept row gets:
 
@@ -55,6 +59,7 @@ from pathlib import Path
 from idle_hours import atomic_io, pick_quote
 from idle_hours.buckets import bucket_for_time
 from idle_hours.jsonl_io import iter_jsonl
+from idle_hours.match_span import has_display_match
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -176,7 +181,7 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
 
     Drop reasons are mutually exclusive; a row is only counted under the first
     reason that applies, in the order checked: no/invalid bucket → no
-    display_quote → low quality.
+    display_quote → low quality → no display match.
 
     ``fuzzy_bucket`` is validated against :func:`pick_quote.valid_bucket_names`
     rather than just truthy-checked: the raw-corpus picker silently ignores
@@ -187,7 +192,7 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
     """
     valid = pick_quote.valid_bucket_names()
     kept: list[dict] = []
-    drops = {"no_bucket": 0, "no_display_quote": 0, "low_quality": 0}
+    drops = {"no_bucket": 0, "no_display_quote": 0, "low_quality": 0, "no_display_match": 0}
     for row in rows:
         bucket = row.get("fuzzy_bucket")
         if not bucket or bucket not in valid:
@@ -200,6 +205,9 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
         quality = row.get("quality_score")
         if quality is not None and quality < min_quality:
             drops["low_quality"] += 1
+            continue
+        if not has_display_match(row):
+            drops["no_display_match"] += 1
             continue
         kept.append(row)
     return kept, drops
@@ -310,7 +318,8 @@ def main() -> int:
         f"Baked {stats['kept']} rows from {stats['input']} "
         f"(dropped {drops['no_bucket']} no-bucket, "
         f"{drops['no_display_quote']} no-display-quote, "
-        f"{drops['low_quality']} below quality {args.min_quality})",
+        f"{drops['low_quality']} below quality {args.min_quality}, "
+        f"{drops['no_display_match']} with no display match)",
         file=sys.stdout,
     )
     print(

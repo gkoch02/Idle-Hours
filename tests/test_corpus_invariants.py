@@ -18,6 +18,7 @@ import pytest
 
 from idle_hours import pick_quote
 from idle_hours.buckets import BUCKET_ORDER, bucket_for_time, minute_bucket
+from idle_hours.match_span import has_display_match
 
 # Resolve through the package's own default-path constants rather than a
 # hand-built repo-relative path: a previous revision pointed at the
@@ -251,6 +252,11 @@ class TestBakedDatabaseInvariants:
             assert isinstance(score, list), f"missing baked_score: {row.get('source_id')}:{row.get('line_number')}"
             assert len(score) == 10, f"baked_score must have 10 components, got {len(score)}"
             assert all(isinstance(v, int) for v in score), "baked_score components must be int"
+
+    def test_every_row_highlights_its_matched_phrase(self, baked_rows):
+        # Issue #411: "struck three-quarters" or "twenty-three o'clock" is not a time.
+        unhighlightable = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if not has_display_match(r)]
+        assert unhighlightable == []
 
     def test_every_row_has_inferred_quote_minute(self, baked_rows):
         for row in baked_rows:

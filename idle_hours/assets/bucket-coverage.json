@@ -1,6 +1,6 @@
 {
   "total_rows": 2966,
-  "displayable_rows": 2312,
+  "displayable_rows": 2310,
   "banned_rows": 18,
   "min_quality": 60,
   "total_expected_buckets": 144,
@@ -33,7 +33,7 @@
     "h2_quarter_to": 4,
     "h2_ten_to": 1,
     "h2_five_to": 10,
-    "h3_exact": 158,
+    "h3_exact": 156,
     "h3_five_past": 3,
     "h3_ten_past": 2,
     "h3_quarter_past": 1,
@@ -794,7 +794,7 @@
     },
     {
       "bucket": "h3_exact",
-      "count": 158
+      "count": 156
     },
     {
       "bucket": "h6_exact",
