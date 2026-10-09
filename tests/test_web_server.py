@@ -2154,7 +2154,7 @@ class TestApiBake:
         and the edit was permanent."""
         server, _state, args = v2_server
         original = {
-            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT at three o'clock.",
             "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
             "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
         }
@@ -2169,7 +2169,7 @@ class TestApiBake:
         raw = [json.loads(line) for line in Path(args.raw_corpus).read_text(encoding="utf-8").splitlines() if line]
         assert raw == [original]
         baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
-        assert baked[0]["display_quote"] == "ORIGINAL TEXT."
+        assert baked[0]["display_quote"] == "ORIGINAL TEXT at three o'clock."
 
     def test_baked_rows_do_not_carry_the_originals_ledger(self, v2_server):
         server, _state, args = v2_server
@@ -3779,10 +3779,10 @@ class TestDisplayableCoverageOverTheWire:
     def _corpus(self, tmp_path, server):
         corpus = tmp_path / "relocated-corpus.jsonl"
         rows = [
-            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1, quality_score=90, display_quote="Distinct quote number 1."),
-            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2, quality_score=90, display_quote="Distinct quote number 2."),
-            make_row(fuzzy_bucket="h3_ten_to", normalized_time="03:50", source_id="7", line_number=3, quality_score=55, display_quote="Distinct quote number 3."),
-            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=4, quality_score=90, display_quote="Distinct quote number 4."),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1, quality_score=90, display_quote="Distinct quote number 1 at three o'clock."),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2, quality_score=90, display_quote="Distinct quote number 2 at three o'clock."),
+            make_row(fuzzy_bucket="h3_ten_to", normalized_time="03:50", source_id="7", line_number=3, quality_score=55, display_quote="Distinct quote number 3 at three o'clock."),
+            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=4, quality_score=90, display_quote="Distinct quote number 4 at three o'clock."),
         ]
         corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
         server.context.raw_corpus_path = corpus

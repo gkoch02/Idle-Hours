@@ -223,12 +223,12 @@ class TestDisplayableCoverage:
     def _rows(self):
         return [
             # normalized_time agrees with fuzzy_bucket: the loaders re-derive the bucket from it.
-            make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=90, display_quote="Distinct quote number 1."),
-            make_row(source_id="1", line_number=2, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=55, display_quote="Distinct quote number 2."),   # below the floor
-            make_row(source_id="7", line_number=3, fuzzy_bucket="h3_ten_to", normalized_time="03:50", quality_score=55, display_quote="Distinct quote number 3."),  # bucket's only row
-            make_row(source_id="9", line_number=4, fuzzy_bucket="h6_exact", normalized_time="06:00", quality_score=95, display_quote="Distinct quote number 4."),   # banned source
-            make_row(source_id="1", line_number=5, fuzzy_bucket="h9_exact", normalized_time="09:00", quality_score=95, display_quote="Distinct quote number 5."),   # banned key
-            make_row(source_id="1", line_number=6, fuzzy_bucket="h11_exact", normalized_time="11:00", display_quote="Distinct quote number 6."),                   # no score: passes, as in the baker
+            make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=90, display_quote="Distinct quote number 1 at three o'clock."),
+            make_row(source_id="1", line_number=2, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=55, display_quote="Distinct quote number 2 at three o'clock."),   # below the floor
+            make_row(source_id="7", line_number=3, fuzzy_bucket="h3_ten_to", normalized_time="03:50", quality_score=55, display_quote="Distinct quote number 3 at three o'clock."),  # bucket's only row
+            make_row(source_id="9", line_number=4, fuzzy_bucket="h6_exact", normalized_time="06:00", quality_score=95, display_quote="Distinct quote number 4 at three o'clock."),   # banned source
+            make_row(source_id="1", line_number=5, fuzzy_bucket="h9_exact", normalized_time="09:00", quality_score=95, display_quote="Distinct quote number 5 at three o'clock."),   # banned key
+            make_row(source_id="1", line_number=6, fuzzy_bucket="h11_exact", normalized_time="11:00", display_quote="Distinct quote number 6 at three o'clock."),                   # no score: passes, as in the baker
         ]
 
     def _overrides(self):
@@ -246,6 +246,17 @@ class TestDisplayableCoverage:
         assert summary["displayable_rows"] == 2
         assert summary["banned_rows"] == 2
         assert summary["min_quality"] == 60
+
+    def test_rows_the_renderer_cannot_highlight_are_not_displayable(self):
+        """The baker drops a phrase inside a hyphenated compound (issue #411), so coverage must too."""
+        rows = [
+            make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00",
+                     quality_score=90, matched_text="three o'clock",
+                     display_quote="ten minutes before twenty-three o'clock."),
+        ]
+        summary = build_summary(rows)
+        assert summary["bucket_counts"]["h3_exact"] == 0
+        assert summary["raw_bucket_counts"]["h3_exact"] == 1
 
     def test_rows_without_display_text_are_not_displayable(self):
         """The baker drops a row with no non-blank display_quote, so coverage must too."""

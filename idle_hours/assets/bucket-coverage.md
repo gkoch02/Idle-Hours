@@ -1,7 +1,7 @@
 # Bucket Coverage Report
 
 - Total rows: **2966**
-- Displayable rows (quality ≥ 60, not banned): **2312**
+- Displayable rows (quality ≥ 60, not banned): **2310**
 - Expected buckets: **144**
 - Populated buckets: **115**
 - Populated before the quality floor / bans: **119**
@@ -15,7 +15,7 @@
 - `h8_exact`: 172
 - `h2_exact`: 171
 - `h11_exact`: 164
-- `h3_exact`: 158
+- `h3_exact`: 156
 - `h6_exact`: 148
 - `h5_exact`: 147
 - `h4_exact`: 136

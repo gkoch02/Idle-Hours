@@ -7,6 +7,8 @@ import math
 import re
 from typing import TypedDict
 
+from idle_hours.match_span import find_display_match, resolve_display_match  # noqa: F401 (read as rq.resolve_display_match)
+
 from .fonts import load_font, theme_font_candidates
 from .theme_tables import _BOLD_STROKE_BY_THEME, _THEMES_RAGGED_RIGHT
 
@@ -100,69 +102,8 @@ def choose_layout(text: str) -> str:
     return "dense"
 
 
-TIME_PHRASE_PREFIXES = [
-    "five minutes past",
-    "ten minutes past",
-    "quarter past",
-    "twenty minutes past",
-    "twenty-five minutes past",
-    "half past",
-    "twenty-five minutes to",
-    "twenty minutes to",
-    "quarter to",
-    "ten minutes to",
-    "five minutes to",
-]
-
-# Pre-compiled longest-first so the first prefix that matches the candidate
-# wins ("twenty-five minutes past" beats "minutes past" for the same row).
-# Order is load-bearing — keep this list sorted by descending prefix length.
-_TIME_PHRASE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    (
-        prefix,
-        re.compile(
-            rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(prefix)}"
-            rf"(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9])(?!-[A-Za-z0-9])",
-            re.IGNORECASE,
-        ),
-    )
-    for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True)
-]
-
-
-def _direct_match_pattern(normalized_match: str) -> re.Pattern[str]:
-    return re.compile(
-        rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(normalized_match)}(?![A-Za-z0-9])(?!-[A-Za-z0-9])",
-        re.IGNORECASE,
-    )
-
-
-def resolve_display_match(text: str, match_text: str) -> str:
-    normalized_match = " ".join((match_text or "").split()).strip()
-    if not normalized_match:
-        return ""
-
-    direct = _direct_match_pattern(normalized_match).search(text)
-    if direct:
-        return direct.group(0)
-
-    lower_match = normalized_match.lower()
-    for prefix, pattern in _TIME_PHRASE_PATTERNS:
-        if not lower_match.startswith(prefix):
-            continue
-        for m in pattern.finditer(text):
-            candidate = m.group(0).strip(" ,.;:!?")
-            if candidate.lower().startswith(lower_match):
-                return candidate
-
-    return normalized_match
-
-
 def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
-    normalized_match = resolve_display_match(text, match_text)
-    if not normalized_match:
-        return [(text, False)]
-    match = _direct_match_pattern(normalized_match).search(text)
+    match = find_display_match(text, match_text)
     if not match:
         return [(text, False)]
 

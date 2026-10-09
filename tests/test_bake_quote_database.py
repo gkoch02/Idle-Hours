@@ -31,6 +31,26 @@ class TestFilterRows:
         assert kept == [sample_row]
         assert drops["no_display_quote"] == 1
 
+    @pytest.mark.parametrize(
+        ("display_quote", "matched_text"),
+        [
+            ("the Cathedral clock struck three-quarters, when it actually struck but one.", "struck three"),
+            ("ten minutes before twenty-three o'clock.", "three o'clock"),
+            ("A quote that never names the hour.", "three o'clock"),
+        ],
+    )
+    def test_drops_a_row_the_renderer_cannot_highlight(self, sample_row, display_quote, matched_text):
+        """Issue #411: a phrase inside a hyphenated compound is not a time."""
+        row = make_row(display_quote=display_quote, matched_text=matched_text)
+        kept, drops = bq.filter_rows([sample_row, row], min_quality=60)
+        assert kept == [sample_row]
+        assert drops["no_display_match"] == 1
+
+    def test_keeps_a_prefix_match_the_renderer_extends(self):
+        row = make_row(display_quote="It was quarter past ten, and raining.", matched_text="quarter past")
+        kept, _ = bq.filter_rows([row], min_quality=60)
+        assert kept == [row]
+
     def test_drops_low_quality(self, sample_row):
         low = make_row(quality_score=40)
         kept, drops = bq.filter_rows([sample_row, low], min_quality=60)
@@ -184,7 +204,7 @@ class TestBakeRows:
         assert stats == {
             "input": 3,
             "kept": 1,
-            "drops": {"no_bucket": 1, "no_display_quote": 0, "low_quality": 1},
+            "drops": {"no_bucket": 1, "no_display_quote": 0, "low_quality": 1, "no_display_match": 0},
             "per_bucket": {"populated": 1, "max": 1, "min": 1},
         }
 

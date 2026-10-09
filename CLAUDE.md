@@ -75,6 +75,7 @@ Full reference: [`docs/pipeline.md`](docs/pipeline.md). Pipeline order: miner â†
 - **`buckets.py` is the single source of truth** for the bucket table and the rounding rule `((minute + 2) // 5) * 5`. Never add a second state table.
 - **A `(source_id, line_number)` key does not identify a row**: one line can carry several time phrases. Pins carry `matched_text` too (`TestPinFidelityAgainstShippedCorpus`), and bans / the anti-repeat ledger reach a row's textual twins.
 - **Sidecar loaders fail open** (a truncated `selection_overrides.json` / `content_overrides.json` warns and degrades, never crashes the loop); writers go through `atomic_io`. Content overrides are reversible via `override_originals`.
+- **A row reaches the panel only if the renderer can highlight its `matched_text`.** `match_span.has_display_match` (stdlib-only) is the one test; the renderer, the baker, the raw picker and the coverage report all call it, so raw and baked picks stay equal (issue #411).
 - **Push recurring fixes upstream.** If you are overriding more than a handful of rows for the same reason, fix the miner / cleaner / quality filter instead.
 
 ## Architecture

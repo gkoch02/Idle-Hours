@@ -9,6 +9,7 @@ from pathlib import Path
 
 from idle_hours.buckets import BUCKET_ORDER, rederive_buckets
 from idle_hours.jsonl_io import iter_jsonl
+from idle_hours.match_span import has_display_match
 from idle_hours.pick_quote import (
     DEFAULT_OVERRIDES_PATH,
     _twin_texts,
@@ -98,8 +99,8 @@ def is_displayable(
 
     Mirrors the gates between the raw corpus and the panel: the baker's
     ``filter_rows`` (a bucket, a non-blank ``display_quote`` once the cleaner
-    has set one, and the quality floor — a row with no score passes, as it
-    does there) and the picker's
+    has set one, a matched phrase the renderer can highlight in it, and the
+    quality floor — a row with no score passes, as it does there) and the picker's
     bans, including the twins a per-row ban reaches (``banned_texts``, from
     :func:`banned_twin_texts`).
     """
@@ -113,6 +114,8 @@ def is_displayable(
     if "display_quote" in row:
         display = row["display_quote"]
         if not isinstance(display, str) or not display.strip():
+            return False
+        if not has_display_match(row):
             return False
     quality = row.get("quality_score")
     if quality is not None and quality < min_quality:

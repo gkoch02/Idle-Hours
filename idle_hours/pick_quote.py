@@ -23,6 +23,7 @@ from idle_hours.buckets import (
     rederive_buckets,
 )
 from idle_hours.jsonl_io import iter_jsonl
+from idle_hours.match_span import has_display_match
 
 DEFAULT_HISTORY_PATH = "~/.idle-hours/history.jsonl"
 DEFAULT_HISTORY_DAYS = 7
@@ -997,6 +998,8 @@ def pick_best(
             and not is_banned(row, overrides)
             and (not banned_texts or normalize_display_text(row.get("display_quote")) not in banned_texts)
             and (row.get("quality_score") is None or row.get("quality_score", 0) >= min_quality)
+            # The baker drops these too; skipping them here keeps raw and baked picks equal (issue #411).
+            and has_display_match(row)
         ]
         if not candidates:
             continue

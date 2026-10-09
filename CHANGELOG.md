@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The baker and picker now skip a quote whose time phrase sits inside a
+  hyphenated compound ("struck three-quarters", "twenty-three o'clock"),
+  which the panel showed with no highlighted phrase. Two such quotes left
+  the rotation.
 - The bundled Playfair Display Medium, SemiBold and Bold files now carry
   their own font names and style bits instead of all claiming to be
   Playfair Display Regular, so software that registers fonts by name sees
