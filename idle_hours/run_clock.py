@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from idle_hours import (
@@ -31,6 +31,7 @@ from idle_hours import (
     runtime_theme,
     runtime_webhook,
     sd_notify,
+    theme_names,
 )
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
@@ -45,6 +46,12 @@ BASE_DIR = Path(__file__).resolve().parent
 # Bound on the button-D shutdown command, so sudo hanging on PAM can't stall
 # the button thread. The render and display bounds live in ``runtime_render``.
 SHUTDOWN_TIMEOUT_SECONDS = 30
+# ``_shutdown`` waits this long for an in-flight render to finish before it
+# gives up: a whole render plus a whole display push at their timeouts, so a
+# ``systemctl restart`` landing mid-push lets the panel finish. The sample
+# unit's ``TimeoutStopSec`` must exceed it (``tests/test_pi_deployment_contract.py``).
+SHUTDOWN_DRAIN_SECONDS = runtime_render.RENDER_TIMEOUT_SECONDS + runtime_render.DISPLAY_TIMEOUT_SECONDS
+
 
 # Minimum wall-clock spacing between loop-heartbeat telemetry writes. The
 # heartbeat is a positive "I'm ticking" signal that works during quiet
@@ -102,7 +109,7 @@ class _ReplaceConfigDefaultAppend(argparse.Action):
         setattr(namespace, self.dest, items)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the literary clock render loop.")
     parser.add_argument(
         "--config",
@@ -162,114 +169,15 @@ def parse_args() -> argparse.Namespace:
         default="debug",
         help="Render mode passed through to render_quote.py",
     )
-    # Kept in lockstep with render_quote.THEME_ORDER (+ "auto"). The test
-    # tests/test_run_clock.py::TestCliThemeChoices pins this invariant.
-    _theme_choices = [
-        "default",
-        "dark",
-        "swiss",
-        "scholar",
-        "herbarium",
-        "newsprint",
-        "nightvision",
-        "blueprint",
-        "illuminated",
-        "gothic",
-        "bauhaus",
-        "risograph",
-        "comic",
-        "dispatch",
-        "atomic",
-        "marker",
-        "saloon",
-        "roman",
-        "alchemy",
-        "grimoire",
-        "deco",
-        "glacier",
-        "mucha",
-        "chalkboard",
-        "placard",
-        "chanbara",
-        "lcars",
-        "fillmore",
-        "firmament",
-        "astrarium",
-        "kanagawa",
-        "marquee",
-        "tarot",
-        "vinyl",
-        "vitrail",
-        "cartograph",
-        "questline",
-        "chrono",
-        "outrun",
-        "circuit",
-        "letter",
-        "grimdark",
-        "sampler",
-        "anna_atkins",
-        "lieder",
-        "izakaya",
-        "abyssal",
-        "pride",
-        "pulp",
-        "synoptic",
-        "vhs",
-        "bakelite",
-        "cardcatalog",
-        "metro",
-        "intaglio",
-        "nocturne",
-        "plaque",
-        "daguerreotype",
-        "autochrome",
-        "photo",
-        "betweenus",
-        "betweenus_dark",
-        "carcosa",
-        "control",
-        "observation",
-        "trisolaris",
-        "biomech",
-        "codex",
-        "culture",
-        "orbital",
-        "furies",
-        "bosch",
-        "semiotic",
-        "atropos",
-        "saros",
-        "expedition",
-        "witcher",
-        "hades",
-        "expanse",
-        "beksinski",
-        "goya",
-        "hal",
-        "lumon",
-        "dsky",
-        "oblivion",
-        "yorha",
-        "hitchhiker",
-        "escritoire",
-        "lasvegas",
-        "bladerunner",
-        "traumateam",
-        "redacted",
-        "gantry",
-        "platform",
-        "splitflap",
-        "diags",
-    ]
+    _theme_choices = list(theme_names.THEME_ORDER)
     parser.add_argument(
         "--theme",
         choices=[*_theme_choices, "auto", "random"],
         default="default",
         # Deliberately NOT a per-theme catalogue: unpinned prose here drifts from
         # the designs (issue #200). argparse prints the ``choices=`` list above,
-        # which TestActionThemeCycle::test_cli_theme_choices_match_theme_order
-        # guards; the designs are documented next to their rendered previews.
+        # read from theme_names.THEME_ORDER; the designs are documented next to
+        # their rendered previews.
         help=(
             "Render theme passed through to render_quote.py; see the choices list above "
             "for every registered theme. The README theme table shows a preview of each, "
@@ -591,7 +499,7 @@ def parse_args() -> argparse.Namespace:
     # precedence-ordering bugs.
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--config", default=None)
-    pre_args, _ = pre.parse_known_args()
+    pre_args, _ = pre.parse_known_args(argv)
     config_path = Path(pre_args.config) if pre_args.config else None
     # Mirror argparse's own ``choices=`` gate through ``load_config`` so a
     # typoed ``mode = "produciton"`` or ``theme = "drak"`` fails at
@@ -610,7 +518,7 @@ def parse_args() -> argparse.Namespace:
     if config_defaults:
         parser.set_defaults(**config_defaults)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
     return args
@@ -1139,28 +1047,13 @@ def _install_signal_handlers(state: RuntimeState) -> None:
 
 
 def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None:
-    """Drain the main loop's runtime resources on exit.
+    """Drain the main loop's runtime resources on exit, best-effort.
 
-    Order matters:
-
-    1. Block on ``render_lock`` so any in-flight render/display finishes
-       before we tear down ingress. We then **hold the lock** across the
-       web-server stop and button-close so any late-arriving HTTP POST or
-       GPIO callback that reaches ``_button_render_gate`` sees the lock
-       held and drops with a "busy" response instead of starting a fresh
-       render during shutdown — without this, a press during the teardown
-       window could kick off a new render and reintroduce SIGKILL-mid-
-       render risk under systemd's ``TimeoutStopSec``.
-    2. Stop the web server (joins its thread) while still holding the lock.
-    3. Close GPIO button handles (still under the lock) so the ``gpiozero``
-       listener thread exits instead of being left holding the pins after
-       the process returns.
-    4. Release the render lock and persist runtime state one last time so
-       ``manual_theme`` / ``manual_quiet`` survive even the final pre-exit
-       edit that didn't yet get an explicit ``save_runtime_state`` call.
-
-    Every step is wrapped in ``contextlib.suppress`` so a single teardown
-    failure doesn't prevent the others from running — shutdown is best-effort.
+    Order matters: take ``render_lock`` (so an in-flight render finishes) and
+    hold it while the web server stops and the GPIO buttons close, so a late
+    POST or press drops as "busy" instead of starting a render systemd would
+    SIGKILL; then release it and persist state one last time. Each step is
+    suppressed independently. Why: docs/runtime.md ("Graceful shutdown").
     """
     # Cancel pending timers (currently only the source-card 5s restore) BEFORE
     # draining the render lock so a timer callback doesn't kick off a new
@@ -1179,9 +1072,9 @@ def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None
     acquired = False
     try:
         with contextlib.suppress(Exception):
-            acquired = state.render_lock.acquire(timeout=30.0)
+            acquired = state.render_lock.acquire(timeout=SHUTDOWN_DRAIN_SECONDS)
         if not acquired:
-            _log("shutdown: render still in flight after 30s, proceeding anyway", err=True)
+            _log(f"shutdown: render still in flight after {SHUTDOWN_DRAIN_SECONDS}s, proceeding anyway", err=True)
 
         # Tear down ingress WHILE holding render_lock so any late web POST
         # or button callback that slips through hits _button_render_gate's
@@ -1246,7 +1139,7 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     """
     errors: list[str] = []
     for attr, required in _PREFLIGHT_PATH_FLAGS:
-        value = getattr(args, attr, None)
+        value = getattr(args, attr)
         if not value:
             if required:
                 errors.append(f"--{attr.replace('_', '-')} is required")
@@ -1286,8 +1179,8 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     # Checks the EFFECTIVE paths (``--baked-db`` / ``--raw-corpus``), not the
     # bundled ones, so an operator who relocated the corpus onto a writable
     # path gets a message about the file the picker will actually open.
-    baked_db = Path(getattr(args, "baked_db", None) or pick_quote_module.DEFAULT_DATABASE_PATH).expanduser()
-    raw_corpus = Path(getattr(args, "raw_corpus", None) or pick_quote_module.DEFAULT_INPUT_PATH).expanduser()
+    baked_db = Path(args.baked_db or pick_quote_module.DEFAULT_DATABASE_PATH).expanduser()
+    raw_corpus = Path(args.raw_corpus or pick_quote_module.DEFAULT_INPUT_PATH).expanduser()
     if not baked_db.exists() and not raw_corpus.exists():
         errors.append(
             f"corpus missing: neither {baked_db} nor {raw_corpus} exists. The wheel "
@@ -1329,7 +1222,7 @@ def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
     """
     errors: list[str] = []
     for attr, bundled in _SEEDED_CORPUS_PATHS:
-        value = getattr(args, attr, None)
+        value = getattr(args, attr)
         if not value:
             continue
         dest = Path(value).expanduser()
@@ -1370,7 +1263,7 @@ def _warn_legacy_render_script(args: argparse.Namespace) -> None:
     error. It runs even under ``--skip-preflight``, because that flag skips path
     checks, not advice.
     """
-    value = getattr(args, "render_script", None)
+    value = args.render_script
     if value and value != runtime_render.BUNDLED_RENDER_SCRIPT and runtime_render._uses_bundled_renderer(value):
         _log(
             f'render_script = "{value}" names the bundled renderer by file, '
@@ -1391,7 +1284,7 @@ def _run_preflight(args: argparse.Namespace) -> None:
     sample unit so a typoed path halts the service instead of flapping
     against ``Restart=always``.
     """
-    if getattr(args, "skip_preflight", False):
+    if args.skip_preflight:
         return
     # Seed BEFORE validating: a relocated corpus path is legitimately absent on
     # first boot, and the seeding step is what makes it present.
@@ -1441,8 +1334,8 @@ def main() -> int:
     # picks up the destination without per-call plumbing. Empty URL =
     # disabled; runtime_webhook.configure handles that explicitly.
     runtime_webhook.configure(
-        getattr(args, "webhook_url", "") or None,
-        all_events=getattr(args, "webhook_all_events", False),
+        args.webhook_url or None,
+        all_events=args.webhook_all_events,
     )
 
     _warn_legacy_render_script(args)

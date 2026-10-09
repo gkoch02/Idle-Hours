@@ -76,18 +76,16 @@ def _corpus_kwargs(args) -> CorpusKwargs:
 
     Single seam so the many ``peek_quote_id`` / ``render_now`` call sites don't
     each reach into ``args`` for three attributes — same pattern (and same
-    rationale) as ``runtime_theme._auto_theme_kwargs``. The ``getattr``
-    defaults cover programmatically-built ``argparse.Namespace`` objects in
-    tests and any caller predating these flags, so the bundled-asset contract
-    is preserved when the attributes are absent.
+    rationale) as ``runtime_theme._auto_theme_kwargs``. An unset flag
+    (``None``) falls back to the bundled asset.
 
     Both the peek and the render subprocess MUST be given the same values, or
     they can disagree about which quote is current and break the dedup check.
     """
     return {
-        "database_path": getattr(args, "baked_db", None) or pick_quote_module.DEFAULT_DATABASE_PATH,
-        "input_path": getattr(args, "raw_corpus", None) or pick_quote_module.DEFAULT_INPUT_PATH,
-        "overrides_path": getattr(args, "overrides", None) or pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        "database_path": args.baked_db or pick_quote_module.DEFAULT_DATABASE_PATH,
+        "input_path": args.raw_corpus or pick_quote_module.DEFAULT_INPUT_PATH,
+        "overrides_path": args.overrides or pick_quote_module.DEFAULT_OVERRIDES_PATH,
     }
 
 
@@ -188,7 +186,7 @@ def _persist_state_after_render(args: argparse.Namespace, state: RuntimeState) -
     exceptions so a disk hiccup can't bubble into the render path and
     trigger the outer-loop backoff.
     """
-    state_path = getattr(args, "state_path", None)
+    state_path = args.state_path
     if not state_path:
         return
     try:
@@ -492,12 +490,8 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
     when the mode is inactive, a manual override is in effect, or the quote
     hasn't changed and a theme is already stored.
 
-    Picks are drained from :attr:`RuntimeState.random_theme_bag` (a shuffled
-    pass through the full cycle) so every theme is shown once before any
-    repeat. When the bag empties it's refilled with a fresh shuffle, and the
-    themes in :attr:`RuntimeState.random_theme_recent` (the last ~half-pool
-    picks) are held out of the new bag's draw-front so a theme shown at the
-    tail of one pass can't reappear at the head of the next.
+    Picks come from :func:`runtime_theme.pick_next_random_theme`'s shuffled
+    bag, so every theme shows once before any repeats.
 
     The gate uses :attr:`RuntimeState.last_random_quote_id` (advanced
     synchronously by this function), not ``last_quote_id`` (advanced only by

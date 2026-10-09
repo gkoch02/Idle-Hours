@@ -1,6 +1,6 @@
-"""The ``goya`` theme's frame and the code only it uses (issue #335).
+"""The ``goya`` theme: Goya's *El Perro* from the *Pinturas negras*, the dog looking up at the time.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § goya
 """
 
 from __future__ import annotations
@@ -24,31 +24,6 @@ from ..primitives import _catmull_rom, _lerp_stops, _shade_silhouette, _smooth_n
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# goya — Francisco de Goya, the *Pinturas negras* (1819-1823): *El Perro*
-# ---------------------------------------------------------------------------
-# The dog's head looks up out of a dark slope into an ochre void; here it is
-# looking at the time. Full design notes: docs/themes.md (``goya``).
-#
-# Palette: black, yellow, red and white only (the paintings' earth plus their
-# one red), never blue or green. The void is painted in continuous tone and
-# Floyd–Steinberg dithered against the calibrated inks (``_dither_calibrated``);
-# the slope is a warm black in the same scene, so its edge is brushed rather
-# than ruled. ``paint_craquelure`` crazes the cached scene (cells coarser than
-# ``bosch``'s, as a mural's craze is) before the quote goes on, so the quote is
-# never cracked through.
-#
-# ``_goya_gaze`` pitches the head toward the matched phrase's centroid. The
-# body is black, not white: the void's luminance sits a third of the way from
-# black to white, giving black text ~6:1 contrast and white ~2:1. The label's
-# Prado-style inventory number comes from the Gutenberg id; it carries no date
-# (the book's would be wrong, Goya's a lie about the author).
-#
-# No hour carrier and no wall clock: ``time_str`` is deleted at frame entry.
-# Void, slope and craze are quote-independent and cached per process
-# (``_GOYA_SCENE``). Composed at 800x480 and NEAREST-downsampled otherwise (the
-# ``metro`` convention).
-# ---------------------------------------------------------------------------
 _GOYA_SEED = 0x474F5941              # GOYA
 _GOYA_INKS = ("black", "red", "yellow", "white")
 _GOYA_SLOPE_LEFT = 386               # the slope's top edge at x=0 …
@@ -268,7 +243,7 @@ def _goya_paint_label(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 def render_goya_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """*El Perro*, with the quote in the void and the dog looking at the
-    time (see the section comment above).
+    time (see docs/themes.md).
 
     ``time_str`` is unused by design: a painting carries no clock.
     """

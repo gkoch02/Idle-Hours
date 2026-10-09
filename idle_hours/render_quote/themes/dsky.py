@@ -1,6 +1,6 @@
-"""The ``dsky`` theme's frame and the code only it uses (issue #335).
+"""The ``dsky`` theme: the Apollo Guidance Computer's DSKY on its console, with a typed flight plan.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § dsky
 """
 
 from __future__ import annotations
@@ -17,30 +17,6 @@ from ..primitives import _fill_swatch_stipple, _shade_silhouette, _smooth_noise,
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# dsky — the Apollo Guidance Computer's display and keyboard (1966–1972)
-# ---------------------------------------------------------------------------
-# The Apollo Guidance Computer's display and keyboard (Block II geometry) on
-# the grey main console, with a typed flight-plan page clipped beside it. Full
-# design notes: docs/themes.md (``dsky``).
-#
-# The console and the unit are modelled in continuous tone (grey panel with a
-# brushed grain, a shaded rim, domed keycaps, shaded screws, recessed dark
-# windows, a reflection across the display, soft shadows) and Floyd–Steinberg
-# dithered to white and black (``_dither_calibrated``); the card, legends,
-# segments, lit lamp and type go on after the dither.
-#
-# The flight plan is typed in Special Elite in black, with the matched phrase
-# in red like the pen-and-ink updates.
-#
-# The hour is the program: the PROG register shows 01..12, pinned across the
-# minutes. VERB 06 NOUN 62 stays up and the three registers are telemetry
-# seeded from the quote. Each digit is a true seven-segment glyph in a mask
-# (``_dsky_draw_glyph``), painted white-hot with a green bloom through
-# ``paint_neon_mask`` with ``ground`` pinned to black. COMP ACTY is the one
-# lit lamp, solid green. Composed at 800x480 and NEAREST-downsampled otherwise
-# (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _DSKY_SEED = 0x44534B59               # DSKY
 _DSKY_INKS = ("white", "black")
 _DSKY_PANEL = 0.52                    # the console grey, as a fraction of the way to black
@@ -364,7 +340,7 @@ def _dsky_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Apollo DSKY on its console, the hour in its PROG register, the
-    quote typed on the flight plan beside it (see the section comment above)."""
+    quote typed on the flight plan beside it (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _dsky_scene().copy()
     draw = ImageDraw.Draw(image)

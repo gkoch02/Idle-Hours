@@ -1,6 +1,7 @@
-"""The ``kanagawa`` theme's border painter and the code only it uses (issue #335).
+"""The ``kanagawa`` theme's border painter, a Hokusai-flavoured seascape: a seigaiha wave
+band under a hazy sky, a hanko seal and a cream paper card for the quote.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § kanagawa
 """
 
 from __future__ import annotations
@@ -52,8 +53,8 @@ def _draw_seigaiha_band(
     column spacing so the scales interlock, and the tiling overshoots the
     band edges so no border shows.
 
-    The deepest rows get a navy stipple (B+K 1:1, the recipe of the
-    kanagawa matched phrase), so the sea darkens toward the bottom.
+    The deepest rows get a navy stipple (B+K 1:1, the ``bauhaus``
+    matched-phrase recipe), so the sea darkens toward the bottom.
     """
     width = image.size[0]
     row_spacing = max(8, radius // 2)
@@ -106,21 +107,10 @@ def draw_kanagawa_border(
     band at the bottom, and a maroon hanko seal in the bottom-right. No
     outer frame: ukiyo-e prints have none (as ``fillmore``).
 
-    * **Layer 0: graduated sky wash.** Only ``page_bg`` pixels above the
-      horizon (y ≈ 0.55 × height) are touched; the Bayer threshold tapers
-      from ~5/16 blue at the top to 0 at the horizon: morning haze.
-    * **Distant birds** from ``_KANAGAWA_BIRD_ANCHORS``: black two-stroke
-      Vs in the upper sky.
-    * **Horizon line**: a sparse stippled blue line at y ≈ 0.62 × height.
-    * **Seigaiha band** (bottom ~34%): see ``_draw_seigaiha_band``.
-    * **Hanko seal** (~32×38 px): a red rounded rectangle half flipped to
-      black on ``(x+y)&1`` (R+K maroon), with a stylised 川 ("river") in
-      2 px white strokes painted after the post-pass so they stay solid.
-
-    When ``clear_rect`` is given (the standard render path, as for
-    ``blueprint``), the body rect becomes a cream paper card over the
-    textile, so the band can run up to the text without hurting
-    legibility.
+    When ``clear_rect`` is given (the standard render path), the body rect
+    becomes a cream paper card over the textile, so the band can run up to
+    the text without hurting legibility. Design notes: docs/themes.md §
+    kanagawa.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -273,7 +263,7 @@ SPEC = BorderSpec(
     themes=("kanagawa",),
     paint=draw_kanagawa_border,
     # Wide enough to clear the seigaiha crescents. One knockout call: the
-    # painter resets the body rect to page_bg at the end, with no grid to
-    # re-add inside it (unlike blueprint).
+    # painter resets the body rect to page_bg at the end, with nothing to
+    # re-add inside it.
     clear_rect_pad=(14, 6, 6),
 )

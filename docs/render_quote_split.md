@@ -23,7 +23,7 @@ idle_hours/render_quote/
   __init__.py      facade: the public API (__all__) + the patch guard (below)
   __main__.py      `python -m idle_hours.render_quote` → cli.main()
   _paths.py        PACKAGE_DIR (= idle_hours/), font and plate path constants; BASE_DIR kept as an alias of PACKAGE_DIR
-  clock.py         now(): the single wall-clock seam (sleep frame, astrarium, vinyl)
+  clock.py         now(): the single wall-clock seam (sleep frame, astrarium)
   palette.py       SPECTRA6, BAYER tables, snap_image_to_palette, _PANEL_INKS, _dither_calibrated
   fonts.py         _FONT_CACHE, load_font, glyph fallback, theme_font_candidates
   layout.py        LAYOUTS, choose_layout, tokenize/wrap/fit/fit_quote_balanced, justify_flags
@@ -32,7 +32,7 @@ idle_hours/render_quote/
                    relief.py (relief, hatched tone, flow strokes, shade_height_field, craquelure),
                    noise.py (_white_noise, _smooth_noise, position_noise, _bayer_threshold_field, swatch stipple)
   furniture.py     _clock_hour12/_clock_hh_mm, _row_digest, tracked text, fit_text_to_width, byline helpers,
-                   _place_quote/_paint_placed, paint_mount_card, wrap_quote_into_masks
+                   _place_quote/_place_lines/_paint_placed, paint_mount_card, wrap_quote_into_masks
   frames.py        source card, static message, sleep frame, diags
   themes/
     __init__.py    explicit, ordered import list → registry (no pkgutil auto-discovery)
@@ -100,7 +100,7 @@ This lands before the split, so the split never touches the runtime and deployed
 
 **PR 2: core extraction. Done**, with these departures from the list below:
 - `primitives` is one module, not a subpackage. At about 780 lines it doesn't need splitting yet.
-- A `theme_tables` layer holds `THEMES`, `THEME_ORDER`, `THEME_FONTS` and the per-theme flags until the registry stage derives them. `THEME_FONTS` is built from the font fallback chains, and `fonts` reads `THEME_FONTS`. So the chains live in `_paths`, below `theme_tables`, and the loader lives in `fonts`, above it.
+- A `theme_tables` layer holds `THEMES`, `THEME_FONTS` and the per-theme flags, and re-exports `THEME_ORDER` from the Pillow-free `idle_hours.theme_names` (issue #393). `THEME_FONTS` is built from the font fallback chains, and `fonts` reads `THEME_FONTS`. So the chains live in `_paths`, below `theme_tables`, and the loader lives in `fonts`, above it.
 - `frames` stays in `_monolith`: the sleep frame and source card call `render()`, so they move with it.
 - The clock seam became `clock.now()`.
 - Every test patch the guard refused was repointed at the module that reads the name: `_monolith` for a theme's call site, `text` for `_draw_text_body`'s. Three helpers (`normalize_dashes`, `_bold_stroke_for_theme`, `fallback_title`) landed one layer lower than first planned, because the layer check found them used from below.

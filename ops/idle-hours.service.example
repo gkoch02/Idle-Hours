@@ -61,6 +61,16 @@ ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python -m idle_hours.run_clock \
 # Rebuilding corpus artifacts is a separate maintenance task, not part of
 # service startup.
 
+# Stop only the loop, not its children. With the default KillMode=control-group
+# a `systemctl restart` sends SIGTERM to the render and display subprocesses
+# as well, so a restart landing mid-push leaves the panel half-refreshed and
+# logs a display error ("terminated with signal 15"). The loop already drains
+# an in-flight render on SIGTERM (run_clock.SHUTDOWN_DRAIN_SECONDS, a render
+# plus a display push at their timeouts); mixed lets it. TimeoutStopSec must
+# stay above that window or systemd escalates to SIGKILL anyway.
+KillMode=mixed
+TimeoutStopSec=120s
+
 Restart=always
 RestartSec=10
 # "Do not restart" exit code for terminal configuration errors. run_clock

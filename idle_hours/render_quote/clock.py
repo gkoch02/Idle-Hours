@@ -13,7 +13,7 @@ def now() -> datetime.datetime:
     """The current local time.
 
     Every clock-dependent surface (the sleep frame's fallback time, astrarium's
-    dashboard, vinyl's year and wear seed) goes through here, so the golden
+    dashboard) goes through here, so the golden
     suite, the preview generator and the fingerprint tool freeze time by
     patching this one function. ``tests/test_render_golden.py`` fails on any
     other clock read in the package, and on any name import of this function.

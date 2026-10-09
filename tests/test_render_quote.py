@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -296,6 +296,75 @@ class TestSnapImageToPalette:
             assert self._inks(result) == {color}, f"Color {color} did not round-trip"
 
 
+class TestSnapFastPath:
+    """The six-ink snap runs in Pillow's C ops; the per-pixel loop is the oracle.
+
+    The fast path is a derivation (round each channel, then settle the pixels
+    whose nearest cube corner is the missing cyan or magenta), and every one of
+    its comparisons sits on a boundary a derivation can get off by one: ``r +
+    b >= 255`` versus ``> 255``, ``g <= b`` versus ``<``, the 127 / 128 split.
+    The sweep therefore covers every colour whose channels are all drawn from a
+    boundary-dense value set, every pixel on the ``r + b`` / ``r + g`` /
+    ``g + b`` sum boundaries and the ``g = b`` / ``b = r`` difference
+    boundaries, and a seeded random sample. The oracle is the rule written out
+    by hand, not the fallback loop. The full 16.7M-colour comparison was run
+    once by hand; this is the fast standing fence.
+    """
+
+    PALETTE = [(255, 255, 255), (0, 0, 0), (255, 0, 0), (255, 255, 0), (0, 0, 255), (0, 255, 0)]
+    EDGE_VALUES = (0, 1, 2, 63, 64, 65, 126, 127, 128, 129, 190, 191, 192, 253, 254, 255)
+
+    @classmethod
+    def _oracle(cls, pixel):
+        # First palette entry wins a tie: min() keeps the first minimal element.
+        return min(cls.PALETTE, key=lambda c: (pixel[0] - c[0]) ** 2 + (pixel[1] - c[1]) ** 2 + (pixel[2] - c[2]) ** 2)
+
+    @classmethod
+    def _colours(cls):
+        import random
+
+        colours = {(r, g, b) for r in cls.EDGE_VALUES for g in cls.EDGE_VALUES for b in cls.EDGE_VALUES}
+        step = range(0, 256, 5)
+        for a in range(256):
+            for total in (254, 255, 256):
+                c = total - a
+                if 0 <= c <= 255:
+                    for other in step:
+                        colours.update({(a, other, c), (a, c, other), (other, a, c)})
+            for delta in (-1, 0, 1):
+                c = a + delta
+                if 0 <= c <= 255:
+                    for other in step:
+                        colours.update({(other, a, c), (a, other, c), (c, other, a)})
+        rng = random.Random(2026)
+        colours.update((rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(40_000))
+        return sorted(colours)
+
+    def test_matches_the_nearest_colour_rule_on_every_boundary(self):
+        colours = self._colours()
+        assert len(colours) > 100_000, "the sweep shrank; it no longer covers the decision boundaries"
+        width = 512
+        height = -(-len(colours) // width)
+        img = Image.new("RGB", (width, height), colours[0])
+        img.putdata(colours + [colours[0]] * (width * height - len(colours)))
+        assert rq_palette.SPECTRA6_PALETTE == self.PALETTE, "the palette changed; re-derive the fast path"
+        snapped = rq.snap_image_to_palette(img, rq_palette.SPECTRA6_PALETTE)
+        px = rq_palette.rgb_pixel_access(snapped)
+        got = [px[i % width, i // width] for i in range(len(colours))]
+        wrong = [(c, self._oracle(c), g) for c, g in zip(colours, got, strict=True) if g != self._oracle(c)]
+        assert not wrong, f"{len(wrong)} colours snap differently from the nearest-colour rule, first: {wrong[:5]}"
+
+    def test_rgba_input_ignores_alpha(self):
+        img = Image.new("RGBA", (3, 2), (10, 250, 250, 7))
+        snapped = rq.snap_image_to_palette(img, rq_palette.SPECTRA6_PALETTE)
+        assert snapped.mode == "RGB" and snapped.size == (3, 2)
+        assert distinct_inks(snapped) == {(255, 255, 255)}
+
+    def test_other_palettes_still_take_the_loop(self):
+        img = Image.new("RGB", (2, 2), (10, 250, 250))
+        assert distinct_inks(rq.snap_image_to_palette(img, [(0, 0, 0), (0, 255, 255)])) == {(0, 255, 255)}
+
+
 class TestTypedPixelAccess:
     """The mode check is what makes ``gray_pixel_access`` / ``rgb_pixel_access``'s types true (issue #350)."""
 
@@ -365,14 +434,14 @@ class TestLoadFontFallback:
 
     def test_variation_tuple_candidate_loads(self):
         """``load_font`` accepts ``(path, variation_name)`` tuples for variable
-        fonts and applies the named instance. The Bitter file bundled for the
-        ``scholar`` theme is a variable font that defaults to Thin weight, so
-        the ``Bold`` variation must produce visibly wider glyphs than the
-        default — otherwise the variation call silently fell through and the
-        panel would render near-invisible hairlines."""
-        variable_path = Path(rq.BASE_DIR) / "fonts" / "bitter" / "Bitter-Variable.ttf"
+        fonts and applies the named instance. The bundled Jost is a variable
+        font whose default instance is Regular, so the ``Bold`` variation must
+        produce visibly wider glyphs than the default — otherwise the
+        variation call silently fell through, and on a face that defaults to
+        Thin the panel would render near-invisible hairlines."""
+        variable_path = Path(rq.BASE_DIR) / "fonts" / "jost" / "Jost-Variable.ttf"
         if not variable_path.exists():
-            pytest.skip("Bitter variable font not bundled")
+            pytest.skip("Jost variable font not bundled")
         regular = rq.load_font([str(variable_path)], size=60)
         bold = rq.load_font([(str(variable_path), "Bold")], size=60)
         img = Image.new("RGB", (400, 120), "white")
@@ -499,13 +568,9 @@ class TestThemeFonts:
             entry = rq.THEME_FONTS[name][role][0]
             return entry[0] if isinstance(entry, tuple) else entry
         operator_choice = (
-            "scholar",
             "newsprint",
             "nightvision",
-            "blueprint",
-            "illuminated",
             "bauhaus",
-            "risograph",
             "comic",
         )
         default_primary = primary("default", "quote_regular")
@@ -711,17 +776,10 @@ class TestThemes:
         the THEMES dict or THEME_ORDER tuple fails the test rather than
         ghosting downstream."""
         for name in (
-            "scholar",
             "newsprint",
             "nightvision",
-            "blueprint",
-            "illuminated",
             "bauhaus",
-            "risograph",
             "comic",
-            "swiss",
-            "herbarium",
-            "mucha",
             "fillmore",
         ):
             assert name in rq.THEMES, name
@@ -744,12 +802,6 @@ class TestThemes:
             for field, value in fields.items():
                 assert value in allowed, f"{name}.{field}={value} is off-palette"
 
-    def test_scholar_theme_uses_blue_text(self):
-        t = rq.THEMES["scholar"]
-        assert t["text"] == rq.SPECTRA6["blue"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["accent"] == rq.SPECTRA6["red"]
-
     def test_newsprint_theme_has_no_colour_accent(self):
         """``newsprint`` is intentionally monochrome — the bolded matched
         phrase carries weight differentiation but the same ink colour as
@@ -764,29 +816,6 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["green"]
         assert t["accent"] == rq.SPECTRA6["yellow"]
 
-    def test_blueprint_theme_uses_white_on_blue_cyanotype_palette(self):
-        """Cyanotype blueprint: blue ground, white ink for every
-        structural mark (body, frame, grid, crosshairs), red accent
-        for the matched time phrase (the "annotated dimension" in red
-        pencil over an otherwise monochromatic print). Pin the
-        inverted palette so a regression that flipped it back to
-        white/blue/red would collapse the theme into a Scholar-adjacent
-        layout and lose the photochemical-drafting-sheet identity."""
-        t = rq.THEMES["blueprint"]
-        assert t["page_bg"] == rq.SPECTRA6["blue"]
-        assert t["text"] == rq.SPECTRA6["white"]
-        assert t["accent"] == rq.SPECTRA6["red"]
-
-    def test_illuminated_theme_uses_rubricated_red_body(self):
-        """Red body text is unique to ``illuminated`` across the rotation;
-        a regression that flipped ``text`` to black would collapse the
-        theme into a slightly-fancier ``default`` and lose the whole
-        manuscript motif."""
-        t = rq.THEMES["illuminated"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["text"] == rq.SPECTRA6["red"]
-        assert t["accent"] == rq.SPECTRA6["blue"]
-
     def test_bauhaus_theme_uses_three_primaries_simultaneously(self):
         """Bauhaus is the only theme that puts all three primaries on the
         panel at once: black body, blue accent, red ornaments. A regression
@@ -798,44 +827,6 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["black"]
         assert t["accent"] == rq.SPECTRA6["blue"]
         assert t["ornament_dark"] == rq.SPECTRA6["red"]
-
-    def test_swiss_theme_uses_austere_monochrome_palette(self):
-        """Swiss International is the rotation's modernist exception:
-        white ground, black body, single red accent on the matched
-        phrase and the small header square. No second chromatic ink
-        anywhere — a regression that introduced a blue / yellow /
-        green accent would collapse the theme into a generic poster
-        composition and lose the "austerity by subtraction" identity."""
-        t = rq.THEMES["swiss"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["text"] == rq.SPECTRA6["black"]
-        assert t["accent"] == rq.SPECTRA6["red"]
-        assert t["ornament_dark"] == rq.SPECTRA6["black"]
-
-    def test_herbarium_theme_routes_matched_phrase_to_forest_green(self):
-        """Herbarium uses the green sentinel ink in the ``accent`` slot
-        so ``_draw_text_body`` can route the matched phrase through a
-        G+K → forest-green stipple. Pinning the sentinel slot here
-        catches a regression that drops the matched phrase back to
-        solid black (eliminating the green colour story that
-        defines the theme on the green axis)."""
-        t = rq.THEMES["herbarium"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["text"] == rq.SPECTRA6["black"]
-        assert t["accent"] == rq.SPECTRA6["green"]
-
-    def test_mucha_theme_uses_red_sentinel_for_synthesised_body(self):
-        """Mucha is the only theme whose body fill is a synthesised
-        colour (maroon — R+K 1:1) rather than a native ink. The
-        ``text`` slot carries the red sentinel that ``_draw_text_body``
-        routes through its R+K stipple branch; a regression that
-        changed ``text`` to solid black or solid red would collapse
-        the body into a flat single ink and lose the Art Nouveau
-        oxblood register."""
-        t = rq.THEMES["mucha"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["text"] == rq.SPECTRA6["red"]
-        assert t["accent"] == rq.SPECTRA6["green"]
 
     def test_fillmore_theme_uses_six_inks_simultaneously(self):
         """Fillmore is the rotation's visual maximalist: yellow ground,
@@ -853,27 +844,11 @@ class TestThemes:
         """Each new theme that names a border in its design notes
         must appear in _BORDER_PAINTERS — without registration the
         border-painter never fires and the theme degrades into
-        "just type on the ground colour". Pin the four new entries
+        "just type on the ground colour". Pin these entries
         explicitly so a future refactor that drops the dict key
         fails this test loudly."""
-        for name in ("swiss", "herbarium", "mucha", "fillmore", "firmament"):
+        for name in ("fillmore", "firmament"):
             assert name in rq._BORDER_PAINTERS, name
-
-    def test_risograph_theme_uses_no_black_ink(self):
-        """The defining constraint of the risograph aesthetic is
-        two-colour printing with NO black plate. Pin "no black anywhere"
-        as an explicit invariant so a well-meaning refactor (e.g. making
-        the source credit more legible by darkening it) doesn't silently
-        re-introduce black and collapse the theme into a tinted
-        ``default``."""
-        t = rq.THEMES["risograph"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["text"] == rq.SPECTRA6["red"]
-        assert t["accent"] == rq.SPECTRA6["blue"]
-        # Every colour field must avoid black — this is the theme's
-        # whole point.
-        for field, value in t.items():
-            assert value != rq.SPECTRA6["black"], f"risograph.{field} is black"
 
     def test_comic_theme_uses_yellow_ground(self):
         """Comic is the first (and only) theme with a yellow page
@@ -976,13 +951,9 @@ class TestRender:
     @pytest.mark.parametrize(
         "theme",
         [
-            "scholar",
             "newsprint",
             "nightvision",
-            "blueprint",
-            "illuminated",
             "bauhaus",
-            "risograph",
             "comic",
             "firmament",
             "outrun",
@@ -1108,12 +1079,9 @@ class TestBauhausBorder:
     def test_bauhaus_border_is_theme_gated(self):
         """Bauhaus's geometric corner accents must not appear on other
         themes. Sample (15, 15), which lands inside the bauhaus top-left
-        red circle. Excluded themes: illuminated (its TL jewel at radius
-        5 centred on (14, 14) also covers this pixel) — both bauhaus and
-        illuminated paint here, so (15, 15) can only distinguish
-        bauhaus from every theme whose margin is empty there."""
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
-                      "blueprint", "risograph", "comic"):
+        red circle, so it distinguishes bauhaus from every theme whose
+        margin is empty there."""
+        for theme in ("default", "dark", "newsprint", "nightvision", "comic"):
             img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((15, 15)) == expected_bg, (
@@ -1145,114 +1113,6 @@ class TestBauhausBorder:
         assert image.getpixel((15, 15)) == rq.SPECTRA6["blue"], "TL should use ornament_dark"
         assert image.getpixel((785, 15)) == rq.SPECTRA6["yellow"], "TR should use accent"
         assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "frame should use text colour"
-
-
-class TestIlluminatedBorder:
-    """The illuminated theme paints a manuscript-style border.
-
-    Double rubricated (red) rule — outer and inner concentric rectangles
-    — plus a small blue "jewel" (filled circle) centred on each outer
-    corner, evoking the lapis cabochons inset into medieval
-    illuminated pages. Regression tests here pin the painted pixels,
-    complementing the golden-image suite.
-    """
-
-    def _row(self):
-        return {
-            "display_quote": "It was three o'clock in the afternoon.",
-            "matched_text": "three o'clock",
-            "author": "Jane Austen",
-            "title": "Mansfield Park",
-            "bucket": "h3_exact",
-            "resolved_bucket": "h3_exact",
-            "used_fallback": False,
-            "quality_score": 80,
-            "source_id": "141",
-        }
-
-    def test_illuminated_double_rule_paints_both_rules_in_body_red(self):
-        """Outer rule at y=14, inner rule at y=22, page_bg gap between."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
-        assert img.getpixel((400, 14)) == rq.SPECTRA6["red"], "outer rule missing"
-        assert img.getpixel((400, 22)) == rq.SPECTRA6["red"], "inner rule missing"
-        # White gap between the two — the defining "doubled" effect.
-        assert img.getpixel((400, 18)) == rq.SPECTRA6["white"], "rules merged into single band"
-
-    def test_illuminated_corner_jewels_paint_plum_three_way_bayer(self):
-        """Plum cabochons at the four outer-rule corners — radius 5
-        filled circles painted in a sentinel ink and then bbox-post-
-        passed through a 3-way 4×4 Bayer partition (cells 0-4 → red,
-        cells 5-9 → blue, cells 10-15 → black; ~1/3 each, the
-        documented R+B+K plum recipe). Pin the centre pixel of each
-        jewel against the deterministic Bayer assignment so a
-        regression that dropped the post-pass would surface; the
-        centre's exact ink depends on the `BAYER_4x4[y%4][x%4]` value
-        at that coordinate.
-
-        Centre pixels:
-          (14, 14)   → BAYER[2][2]=1  → red
-          (785, 14)  → BAYER[2][1]=11 → black
-          (14, 465)  → BAYER[1][2]=14 → black
-          (785, 465) → BAYER[1][1]=4  → red
-
-        At least one corner-region sample lands on a cell in the blue
-        partition (cells 5-9) — verify the post-pass painted blue
-        somewhere too so all three plum inks are present."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
-        assert img.getpixel((14, 14)) == rq.SPECTRA6["red"], "TL jewel centre missing"
-        assert img.getpixel((785, 14)) == rq.SPECTRA6["black"], "TR jewel centre missing"
-        assert img.getpixel((14, 465)) == rq.SPECTRA6["black"], "BL jewel centre missing"
-        assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "BR jewel centre missing"
-        # Probe the TL jewel's bbox for at least one painted blue pixel
-        # to confirm the 3-way partition's blue arm fires.
-        found_blue = False
-        for py in range(9, 20):
-            for px in range(9, 20):
-                if img.getpixel((px, py)) == rq.SPECTRA6["blue"]:
-                    found_blue = True
-                    break
-            if found_blue:
-                break
-        assert found_blue, "TL jewel bbox produced no blue pixels — 3-way Bayer regressed"
-
-    def test_illuminated_border_paints_all_four_sides(self):
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
-        # Outer rule, mid-side samples (away from the jewels).
-        assert img.getpixel((400, 14)) == rq.SPECTRA6["red"], "top outer rule missing"
-        assert img.getpixel((400, 465)) == rq.SPECTRA6["red"], "bottom outer rule missing"
-        assert img.getpixel((14, 240)) == rq.SPECTRA6["red"], "left outer rule missing"
-        assert img.getpixel((785, 240)) == rq.SPECTRA6["red"], "right outer rule missing"
-
-    def test_illuminated_border_is_theme_gated(self):
-        """Sample (400, 22) — inner rule pixel — which is unique to
-        illuminated; no other border theme places a rule at inset 22."""
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
-                      "blueprint", "bauhaus", "risograph", "comic"):
-            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
-            expected_bg = rq.THEMES[theme]["page_bg"]
-            assert img.getpixel((400, 22)) == expected_bg, (
-                f"theme {theme} painted at inner-rule y=22; expected page_bg={expected_bg}"
-            )
-
-    def test_illuminated_border_appears_in_debug_and_card_modes_too(self):
-        for mode in ("production", "debug", "card"):
-            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="illuminated")
-            # (14, 14) lands on the TL jewel's centre — with the 3-way
-            # plum post-pass the centre is the red arm of the partition
-            # at this coordinate (BAYER[2][2]=1 < 5). Different from
-            # both the body's rubricated red text (which doesn't reach
-            # this corner) and the canvas page_bg, so a regression that
-            # dropped the border in any render mode would still fail
-            # here.
-            assert img.getpixel((14, 14)) == rq.SPECTRA6["red"], f"illuminated mode={mode} missing TL jewel"
-
-    def test_illuminated_border_uses_theme_colours_not_hardcoded_rgb(self):
-        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
-        custom = {"text": rq.SPECTRA6["green"], "accent": rq.SPECTRA6["yellow"]}
-        rq.draw_illuminated_border(image, custom)
-        assert image.getpixel((14, 14)) == rq.SPECTRA6["yellow"], "jewel should use accent"
-        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "outer rule should use text"
-        assert image.getpixel((400, 22)) == rq.SPECTRA6["green"], "inner rule should use text"
 
 
 class TestNewsprintBorder:
@@ -1308,11 +1168,10 @@ class TestNewsprintBorder:
         """Sample (400, 11) — mid-thick-band — against themes whose
         page_bg is not black (so the page_bg check is meaningful). Dark
         and nightvision share page_bg=black and would pass even if
-        this theme painted black there, so they're excluded. Blueprint
-        is excluded because its Layer 0 dither paints sparse white pixels
-        across the blue ground, same reason newsprint is excluded from
-        the blueprint / comic gating tests."""
-        for theme in ("default", "scholar", "risograph", "comic"):
+        this theme painted black there, so they're excluded. Newsprint is
+        excluded because its Layer 0 halftone paints sparse flecks across
+        the ground."""
+        for theme in ("default", "comic", "bauhaus"):
             img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((400, 11)) == expected_bg, (
@@ -1340,8 +1199,8 @@ class TestNightvisionBorder:
     Four L-shaped brackets in the body green, with NO continuous outer
     frame between them. The bracket-only composition is the signature
     camera-viewfinder / weapons-HUD aesthetic; its absent full frame
-    visually distinguishes it from the bauhaus / blueprint / illuminated
-    / newsprint patterns which all paint a continuous rectangle.
+    visually distinguishes it from the bauhaus / newsprint patterns, which
+    paint a continuous rectangle.
     """
 
     def _row(self):
@@ -1382,7 +1241,7 @@ class TestNightvisionBorder:
         """The signature feature: mid-edge pixels must show the black
         page_bg, not a connecting frame line. A regression that added
         a full rectangle outline would collapse nightvision's HUD look
-        into another illuminated-style frame."""
+        into another framed theme."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="nightvision")
         assert img.getpixel((400, 12)) == rq.SPECTRA6["black"], "unexpected top frame line"
         assert img.getpixel((400, 467)) == rq.SPECTRA6["black"], "unexpected bottom frame line"
@@ -1392,13 +1251,12 @@ class TestNightvisionBorder:
     def test_nightvision_border_is_theme_gated(self):
         """Sample the TL bracket corner (12, 12). Several other border
         themes *also* paint at this pixel — newsprint's outer thick rule
-        at inset 10 covers x=10-12 / y=10-12, bauhaus's TL red circle
-        overlaps it, and illuminated's TL jewel overlaps it — so we can
+        at inset 10 covers x=10-12 / y=10-12 and bauhaus's TL red circle
+        overlaps it — so we can
         only use (12, 12) to distinguish nightvision from themes whose
         margin is empty there. Skip the other border themes explicitly;
         their own gating tests pin their distinctive pixels."""
-        for theme in ("default", "dark", "scholar", "blueprint",
-                      "risograph", "comic"):
+        for theme in ("default", "dark", "comic"):
             img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((12, 12)) == expected_bg, (
@@ -1418,133 +1276,6 @@ class TestNightvisionBorder:
         custom = {"text": rq.SPECTRA6["yellow"]}
         rq.draw_nightvision_border(image, custom)
         assert image.getpixel((12, 12)) == rq.SPECTRA6["yellow"], "bracket should use text"
-
-
-class TestBlueprintBorder:
-    """The blueprint theme paints a cyanotype drafting sheet.
-
-    Parallels ``TestBauhausBorder`` but locks the blueprint-specific
-    primitives: 50/50 white-on-blue dithered ground, thin white outer
-    frame, and white crosshair registration marks at each corner. A
-    regression that dropped ``draw_blueprint_border`` would pass every
-    dict-level palette test silently, so pin the painted pixels here.
-    """
-
-    def _row(self):
-        return {
-            "display_quote": "It was three o'clock in the afternoon.",
-            "matched_text": "three o'clock",
-            "author": "Jane Austen",
-            "title": "Mansfield Park",
-            "bucket": "h3_exact",
-            "resolved_bucket": "h3_exact",
-            "used_fallback": False,
-            "quality_score": 80,
-            "source_id": "141",
-        }
-
-    def test_blueprint_corner_crosshairs_paint_accent_red(self):
-        """Four crosshair "+" marks centred on the frame corners at
-        ``(16, 16)`` / ``(783, 16)`` / ``(16, 463)`` / ``(783, 463)``.
-        The centre pixel is always on the mark; arm extents are ±8.
-        Crosshairs paint in the accent colour (red) so they pop
-        against the white body / grid ink, matching the matched
-        time phrase highlight."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
-        assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], "TL crosshair centre missing"
-        assert img.getpixel((783, 16)) == rq.SPECTRA6["red"], "TR crosshair centre missing"
-        assert img.getpixel((16, 463)) == rq.SPECTRA6["red"], "BL crosshair centre missing"
-        assert img.getpixel((783, 463)) == rq.SPECTRA6["red"], "BR crosshair centre missing"
-
-    def test_blueprint_crosshair_arms_extend_both_directions(self):
-        """Each crosshair has four 8px arms (left/right/up/down from
-        centre). A regression that drew a single dot instead of a "+"
-        would pass the centre-pixel test but fail here."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
-        cx, cy = 16, 16
-        assert img.getpixel((cx - 6, cy)) == rq.SPECTRA6["red"], "TL left arm missing"
-        assert img.getpixel((cx + 6, cy)) == rq.SPECTRA6["red"], "TL right arm missing"
-        assert img.getpixel((cx, cy - 6)) == rq.SPECTRA6["red"], "TL up arm missing"
-        assert img.getpixel((cx, cy + 6)) == rq.SPECTRA6["red"], "TL down arm missing"
-
-    def test_blueprint_outer_frame_is_painted_in_body_white(self):
-        """The outer rectangle outline is the structural anchor for the
-        crosshairs. Sample a point on each side well clear of the
-        corners, to verify all four sides of the frame rendered. Frame
-        is the body-text colour (white, cyanotype ink)."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
-        assert img.getpixel((400, 16)) == rq.SPECTRA6["white"], "top frame line missing"
-        assert img.getpixel((400, 463)) == rq.SPECTRA6["white"], "bottom frame line missing"
-        assert img.getpixel((16, 240)) == rq.SPECTRA6["white"], "left frame line missing"
-        assert img.getpixel((783, 240)) == rq.SPECTRA6["white"], "right frame line missing"
-
-    def test_blueprint_border_is_theme_gated(self):
-        """Border is gated on theme == 'blueprint'; no other theme (including
-        bauhaus, which uses a different graphic at different coordinates)
-        should paint a crosshair arm at (6, 16)."""
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
-                      "illuminated", "risograph", "comic"):
-            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
-            expected_bg = rq.THEMES[theme]["page_bg"]
-            # (6, 16) lands on the blueprint TL crosshair's leftmost arm
-            # pixel; other themes must leave it showing page_bg.
-            assert img.getpixel((6, 16)) == expected_bg, (
-                f"theme {theme} painted something at the blueprint crosshair location"
-            )
-
-    def test_blueprint_border_appears_in_debug_and_card_modes_too(self):
-        """The border is part of the blueprint theme's visual identity, so
-        it must show up regardless of render mode."""
-        for mode in ("production", "debug", "card"):
-            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="blueprint")
-            assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], f"blueprint mode={mode} missing TL crosshair"
-
-    def test_blueprint_border_uses_theme_colours_not_hardcoded_rgb(self):
-        """``draw_blueprint_border`` must pull its colours from the passed-in
-        theme dict (text for the frame, accent for the crosshairs). Call
-        the helper with a non-default palette and assert the output
-        reflects it."""
-        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
-        custom = {
-            "text": rq.SPECTRA6["green"],
-            "accent": rq.SPECTRA6["yellow"],
-        }
-        rq.draw_blueprint_border(image, custom)
-        assert image.getpixel((16, 16)) == rq.SPECTRA6["yellow"], "crosshair should use accent"
-        assert image.getpixel((400, 16)) == rq.SPECTRA6["green"], "frame should use text colour"
-
-    def test_blueprint_interior_grid_paints_in_body_text_colour(self):
-        """The graph-paper grid inside the frame uses the body-text colour.
-        Sample an intersection well clear of the frame and of the quote
-        block so no glyph or outer rule is painted on top. At 20px spacing,
-        with ``frame_inset=16``, the first interior horizontal rule is at
-        y=36 and the first interior vertical rule is at x=36; (36, 56) is
-        a clean grid crossing. Direct-call (no ``page_bg`` in palette →
-        Layer 0 dither is skipped) so the off-grid pixel stays the
-        white canvas the test prepared."""
-        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
-        rq.draw_blueprint_border(image, {"text": rq.SPECTRA6["green"], "accent": rq.SPECTRA6["red"]})
-        assert image.getpixel((36, 56)) == rq.SPECTRA6["green"], "grid intersection should use text colour"
-        # Off-grid whitespace between rules stays page_bg (white canvas here).
-        assert image.getpixel((45, 45)) == (255, 255, 255), "between-grid pixel should remain unpainted"
-
-    def test_blueprint_grid_is_theme_gated(self):
-        """No other theme paints a non-page_bg pixel at the blueprint
-        grid-intersection coordinate (36, 56). Newsprint, alchemy, and
-        illuminated are all excluded because their Layer 0 grounds
-        intentionally paint sparse Bayer flecks across `page_bg`
-        (black halftone for newsprint, parchment yellow flecks for
-        alchemy, cream yellow flecks for illuminated). Dispatch is
-        excluded for the same reason — its Layer 0 1-in-8 cream wash
-        also flips white-ground pixels to yellow at this coordinate."""
-        row = self._row()
-        for theme in ("default", "dark", "scholar", "nightvision",
-                      "bauhaus", "risograph", "comic"):
-            img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
-            expected_bg = rq.THEMES[theme]["page_bg"]
-            assert img.getpixel((36, 56)) == expected_bg, (
-                f"theme {theme} painted something at the blueprint grid coordinate"
-            )
 
 
 class TestComicCornerStripes:
@@ -1611,14 +1342,13 @@ class TestComicCornerStripes:
         """No other theme paints a non-page_bg pixel at the comic stripe
         sample point (650, 470) — well inside the bottom-right triangle
         and outside every other theme's corner decorations / outer rules.
-        Newsprint, alchemy, and illuminated are all excluded because
+        Newsprint and alchemy are excluded because
         their Layer 0 grounds intentionally paint sparse Bayer flecks
-        across `page_bg` (black halftone / parchment-yellow flecks /
-        cream-yellow flecks). Dispatch is excluded for the same reason
+        across `page_bg` (black halftone / parchment-yellow flecks).
+        Dispatch is excluded for the same reason
         — its Layer 0 cream wash also affects this coordinate."""
         row = self._row()
-        for theme in ("default", "dark", "scholar", "nightvision",
-                      "blueprint", "bauhaus", "risograph"):
+        for theme in ("default", "dark", "nightvision", "bauhaus"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((650, 470)) == expected_bg, (
@@ -1660,416 +1390,6 @@ class TestComicCornerStripes:
             assert color in allowed, f"stripe colour {color} is off-palette"
 
 
-class TestGrimoireBorder:
-    """The grimoire theme paints an alchemical spellbook border.
-
-    Thin red outer rule, four corner *inscribed pentagrams* (five-pointed
-    star + surrounding ring — the magic-circle composition), and four
-    classical planetary sigils on the mid-edges (Sun ☉ top, Moon ☽
-    bottom, Mars ♂ left, Venus ♀ right). Shares the black/white/red
-    palette with ``gothic`` but is iconographically unrelated: gothic
-    stacks a doubled rule with quatrefoils + mid-edge diamonds (cathedral
-    tracery), grimoire is single-rule with pentagrams-in-circles +
-    planetary alchemical sigils (occult diagram). Pin the painted
-    pixels for each element here — the golden-image suite only covers
-    default / dark / scholar so these are the regression seam for
-    the grimoire decoration.
-    """
-
-    def _row(self):
-        return {
-            "display_quote": "It was three o'clock in the afternoon.",
-            "matched_text": "three o'clock",
-            "author": "Jane Austen",
-            "title": "Mansfield Park",
-            "bucket": "h3_exact",
-            "resolved_bucket": "h3_exact",
-            "used_fallback": False,
-            "quality_score": 80,
-            "source_id": "141",
-        }
-
-    def test_grimoire_outer_rule_paints_red_on_all_four_sides(self):
-        """Single rectangle at outer_inset=14 — sample mid-side on each
-        edge well clear of the corner pentagrams *and* of the mid-edge
-        sigils (which sit centred on the frame at the midpoint of each
-        side). x=200 / y=200 are off both."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        red = rq.SPECTRA6["red"]
-        assert img.getpixel((200, 14)) == red, "top outer rule missing"
-        assert img.getpixel((200, 465)) == red, "bottom outer rule missing"
-        assert img.getpixel((14, 200)) == red, "left outer rule missing"
-        assert img.getpixel((785, 200)) == red, "right outer rule missing"
-
-    def test_grimoire_corner_pentagrams_paint_red_top_vertex(self):
-        """Each pentagram's top vertex (i=0, angle=-π/2) sits at
-        ``(cx, cy - pent_radius)``. With centres at (30, 30) / (769, 30)
-        / (30, 449) / (769, 449) (after the corner-offset bump to make
-        room for the inscribing ring) and pent_radius=11, the top
-        vertices land at the y-values below. A 2px stroke guarantees
-        the exact endpoint pixel is painted."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        red = rq.SPECTRA6["red"]
-        assert img.getpixel((30, 19)) == red, "TL pentagram top vertex missing"
-        assert img.getpixel((769, 19)) == red, "TR pentagram top vertex missing"
-        assert img.getpixel((30, 438)) == red, "BL pentagram top vertex missing"
-        assert img.getpixel((769, 438)) == red, "BR pentagram top vertex missing"
-
-    def test_grimoire_pentagrams_inscribed_in_rings(self):
-        """Each pentagram is wrapped in a 14-px-radius ring (the magic-
-        circle composition). Sample the top of each ring at
-        ``(cx, cy - ring_radius)`` — a position that's on the ring's
-        outline but outside the pentagram's vertices (pent_radius=11),
-        so a ring-missing regression would leave page_bg here even
-        though the star tests still pass."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        red = rq.SPECTRA6["red"]
-        # Ring tops at (cx, cy - 14) for the four pentagram centres.
-        assert img.getpixel((30, 16)) == red, "TL ring top missing"
-        assert img.getpixel((769, 16)) == red, "TR ring top missing"
-        assert img.getpixel((30, 435)) == red, "BL ring top missing"
-        assert img.getpixel((769, 435)) == red, "BR ring top missing"
-
-    def test_grimoire_sun_sigil_paints_at_top_midpoint(self):
-        """☉ — outline circle + filled centre dot at (400, 14). The
-        Sun's R+Y 5/8:3/8 tangerine post-pass flips Bayer-cell pixels
-        below threshold 6 to yellow; `BAYER_4x4[14%4][400%4] = 3 < 6`,
-        so the centre pixel lands in the flipped half — yellow rather
-        than the pre-Stage-2 solid red. The sigil's centre dot is still
-        painted (just in the recipe's lighter ink at this parity), so
-        a regression that dropped the sigil entirely would still fail
-        here."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((400, 14)) == rq.SPECTRA6["yellow"], "Sun centre dot missing"
-
-    def test_grimoire_moon_sigil_paints_at_bottom_midpoint(self):
-        """☽ — crescent carved from a filled disk by overdrawing with
-        a page-bg disk shifted +4 px in x. The Moon now paints its
-        outer disk in BLUE as a sentinel for the B+W 1:1 sky recipe:
-        the post-pass flips half of the blue pixels to white per
-        `(x+y)&1` parity. Sample (394, 465) — well inside the visible
-        crescent for r=7 / bcx=400 — has `(394+465)&1 = 1`, the
-        unflipped half, so it stays solid blue (the disc colour) and
-        a regression that dropped the sigil entirely would still
-        fail here."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((394, 465)) == rq.SPECTRA6["blue"], "Moon crescent missing"
-
-    def test_grimoire_mars_sigil_paints_at_left_midpoint(self):
-        """♂ — circle offset down-left + diagonal NE shaft + perpendicular
-        V-barb. Mars's R+K 1:1 maroon post-pass flips half of the red
-        pixels to black per `(x+y)&1` parity. Sample the arrow tip at
-        (22, 232): `(22+232)&1 = 0`, the flipped half, so it lands as
-        black rather than the pre-Stage-2 solid red. A regression that
-        dropped the arrow would still fail (the bbox post-pass only
-        flips pixels that were originally painted red — an unpainted
-        page_bg pixel would stay as page_bg)."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((22, 232)) == rq.SPECTRA6["black"], "Mars arrow tip missing"
-
-    def test_grimoire_venus_sigil_paints_at_right_midpoint(self):
-        """♀ — circle offset up + descending shaft + horizontal crossbar.
-        Sample the crossbar at (785, 246) — well below the circle body
-        so a regression that dropped the cross would surface here."""
-        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((785, 246)) == rq.SPECTRA6["red"], "Venus crossbar missing"
-
-    def test_grimoire_painter_is_registered(self):
-        """A bad ``_BORDER_PAINTERS["grimoire"] = draw_atomic_border``
-        typo would silently render grimoire with atomic's atom symbol
-        rather than the pentagram. Pin the dispatch entry."""
-        assert rq._BORDER_PAINTERS.get("grimoire") is rq.draw_grimoire_border, (
-            "grimoire painter not registered in _BORDER_PAINTERS"
-        )
-
-    def test_grimoire_renders_differently_from_gothic_same_palette(self):
-        """``grimoire`` and ``gothic`` share the black/white/red palette
-        but must NOT produce identical frames — the silhouette difference
-        comes from the matched-phrase font (Eagle Lake vs UnifrakturMaguntia)
-        and the corner decoration (inscribed pentagram vs quatrefoil).
-        A regression that pointed grimoire's painter at
-        ``draw_gothic_border`` (or copied gothic's THEME_FONTS chain)
-        would surface here as an identical-image hash."""
-        row = self._row()
-        gothic = rq.render("03:00", row, 800, 480, mode="production", theme="gothic")
-        grimoire = rq.render("03:00", row, 800, 480, mode="production", theme="grimoire")
-        diffs = sum(
-            1
-            for y in range(5, 45)
-            for x in range(5, 45)
-            if gothic.getpixel((x, y)) != grimoire.getpixel((x, y))
-        )
-        assert diffs > 20, (
-            f"grimoire and gothic produce near-identical TL corners ({diffs} px differ)"
-        )
-
-    def test_grimoire_border_appears_in_debug_and_card_modes_too(self):
-        """The decoration is part of the theme's identity and must paint
-        in every render mode. Sample the TL ring top against the panel's
-        black ground in each mode."""
-        red = rq.SPECTRA6["red"]
-        for mode in ("production", "debug", "card"):
-            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="grimoire")
-            assert img.getpixel((30, 16)) == red, (
-                f"grimoire mode={mode} missing TL inscribing ring"
-            )
-
-    def test_grimoire_border_uses_theme_colours_not_hardcoded_rgb(self):
-        """``draw_grimoire_border`` must source its colour from
-        ``colors['accent']``, not a baked-in red. Call the helper with
-        a non-default palette and assert the painted pixels reflect it."""
-        image = Image.new("RGB", (800, 480), color=(0, 0, 0))
-        custom = {
-            "page_bg": rq.SPECTRA6["black"],
-            "text": rq.SPECTRA6["white"],
-            "accent": rq.SPECTRA6["green"],
-        }
-        rq.draw_grimoire_border(image, custom)
-        assert image.getpixel((200, 14)) == rq.SPECTRA6["green"], "outer rule should use accent"
-        assert image.getpixel((30, 19)) == rq.SPECTRA6["green"], "TL pentagram should use accent"
-        assert image.getpixel((30, 16)) == rq.SPECTRA6["green"], "TL ring should use accent"
-        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "Sun sigil should use accent"
-
-    def test_grimoire_moon_carves_with_page_bg_not_hardcoded(self):
-        """The crescent is carved from a filled red disk by overdrawing
-        with a smaller disk in ``colors['page_bg']``. Switching the
-        ground colour must show through the carved region — a
-        regression that hardcoded ``black`` would still display a
-        crescent against a white ground because the overlay would
-        clash. Bug-defensive pin."""
-        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
-        custom = {
-            "page_bg": rq.SPECTRA6["white"],
-            "text": rq.SPECTRA6["black"],
-            "accent": rq.SPECTRA6["red"],
-        }
-        rq.draw_grimoire_border(image, custom)
-        # Inside the carved area (centre + 4 right of the moon midpoint
-        # at (400, 465), so around (403, 465)) should be page_bg=white,
-        # not red or black.
-        assert image.getpixel((403, 465)) == rq.SPECTRA6["white"], (
-            "moon overlay didn't carve with page_bg"
-        )
-
-    @staticmethod
-    def _covers(font_path: str, char: str) -> bool:
-        """True when *font_path* has a real glyph for *char*.
-
-        PIL exposes no glyph-index lookup, so this renders *char* and
-        compares against a codepoint no font assigns (U+FFFF). A missing
-        glyph draws ``.notdef``, so it comes back byte-identical; a real
-        glyph does not. Dependency-free on purpose — the suite should not
-        grow fontTools to assert a coverage invariant.
-        """
-        absent = "\uffff"
-
-        def bitmap(text: str) -> bytes:
-            font = ImageFont.truetype(font_path, 48)
-            image = Image.new("L", (90, 90), 0)
-            ImageDraw.Draw(image).text((10, 10), text, font=font, fill=255)
-            return image.tobytes()
-
-        return bitmap(char) != bitmap(absent)
-
-    def test_grimoire_source_card_font_covers_the_characters_the_card_emits(self):
-        """The card's face must carry the punctuation the card prints.
-
-        ``render_source_card`` wraps the matched phrase in U+201C / U+201D
-        curly quotes and runs the title through ``normalize_dashes`` (which
-        emits U+2014). PIL's font fallback is file-level rather than
-        glyph-level, so a face missing any of them paints ``.notdef`` boxes
-        for every one — which is what TFoust did (95 glyphs, ASCII only) and
-        why grimoire once carried a ``card_quote_bold`` override.
-
-        Eagle Lake covers all three, so the override is gone. This asserts
-        the *reason* it could go rather than the absence of a filename: a
-        name check would pass against any face at all now that TFoust is
-        not in the tree, including a future ASCII-only replacement.
-        """
-        chain = rq.theme_font_candidates("grimoire", "card_quote_bold")
-        first = chain[0]
-        first_path = first[0] if isinstance(first, tuple) else first
-        assert Path(first_path).is_file(), f"card chain leads with a missing file: {first_path}"
-
-        for char, name in (
-            ("\u201c", "U+201C left curly quote"),
-            ("\u201d", "U+201D right curly quote"),
-            ("\u2014", "U+2014 em-dash"),
-        ):
-            assert self._covers(first_path, char), (
-                f"{Path(first_path).name} has no glyph for {name}; the grimoire "
-                f"source card would paint .notdef boxes. Either pick a face that "
-                f"covers it or restore a card_quote_bold override for grimoire."
-            )
-
-        # Negative control: the probe must be able to report absence, or the
-        # three assertions above would pass against any font whatsoever.
-        assert not self._covers(first_path, "\u3042"), "glyph-coverage probe reports every codepoint as present"
-
-    def test_no_theme_overrides_card_quote_bold(self):
-        """``card_quote_bold`` is a per-theme escape hatch nobody needs today.
-
-        It existed for grimoire alone, to keep TFoust off the source card;
-        that face is gone and its replacement is unicode-safe, so every
-        theme now falls through to ``quote_bold``. The seam stays because
-        the hazard is a property of PIL rather than of that one font — but
-        docs/themes.md states no theme uses it, so this fails the moment that
-        stops being true and the doc needs updating with it.
-        """
-        for theme in sorted(rq.THEMES):
-            bold = rq.theme_font_candidates(theme, "quote_bold")
-            card = rq.theme_font_candidates(theme, "card_quote_bold")
-            assert card == bold, (
-                f"theme {theme} overrides card_quote_bold. That is a supported "
-                f"escape hatch, but docs/themes.md says no theme uses it — update the "
-                f"'no theme uses it today' note in the fonts section alongside it."
-            )
-
-    def test_card_role_fallback_chain_handles_unknown_themes(self):
-        """``theme_font_candidates`` resolves a ``card_<base>`` role
-        through three layers: theme's override, theme's base role, then
-        default's base role. A typoed theme name should still produce
-        the default's ``quote_bold`` chain rather than raising
-        ``KeyError`` mid-render."""
-        chain = rq.theme_font_candidates("nonexistent_theme", "card_quote_bold")
-        assert chain == rq.THEME_FONTS["default"]["quote_bold"], (
-            "unknown theme's card_quote_bold didn't fall through to default's quote_bold"
-        )
-
-    def test_grimoire_in_rigid_match_spacing_set(self):
-        """``_THEMES_RIGID_MATCH_SPACING`` controls whether a line's
-        bold-internal inter-word gaps absorb justification slack.
-        Grimoire must be in this set; pin it explicitly so a future
-        rename or reshuffle doesn't silently drop the rigid contract
-        and reintroduce the "quarter past two" stretched-across-the-
-        line readability bug."""
-        assert "grimoire" in rq._THEMES_RIGID_MATCH_SPACING
-
-    def test_rigid_match_spacing_keeps_bold_internal_spaces_at_zero(self):
-        """The helper splits slack across only the elastic (non-bold)
-        spaces when ``rigid_match`` is True. Two bold-internal spaces
-        out of five must contribute zero; the remaining three split
-        20 px of slack into 7 / 7 / 6 (base=6, remainder=2 distributed
-        to the first two elastic positions)."""
-        space_is_bold = [False, True, True, False, False]
-        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=True)
-        assert distribute == [7, 0, 0, 7, 6], distribute
-
-    def test_loose_match_spacing_distributes_evenly(self):
-        """Default contract (``rigid_match=False``) treats every space
-        equally — slack=20 across 5 spaces is 4 each."""
-        space_is_bold = [False, True, True, False, False]
-        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=False)
-        assert distribute == [4, 4, 4, 4, 4], distribute
-
-    def test_rigid_match_falls_through_to_ragged_when_all_spaces_bold(self):
-        """If every inter-word space on a line happens to sit inside
-        the matched phrase (a long matched phrase wrapping onto its
-        own line), there's nothing elastic left to absorb slack. The
-        helper returns an empty list so the call site short-circuits
-        to ragged-right rather than awkwardly stretching the bold
-        face's gaps."""
-        space_is_bold = [True, True, True]
-        distribute = rq._justify_distribution(space_is_bold, slack=30, rigid_match=True)
-        assert distribute == [], distribute
-
-    def test_loose_match_falls_through_to_ragged_when_no_spaces(self):
-        """Empty space list (no inter-word gaps on the line) → empty
-        distribution either way; the call site uses
-        ``space_is_bold and …`` to guard."""
-        assert rq._justify_distribution([], slack=15, rigid_match=False) == []
-        assert rq._justify_distribution([], slack=15, rigid_match=True) == []
-
-    def test_grimoire_render_packs_matched_phrase_tighter_than_loose_baseline(self, monkeypatch):
-        """End-to-end pin of the bold-internal-spacing contract.
-        The test was originally driven through ``grimoire`` because the
-        old candlelit-rubric matched phrase was the most red-dominant
-        of the rigid-spacing themes; now that grimoire's matched
-        phrase paints solid white (per the readability fix in
-        ``_draw_text_body``), the matched-phrase line is no longer
-        chromatically distinguishable from the body in grimoire, so we
-        drive the test through its sister blackletter theme ``gothic``
-        instead. ``gothic`` is also a member of
-        ``_THEMES_RIGID_MATCH_SPACING`` and still paints its matched
-        phrase as a candlelit-rubric red dither, so the red-pixel
-        sweep below still identifies the matched-phrase line. The
-        invariant under test (rigid bold-internal spacing packs the
-        bold accent run tighter than loose justification) is
-        theme-agnostic; this test happens to live in TestGrimoireBorder
-        for adjacency reasons rather than because it's grimoire-only."""
-        # Sized so the block justifies under ``justify_flags``: every
-        # non-last line carries well over three gaps and stretches each
-        # by far less than 0.45 em, and the phrase sits on the first,
-        # justified line.
-        row = {
-            "display_quote": (
-                "At a quarter past two the wind fell away to nothing, "
-                "and such a stillness lay on the sea and on the men at "
-                "the rail that no one of us spoke a word for an hour."
-            ),
-            "matched_text": "quarter past two",
-            "title": "T",
-            "author": "A",
-            "source_id": "1",
-            "bucket": "h2_quarter_past",
-            "resolved_bucket": "h2_quarter_past",
-            "quality_score": 80,
-            "used_fallback": False,
-        }
-        rigid = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
-
-        monkeypatch.setattr(rq_core, "_THEMES_RIGID_MATCH_SPACING", frozenset())
-        loose = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
-
-        red = rq.SPECTRA6["red"]
-
-        def matched_phrase_span(img) -> tuple[int, int]:
-            """Return (leftmost, rightmost) x-coordinate of the red
-            band that holds the matched phrase. We skip the canvas
-            border (gothic's outer red rectangle at y=14 and quatrefoil
-            lobes at the corners) by sampling only the dense quote-body
-            region (y in [80, 380]) and picking the row with the most
-            red pixels — the matched-phrase line."""
-            best_row = (0, 0, 0)  # (count, left, right)
-            for y in range(80, 380):
-                red_xs = [x for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN) if img.getpixel((x, y)) == red]
-                if len(red_xs) > best_row[0]:
-                    best_row = (len(red_xs), red_xs[0], red_xs[-1])
-            return best_row[1], best_row[2]
-
-        rigid_l, rigid_r = matched_phrase_span(rigid)
-        loose_l, loose_r = matched_phrase_span(loose)
-        rigid_span = rigid_r - rigid_l
-        loose_span = loose_r - loose_l
-        # Rigid run must occupy strictly fewer x-pixels than the loose
-        # baseline on this particular row (the matched-phrase line is
-        # justified by construction — the test quote was sized so the
-        # phrase lands on a non-last 75%+-full line). At least 4 px
-        # narrower for the typical two-bold-spaces / ~30 px-of-slack
-        # case; 1 px is too tight (PIL line-break math at the wrap
-        # boundary can shift by ±1 due to the elastic-only base+1
-        # distribution).
-        assert rigid_span + 4 <= loose_span, (
-            f"rigid bold-phrase span {rigid_span}px did not pack tighter than "
-            f"loose baseline {loose_span}px — bold-internal spaces are still elastic"
-        )
-
-    def test_grimoire_debug_label_clears_top_right_pentagram(self):
-        """The ``DEBUG MODE`` banner must not overlap the TR inscribed
-        pentagram. The ring's leftmost pixel sits at
-        ``cx - ring_radius - 1`` (centre 769, radius 14, plus the 2-px
-        stroke half-width) = x=754; the label's right edge must end at
-        x ≤ 750 for a 4-px breathing gap. ``inset = width - 750 = 50``.
-        Pin the lower bound — a regression that left grimoire on the
-        old 44-px inset (sized for bare pentagrams without the ring)
-        would silently clip the label across the ring outline."""
-        inset = rq._DEBUG_LABEL_RIGHT_INSET.get("grimoire")
-        assert inset is not None, "grimoire missing from _DEBUG_LABEL_RIGHT_INSET"
-        assert inset >= 46, (
-            f"grimoire inset {inset} too small to clear the inscribing ring"
-        )
-
-
 class TestKanagawaBorder:
     """The kanagawa theme paints a stylised Japanese seascape: vertically-
     graduated sky-blue Bayer wash, five distant ink-stroke birds, a thin
@@ -2080,7 +1400,7 @@ class TestKanagawaBorder:
     corner, and a cream-tinted rounded text panel knocked out of the
     seigaiha (with a thin black frame and a 2 px drop shadow). No outer
     frame (woodblock-print composition discipline). The painter is
-    dispatched via render()'s special-case branch (like blueprint) so
+    dispatched via render()'s special-case branch so
     the body-text rect knockout fires automatically.
     """
 
@@ -2316,7 +1636,7 @@ class TestKanagawaBorder:
         few other white-ground themes to confirm the kanagawa border
         only fires on kanagawa."""
         row = self._row()
-        for theme in ("default", "scholar", "blueprint", "bauhaus"):
+        for theme in ("default", "bauhaus"):
             img = rq.render("04:30", row, 800, 480, mode="production", theme=theme)
             pix = img.getpixel((758, 435))
             assert pix != rq.SPECTRA6["red"], (
@@ -2639,7 +1959,7 @@ class TestCartographBorder:
         confirm none of them paint yellow (the tangerine post-pass
         signature) there."""
         row = self._row()
-        for theme in ("default", "scholar", "blueprint", "kanagawa", "herbarium"):
+        for theme in ("default", "kanagawa"):
             img = rq.render("04:30", row, 800, 480, mode="production", theme=theme)
             # Scan a 12×12 box around the rose centre for tangerine
             # (R+Y) — no other theme paints both red and yellow in
@@ -2915,8 +2235,8 @@ class TestRenderStaticMessage:
         img = rq.render_static_message("Good night.", 800, 480, theme="dark")
         assert img.getpixel((0, 0)) == rq.SPECTRA6["black"]
 
-    def test_uses_scholar_theme_background(self):
-        img = rq.render_static_message("Good night.", 800, 480, theme="scholar")
+    def test_uses_bauhaus_theme_background(self):
+        img = rq.render_static_message("Good night.", 800, 480, theme="bauhaus")
         assert img.getpixel((0, 0)) == rq.SPECTRA6["white"]
 
     def test_uses_nightvision_theme_background(self):
@@ -2927,7 +2247,7 @@ class TestRenderStaticMessage:
     def test_palette_is_spectra6_across_every_theme(self, theme):
         """Every output pixel must land in the Spectra 6 palette regardless
         of which theme is active. Without ``snap_image_to_palette`` the
-        per-theme borders (illuminated jewels, blueprint grid, etc.) can
+        per-theme borders (newsprint halftone, gothic quatrefoils, etc.) can
         introduce intermediate dither colours that look fine on a sRGB
         monitor but bleed unpredictably on the eInk panel."""
         img = rq.render_static_message("Good night.", 800, 480, theme=theme)
@@ -2947,7 +2267,7 @@ class TestRenderStaticMessage:
         """End-to-end: ``rq.main()`` with ``--mode goodnight`` should skip
         ``pick_quote`` entirely and produce a valid PNG."""
         out = tmp_path / "gn.png"
-        argv = ["render_quote.py", "--mode", "goodnight", "--theme", "scholar",
+        argv = ["render_quote.py", "--mode", "goodnight", "--theme", "newsprint",
                 "--message", "Sleep well.", "--output", str(out)]
         monkeypatch.setattr("sys.argv", argv)
         # If main accidentally called pick_quote, this would explode loudly.
@@ -3460,8 +2780,8 @@ class TestDrawTextDithered:
     """The deco theme's red-biased orange added a third density branch
     (4×4 Bayer at arbitrary thresholds) to ``draw_text_dithered``.
     The existing 0.25 sparse-1-in-4 and 0.5 checkerboard branches must
-    stay byte-identical (nightvision body text + grimoire matched-phrase
-    rely on the exact patterns), and the new branch must produce a
+    stay byte-identical (nightvision's body text relies on the exact
+    patterns), and the new branch must produce a
     red-biased ratio (~3/8 light : 5/8 dark) on a 4×4 tile.
     """
 
@@ -3734,49 +3054,6 @@ class TestDrawTextDithered:
             f"(red={red_count} green={green_count})"
         )
 
-    def test_glacier_diagonal_shards_split_green_and_white(self):
-        """``draw_glacier_border``'s diagonal shards (the longest in
-        each corner cluster) are painted green and then post-passed to
-        ~50% white, so the eye averages green+white into sky-blue at
-        panel distance. White and green must both be present inside
-        the corner cluster bbox; an all-green result would mean the
-        post-pass never fired.
-        """
-        # Render on a sentinel background that's neither white nor green
-        # so post-pass-flipped pixels are distinguishable from the bg.
-        image = Image.new("RGB", (800, 480), (1, 2, 3))
-        rq.draw_glacier_border(
-            image,
-            {"text": rq.SPECTRA6["blue"], "accent": rq.SPECTRA6["green"]},
-        )
-        # Sample a 40×40 box at the top-left corner (the cluster
-        # fans out from the inner-frame corner at ~(16, 16) and the
-        # longest shard reaches ~(30, 30)).
-        pixels = image.load()
-        green_count = 0
-        white_count = 0
-        for y in range(0, 40):
-            for x in range(0, 40):
-                p = pixels[x, y]
-                if p == rq.SPECTRA6["green"]:
-                    green_count += 1
-                elif p == rq.SPECTRA6["white"]:
-                    white_count += 1
-        assert green_count > 0 and white_count > 0, (
-            f"glacier TL shard must mix green + white (sky-blue post-pass); "
-            f"got green={green_count} white={white_count}"
-        )
-        # The white pixels in this bbox come exclusively from the
-        # post-pass flipping accent (green) pixels; assert their layout
-        # honours the (x+y)&1 checkerboard, no drift allowed.
-        for y in range(0, 40):
-            for x in range(0, 40):
-                if pixels[x, y] == rq.SPECTRA6["white"]:
-                    assert (x + y) & 1 == 0, (
-                        f"glacier post-pass flipped a non-checkerboard pixel "
-                        f"at ({x}, {y})"
-                    )
-
     def test_placard_tacks_split_red_and_white(self):
         """``draw_placard_border``'s four tacks are painted red and
         then post-passed to ~50% white, so the eye averages red+white
@@ -3840,71 +3117,6 @@ def test_nightvision_ruler_clears_debug_banner_band():
     assert accent not in banner_band, "new accent furniture intrudes on banner band"
 
 
-def test_herbarium_border_paints_second_fern_specimen():
-    """The upleveled herbarium border mounts a second pressed-fern specimen
-    in the top-left margin (olive = green/yellow stipple)."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_herbarium_border(img, rq.THEMES["herbarium"])
-    px = img.load()
-    green = rq.SPECTRA6["green"]
-    yellow = rq.SPECTRA6["yellow"]
-    fern = {px[x, y] for x in range(42, 67) for y in range(34, 109)}
-    assert green in fern and yellow in fern, "TL fern specimen olive stipple missing"
-
-
-def test_herbarium_border_paints_leaf_mounting_tape():
-    """Off-white gummed mounting-tape strips pin the main BR leaf's midrib."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_herbarium_border(img, rq.THEMES["herbarium"])
-    px = img.load()
-    white = rq.SPECTRA6["white"]
-    leaf_cx = 800 - 1 - 38 - 84 // 2
-    leaf_cy = 480 - 1 - 38 - 42 // 2
-    assert px[leaf_cx, leaf_cy - 18] == white
-    assert px[leaf_cx, leaf_cy + 16] == white
-
-
-def test_blueprint_border_paints_top_dimension_line():
-    """The upleveled blueprint border adds a top-margin overall-width
-    dimension callout. The rule + extension ticks are in the white drafting
-    ink; the inward arrowheads and the centred measurement figure are in the
-    red registration ink — so both inks appear in the dimension band."""
-    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
-    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    white = rq.SPECTRA6["white"]
-    dim_red = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == red)
-    dim_white = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == white)
-    assert dim_red > 30, "dimension arrowheads / figure (red) missing"
-    assert dim_white > 100, "dimension rule / extension ticks (white) missing"
-
-
-def test_blueprint_border_paints_scale_bar():
-    """The upleveled blueprint border adds a bottom-right graduated
-    SCALE 1:1 legend bar in the drafting-ink (white) colour."""
-    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
-    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
-    px = img.load()
-    white = rq.SPECTRA6["white"]
-    bar_x = 800 - 1 - 16 - 12 - 80
-    bar_y = 480 - 1 - 16 - 18
-    assert px[bar_x + 2, bar_y + 3] == white, "scale-bar first filled cell missing"
-
-
-def test_blueprint_callouts_clear_debug_banner_band():
-    """The dimension line sits at y=40 — below the y=14-29 debug banner — so
-    blueprint still needs no _DEBUG_LABEL_RIGHT_INSET adjustment for them."""
-    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
-    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    banner = sum(1 for x in range(600, 690) for y in range(14, 30) if px[x, y] == red)
-    # The TR crosshair is at the frame corner (x~width-16), left of x=600,
-    # so the banner sample band should carry no callout red.
-    assert banner == 0, "blueprint callout intrudes on the debug-banner band"
-
-
 def test_chalkboard_border_paints_handwriting_guide():
     """The upleveled chalkboard border adds a top-left handwriting
     practice-guide rule (solid top + dashed mid + solid baseline)."""
@@ -3949,31 +3161,6 @@ def test_dispatch_border_paints_file_copy_footer():
     assert footer_black > 15, "FILE COPY footer text missing"
 
 
-def test_illuminated_border_paints_head_asterism():
-    """The upleveled illuminated border adds a rubricated head asterism
-    (red lozenges) centred in the top margin."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_illuminated_border(img, rq.THEMES["illuminated"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    head_red = sum(1 for x in range(385, 416) for y in range(33, 52) if px[x, y] == red)
-    assert head_red > 40, "head asterism lozenges missing"
-
-
-def test_illuminated_border_paints_foot_line_filler():
-    """The upleveled illuminated border adds a foot line-filler — a red
-    rule + central red lozenge flanked by blue lozenges."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_illuminated_border(img, rq.THEMES["illuminated"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    blue = rq.SPECTRA6["blue"]
-    foot_red = sum(1 for x in range(355, 446) for y in range(445, 458) if px[x, y] == red)
-    foot_blue = sum(1 for x in range(345, 456) for y in range(445, 458) if px[x, y] == blue)
-    assert foot_red > 40, "foot line-filler rule / centre lozenge missing"
-    assert foot_blue > 10, "foot line-filler flanking blue lozenges missing"
-
-
 def test_gothic_border_paints_head_trefoil():
     """The upleveled gothic border adds a red trefoil finial centred in the
     top margin (solid rubric red so it reads on the black ground)."""
@@ -3996,70 +3183,6 @@ def test_gothic_border_paints_foot_trefoil():
     assert foot_red > 80, "foot trefoil finial missing"
 
 
-def test_grimdark_border_paints_aquila_and_skull():
-    """The grimdark border paints a gold Imperial Aquila centred in the top
-    margin and a bone-white memento-mori skull centred in the bottom margin."""
-    img = Image.new("RGB", (800, 480), (0, 0, 0))
-    rq.draw_grimdark_border(img, rq.THEMES["grimdark"])
-    px = img.load()
-    gold = rq.SPECTRA6["yellow"]
-    bone = rq.SPECTRA6["white"]
-    # Aquila — gold pixels clustered around (cx=400, ay=40).
-    aquila_gold = sum(1 for x in range(360, 441) for y in range(26, 60) if px[x, y] == gold)
-    assert aquila_gold > 120, "Imperial Aquila missing from top margin"
-    # Skull — bone-white pixels clustered around (cx=400, sy=442).
-    skull_bone = sum(1 for x in range(386, 415) for y in range(426, 458) if px[x, y] == bone)
-    assert skull_bone > 80, "memento-mori skull missing from bottom margin"
-
-
-def test_grimdark_border_paints_doubled_gold_blood_trim():
-    """The grimdark trim is a thick gold outer rule + thin blood-red inner
-    rule — both inks present, unlike gothic's red+white doubled rule."""
-    img = Image.new("RGB", (800, 480), (0, 0, 0))
-    rq.draw_grimdark_border(img, rq.THEMES["grimdark"])
-    px = img.load()
-    gold = rq.SPECTRA6["yellow"]
-    blood = rq.SPECTRA6["red"]
-    # Left-edge horizontal scan at y=120 (clear of the mid-edge blood stud
-    # at y=240) crosses the gold outer rule (~x=12-14) then the blood inner
-    # rule (~x=19).
-    row_inks = {px[x, 120] for x in range(10, 24)}
-    assert gold in row_inks, "gold outer trim missing"
-    assert blood in row_inks, "blood inner trim missing"
-
-
-def test_grimdark_matched_phrase_uses_forge_amber_recipe():
-    """The grimdark matched-phrase red is rerouted to forge-amber (R+Y 5:3
-    tangerine) in _draw_text_body, so a red-fill body paint produces both
-    red and yellow pixels rather than solid red."""
-    img = Image.new("RGB", (200, 60), (0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    font = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=40)
-    rq._draw_text_body(img, draw, (4, 4), "TWO", font=font, fill=rq.SPECTRA6["red"], theme="grimdark")
-    inks = distinct_inks(img)
-    assert rq.SPECTRA6["red"] in inks, "forge-amber should retain red pixels"
-    assert rq.SPECTRA6["yellow"] in inks, "forge-amber should introduce yellow pixels"
-
-
-def test_grimdark_border_paints_industrial_mottle():
-    """The grimdark Layer-0 mottle stipples sparse white into the black void
-    ground (synthesising dark gunmetal grey), but stays sparse enough to read
-    as a dark charcoal rather than a light field — and uses only black/white
-    so it never leaves the palette."""
-    img = Image.new("RGB", (800, 480), (0, 0, 0))
-    rq.draw_grimdark_border(img, rq.THEMES["grimdark"])
-    px = img.load()
-    white = rq.SPECTRA6["white"]
-    black = rq.SPECTRA6["black"]
-    # A background patch clear of ornaments and (border-only render) text.
-    patch = [(x, y) for x in range(140, 220) for y in range(120, 175)]
-    whites = sum(1 for x, y in patch if px[x, y] == white)
-    frac = whites / len(patch)
-    assert 0.02 < frac < 0.40, f"mottle density {frac:.3f} outside dark-grey range"
-    # Every patch pixel is either void or grey-ink — never an off-palette tone.
-    assert all(px[x, y] in (white, black) for x, y in patch)
-
-
 def test_marker_border_paints_twinkle_sparkles():
     """The upleveled marker border adds doodle 'twinkle' sparkles in the top
     (red) and bottom (blue) centre margins."""
@@ -4072,40 +3195,6 @@ def test_marker_border_paints_twinkle_sparkles():
     bot_blue = sum(1 for x in range(448, 480) for y in range(447, 464) if px[x, y] == blue)
     assert top_red > 20, "top twinkle sparkle (red) missing"
     assert bot_blue > 20, "bottom twinkle sparkle (blue) missing"
-
-
-def test_risograph_border_paints_registration_colour_bar():
-    """The upleveled risograph border adds a top-centre colour-registration
-    bar of red / blue / lavender-overprint / red / blue swatches — no black
-    ink (the riso theme's invariant)."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_risograph_border(img, rq.THEMES["risograph"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    blue = rq.SPECTRA6["blue"]
-    bar_red = sum(1 for x in range(337, 360) for y in range(24, 33) if px[x, y] == red)
-    bar_blue = sum(1 for x in range(363, 386) for y in range(24, 33) if px[x, y] == blue)
-    assert bar_red > 100, "registration-bar red swatch missing"
-    assert bar_blue > 100, "registration-bar blue swatch missing"
-    # The bar must clear y=22, the coordinate the illuminated cross-gating
-    # test samples to prove no other theme paints centre-top there.
-    assert px[400, 22] == (255, 255, 255), "registration bar must clear y=22"
-
-
-def test_risograph_registration_bar_lavender_swatch_is_red_and_blue():
-    """The middle overprint swatch is the R+B+W lavender 3-way recipe, so it
-    carries both red and blue pixels (and no black, per the riso invariant)."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_risograph_border(img, rq.THEMES["risograph"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    blue = rq.SPECTRA6["blue"]
-    black = rq.SPECTRA6["black"]
-    lav_x0 = 337 + 2 * 26
-    region = [px[x, y] for x in range(lav_x0, lav_x0 + 23) for y in range(24, 33)]
-    assert region.count(red) > 30, "lavender swatch red component missing"
-    assert region.count(blue) > 30, "lavender swatch blue component missing"
-    assert black not in region, "lavender swatch must not introduce black ink"
 
 
 def test_atomic_border_paints_boomerang():
@@ -4174,42 +3263,6 @@ def test_roman_border_paints_corner_stops():
     assert br > 20, "bottom-right corner stop missing"
 
 
-def test_grimoire_border_paints_tria_prima_triads():
-    """The upleveled grimoire border adds tria-prima triad dots flanking the
-    Sun (top) and Moon (bottom) sigils, in the previously-empty interior
-    bands."""
-    img = Image.new("RGB", (800, 480), (0, 0, 0))
-    rq.draw_grimoire_border(img, rq.THEMES["grimoire"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    top_l = sum(1 for x in range(330, 352) for y in range(18, 40) if px[x, y] == red)
-    bot_l = sum(1 for x in range(330, 352) for y in range(440, 462) if px[x, y] == red)
-    assert top_l > 20, "top tria-prima triad missing"
-    assert bot_l > 20, "bottom tria-prima triad missing"
-
-
-def test_mucha_border_paints_tip_blossoms():
-    """The upleveled mucha border adds a five-petal tangerine blossom at each
-    of the two existing vine tips (TL + BR), preserving the deliberate
-    diagonal asymmetry (only the already-ornamented corners gain them)."""
-    img = Image.new("RGB", (800, 480), (255, 255, 255))
-    rq.draw_mucha_border(img, rq.THEMES["mucha"])
-    px = img.load()
-    red = rq.SPECTRA6["red"]
-    yellow = rq.SPECTRA6["yellow"]
-
-    def tangerine(cx, cy, r0=16):
-        rr = sum(1 for x in range(cx - r0, cx + r0) for y in range(cy - r0, cy + r0) if px[x, y] == red)
-        yy = sum(1 for x in range(cx - r0, cx + r0) for y in range(cy - r0, cy + r0) if px[x, y] == yellow)
-        return rr, yy
-
-    tl_r, tl_y = tangerine(78, 160)
-    br_r, br_y = tangerine(760, 330)
-    # Both tips carry a tangerine (R+Y) blossom: red AND yellow present.
-    assert tl_r > 20 and tl_y > 20, "top-left vine-tip blossom missing"
-    assert br_r > 10 and br_y > 20, "bottom-right vine-tip blossom missing"
-
-
 def test_placard_border_paints_side_margin_tags():
     """The upleveled placard border adds hanging price-tag ornaments (short
     rule + weathered-coral diamond) at the left/right mid-edges."""
@@ -4229,40 +3282,6 @@ def test_placard_border_paints_side_margin_tags():
     # Each tag diamond is the R+W weathered-coral recipe: both inks present.
     assert l_r > 10 and l_w > 10, "left side-margin tag missing"
     assert r_r > 10 and r_w > 10, "right side-margin tag missing"
-
-
-def test_vinyl_frame_paints_spec_line():
-    """The upleveled vinyl liner panel adds a spec strip (SIDE ONE · 33 RPM ·
-    MONO · RUNNING TIME) below the READING heading, filling the dead cream
-    between heading and quote body."""
-    row = {
-        "display_quote": "It was at ten o'clock today that the first of all Time Machines began.",
-        "matched_text": "ten o'clock", "author": "H. G. Wells", "title": "The Time Machine",
-        "source_id": "35", "line_number": 1, "quality_score": 90,
-        "bucket": "h10_exact", "resolved_bucket": "h10_exact", "used_fallback": False,
-    }
-    img = rq.render("10:00", row, 800, 480, mode="production", theme="vinyl").convert("RGB")
-    px = img.load()
-    black = rq.SPECTRA6["black"]
-    # The spec strip (hairline rule + Space Mono text) sits at y≈46-60 in the
-    # right-half liner panel (x≥420).
-    spec_black = sum(1 for x in range(420, 780) for y in range(46, 60) if px[x, y] == black)
-    assert spec_black > 100, "vinyl spec strip missing"
-
-
-def test_vinyl_spec_line_is_deterministic():
-    """The spec strip's running time must derive from a STABLE bucket digest,
-    not process-salted hash(), or renders of the same quote would differ and
-    break the byte-exact golden / dedup contract."""
-    row = {
-        "display_quote": "It was at ten o'clock today.",
-        "matched_text": "ten o'clock", "author": "A", "title": "B",
-        "source_id": "1", "line_number": 1, "quality_score": 90,
-        "bucket": "h10_exact", "resolved_bucket": "h10_exact", "used_fallback": False,
-    }
-    a = rq.render("10:00", row, 800, 480, mode="production", theme="vinyl").convert("RGB").tobytes()
-    b = rq.render("10:00", row, 800, 480, mode="production", theme="vinyl").convert("RGB").tobytes()
-    assert a == b, "vinyl frame not byte-deterministic across renders"
 
 
 def test_firmament_milky_way_is_deterministic():
@@ -4511,7 +3530,7 @@ class TestFitQuoteBalanced:
         for line in wrapped:
             assert rq._line_ink_width(draw, line, regular, bold) <= wrap_width
 
-    @pytest.mark.parametrize("theme", ["default", "swiss", "chanbara", "herbarium", "roman"])
+    @pytest.mark.parametrize("theme", ["default", "chanbara", "roman"])
     def test_hero_quote_does_not_end_on_a_lone_word(self, theme):
         draw, (regular, bold, wrapped, _, _, wrap_width) = self._fit(
             "But I must consider. Come to me to-morrow at the office, at nine o\u2019clock.", "nine o\u2019clock", theme=theme,
@@ -4591,65 +3610,6 @@ class TestAttributionFloors:
                 runs.append([y])
         cap_height = len(runs[-1])
         assert cap_height >= 12, cap_height  # 18 px Playfair caps are ~13 px tall
-
-
-class TestRisographKnockout:
-    def test_clear_rect_is_knocked_back_to_paper_and_framed(self):
-        img = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
-        colors = rq.THEMES["risograph"]
-        rect = (60, 80, 740, 400)
-        rq.draw_risograph_border(img, colors, clear_rect=rect)
-        # Inside the pad (past both the red rule and the offset blue rule)
-        # the paper is clean white.
-        for x in range(rect[0] + 10, rect[2] - 10, 23):
-            for y in range(rect[1] + 10, rect[3] - 10, 17):
-                assert img.getpixel((x, y)) == rq.SPECTRA6["white"], (x, y)
-        # The two misregistered rules are present in the theme's inks.
-        assert img.getpixel((rect[0], (rect[1] + rect[3]) // 2)) == colors["text"]
-        assert img.getpixel((rect[0] + 5, (rect[1] + rect[3]) // 2)) == colors["accent"]
-
-    def test_render_threads_the_clear_rect(self):
-        row = {
-            "display_quote": "But I must consider. Come to me to-morrow at the office, at nine o\u2019clock.",
-            "matched_text": "nine o\u2019clock",
-            "author": "George Eliot",
-            "title": "Middlemarch",
-        }
-        img = rq.render("09:00", row, 800, 480, mode="production", theme="risograph")
-        # The chunky left bar (x 42-74, y 54-170) used to run solid under
-        # the first word. Inside the label its box is now paper, apart from
-        # the hanging quote mark's 50/50 blue stipple that deliberately
-        # overlaps it -- so well under half the box may be blue, where the
-        # bare border paints all of it.
-        blue = rq.SPECTRA6["blue"]
-        box = [(x, y) for x in range(62, 73) for y in range(120, 166)]
-        assert sum(img.getpixel(p) == blue for p in box) / len(box) < 0.5
-
-
-class TestKnockoutCoversByline:
-    def test_long_title_stays_inside_the_risograph_label(self):
-        """A short quote with a long title: the label's right edge used to
-        follow the quote lines alone, so the byline ran out of the panel
-        into the lower-right print bar (Codex review on #328)."""
-        row = {
-            "display_quote": "The clock struck nine as he came in.",
-            "matched_text": "struck nine",
-            "author": "Christopher Morley",
-            "title": "The Haunted Bookshop, Being a Further Account of Roger Mifflin and His Parnassus at Home",
-        }
-        img = rq.render("09:00", row, 800, 480, mode="production", theme="risograph")
-        red = rq.SPECTRA6["red"]
-        # The title paints red on paper; follow its row and check that every
-        # red pixel at the far right of the byline band is text-sized ink on
-        # white neighbours, not the solid print bar (x 712-744).
-        bar_columns = range(714, 742)
-        solid_rows = 0
-        for y in range(296, 412):
-            if all(img.getpixel((x, y)) == red for x in bar_columns):
-                solid_rows += 1
-        # The bar is 116 rows tall when untouched; the knockout must have
-        # removed the rows the byline band overlaps.
-        assert solid_rows < 116
 
 
 class TestAlchemyFaintFigure:
@@ -4742,7 +3702,7 @@ class TestSharedPainterHelpers:
 class TestMalformedTime:
     """A malformed time must never crash a render. ``render`` is called
     in-process (contact sheet, previews, the sleep frame), and ``codex``,
-    ``vinyl``, ``metro``, ``diags`` and the debug footer each used to raise on
+    ``metro``, ``diags`` and the debug footer each used to raise on
     one input or another. The CLI rejects a bad ``--time`` up front instead.
     """
 
@@ -4771,3 +3731,150 @@ class TestMalformedTime:
             rq.parse_args()
         assert exc.value.code == 2
         assert "not a valid HH:MM time" in capsys.readouterr().err
+
+
+class TestSourceCardFontRole:
+    """The ``card_<base>`` font roles the source card reads."""
+
+    def test_no_theme_overrides_card_quote_bold(self):
+        """``card_quote_bold`` is a per-theme escape hatch nobody needs today.
+
+        It existed for one theme whose display face was ASCII-only, to keep
+        that face off the source card; no theme needs it now, so every theme
+        falls through to ``quote_bold``. The seam stays because
+        the hazard is a property of PIL rather than of that one font — but
+        docs/themes.md states no theme uses it, so this fails the moment that
+        stops being true and the doc needs updating with it.
+        """
+        for theme in sorted(rq.THEMES):
+            bold = rq.theme_font_candidates(theme, "quote_bold")
+            card = rq.theme_font_candidates(theme, "card_quote_bold")
+            assert card == bold, (
+                f"theme {theme} overrides card_quote_bold. That is a supported "
+                f"escape hatch, but docs/themes.md says no theme uses it — update the "
+                f"'no theme uses it today' note in the fonts section alongside it."
+            )
+
+    def test_card_role_fallback_chain_handles_unknown_themes(self):
+        """``theme_font_candidates`` resolves a ``card_<base>`` role
+        through three layers: theme's override, theme's base role, then
+        default's base role. A typoed theme name should still produce
+        the default's ``quote_bold`` chain rather than raising
+        ``KeyError`` mid-render."""
+        chain = rq.theme_font_candidates("nonexistent_theme", "card_quote_bold")
+        assert chain == rq.THEME_FONTS["default"]["quote_bold"], (
+            "unknown theme's card_quote_bold didn't fall through to default's quote_bold"
+        )
+
+
+class TestRigidMatchSpacing:
+    """Themes in ``_THEMES_RIGID_MATCH_SPACING`` keep the matched phrase's
+    inter-word gaps at the bold face's natural width; only the body's gaps
+    absorb justification slack."""
+
+    def test_gothic_in_rigid_match_spacing_set(self):
+        """``_THEMES_RIGID_MATCH_SPACING`` controls whether a line's
+        bold-internal inter-word gaps absorb justification slack.
+        ``gothic`` must be in this set; pin it explicitly so a future
+        rename or reshuffle doesn't silently drop the rigid contract and
+        stretch its blackletter phrase into separate clauses."""
+        assert "gothic" in rq._THEMES_RIGID_MATCH_SPACING
+
+    def test_rigid_match_spacing_keeps_bold_internal_spaces_at_zero(self):
+        """The helper splits slack across only the elastic (non-bold)
+        spaces when ``rigid_match`` is True. Two bold-internal spaces
+        out of five must contribute zero; the remaining three split
+        20 px of slack into 7 / 7 / 6 (base=6, remainder=2 distributed
+        to the first two elastic positions)."""
+        space_is_bold = [False, True, True, False, False]
+        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=True)
+        assert distribute == [7, 0, 0, 7, 6], distribute
+
+    def test_loose_match_spacing_distributes_evenly(self):
+        """Default contract (``rigid_match=False``) treats every space
+        equally — slack=20 across 5 spaces is 4 each."""
+        space_is_bold = [False, True, True, False, False]
+        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=False)
+        assert distribute == [4, 4, 4, 4, 4], distribute
+
+    def test_rigid_match_falls_through_to_ragged_when_all_spaces_bold(self):
+        """If every inter-word space on a line happens to sit inside
+        the matched phrase (a long matched phrase wrapping onto its
+        own line), there's nothing elastic left to absorb slack. The
+        helper returns an empty list so the call site short-circuits
+        to ragged-right rather than awkwardly stretching the bold
+        face's gaps."""
+        space_is_bold = [True, True, True]
+        distribute = rq._justify_distribution(space_is_bold, slack=30, rigid_match=True)
+        assert distribute == [], distribute
+
+    def test_loose_match_falls_through_to_ragged_when_no_spaces(self):
+        """Empty space list (no inter-word gaps on the line) → empty
+        distribution either way; the call site uses
+        ``space_is_bold and …`` to guard."""
+        assert rq._justify_distribution([], slack=15, rigid_match=False) == []
+        assert rq._justify_distribution([], slack=15, rigid_match=True) == []
+
+    def test_rigid_match_render_packs_matched_phrase_tighter_than_loose_baseline(self, monkeypatch):
+        """End-to-end pin of the bold-internal-spacing contract, driven
+        through ``gothic``: a member of ``_THEMES_RIGID_MATCH_SPACING`` whose
+        matched phrase paints as a red-and-yellow dither, so the red-pixel
+        sweep below finds the matched-phrase line. The invariant (rigid
+        bold-internal spacing packs the bold run tighter than loose
+        justification) is theme-agnostic."""
+        # Sized so the block justifies under ``justify_flags``: every
+        # non-last line carries well over three gaps and stretches each
+        # by far less than 0.45 em, and the phrase sits on the first,
+        # justified line.
+        row = {
+            "display_quote": (
+                "At a quarter past two the wind fell away to nothing, "
+                "and such a stillness lay on the sea and on the men at "
+                "the rail that no one of us spoke a word for an hour."
+            ),
+            "matched_text": "quarter past two",
+            "title": "T",
+            "author": "A",
+            "source_id": "1",
+            "bucket": "h2_quarter_past",
+            "resolved_bucket": "h2_quarter_past",
+            "quality_score": 80,
+            "used_fallback": False,
+        }
+        rigid = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
+
+        monkeypatch.setattr(rq_core, "_THEMES_RIGID_MATCH_SPACING", frozenset())
+        loose = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
+
+        red = rq.SPECTRA6["red"]
+
+        def matched_phrase_span(img) -> tuple[int, int]:
+            """Return (leftmost, rightmost) x-coordinate of the red
+            band that holds the matched phrase. We skip the canvas
+            border (gothic's outer red rectangle at y=14 and quatrefoil
+            lobes at the corners) by sampling only the dense quote-body
+            region (y in [80, 380]) and picking the row with the most
+            red pixels — the matched-phrase line."""
+            best_row = (0, 0, 0)  # (count, left, right)
+            for y in range(80, 380):
+                red_xs = [x for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN) if img.getpixel((x, y)) == red]
+                if len(red_xs) > best_row[0]:
+                    best_row = (len(red_xs), red_xs[0], red_xs[-1])
+            return best_row[1], best_row[2]
+
+        rigid_l, rigid_r = matched_phrase_span(rigid)
+        loose_l, loose_r = matched_phrase_span(loose)
+        rigid_span = rigid_r - rigid_l
+        loose_span = loose_r - loose_l
+        # Rigid run must occupy strictly fewer x-pixels than the loose
+        # baseline on this particular row (the matched-phrase line is
+        # justified by construction — the test quote was sized so the
+        # phrase lands on a non-last 75%+-full line). At least 4 px
+        # narrower for the typical two-bold-spaces / ~30 px-of-slack
+        # case; 1 px is too tight (PIL line-break math at the wrap
+        # boundary can shift by ±1 due to the elastic-only base+1
+        # distribution).
+        assert rigid_span + 4 <= loose_span, (
+            f"rigid bold-phrase span {rigid_span}px did not pack tighter than "
+            f"loose baseline {loose_span}px — bold-internal spaces are still elastic"
+        )

@@ -1,4 +1,4 @@
-"""The ``sampler`` theme's frame and the code only it uses (issue #335).
+"""The ``sampler`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -9,16 +9,13 @@ from PIL import Image, ImageDraw
 
 from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
-from ..layout import strip_underscore_emphasis, tokenize_quote, wrap_styled_text
+from ..layout import _trim_line, strip_underscore_emphasis, tokenize_quote, wrap_styled_text
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 
 # ── sampler: counted cross-stitch embroidery ──────────────────────────────────
-# Every glyph is cross-stitch "X" marks: text is drawn to a small Silkscreen
-# pixel-font mask and each set pixel is stamped as one stitch cell on an Aida
-# ground. A stitched floral border and sampler motifs fill the margins. Body
-# floss is black, the matched phrase red; HH:MM is never shown. No RNG, so
-# re-renders are byte-identical.
+# Text drawn to a Silkscreen mask, each set pixel stamped as one stitch. No
+# RNG, so re-renders are byte-identical. Design notes: docs/themes.md § sampler.
 
 # Floss palette — every stitch is one Spectra-6 ink.
 _SAMPLER_FLOSS = {
@@ -232,13 +229,7 @@ def _sampler_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
     block_h = len(chosen_lines) * line_h
     y = by0 + max(0, (body_h - block_h) // 2)
     for line in chosen_lines:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
+        drawable = _trim_line(line)
         line_w = 0
         for chunk, is_bold in drawable:
             font = mask_bold if is_bold else mask_font
@@ -285,7 +276,7 @@ def _sampler_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
 
 
 def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Counted cross-stitch embroidery sampler (see the module section comment).
+    """Counted cross-stitch embroidery sampler (``docs/themes.md`` § sampler).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.

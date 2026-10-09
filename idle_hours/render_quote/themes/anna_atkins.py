@@ -1,4 +1,4 @@
-"""The ``anna_atkins`` theme's border painter and the code only it uses (issue #335).
+"""The ``anna_atkins`` theme's border painter and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -108,24 +108,11 @@ def _anna_atkins_labels(image: Image.Image, draw: ImageDraw.ImageDraw, width: in
 
 
 def draw_anna_atkins_border(image: Image.Image, colors: dict) -> None:
-    """Anna Atkins 1843 botanical cyanotype plate (see the THEMES entry).
-
-    Layers, deepest → shallowest:
-
-    * **Layer 0 — dithered cyanotype photogram.** The committed plate
-      (``assets/anna_atkins_cyanotype.png``) Floyd–Steinberg-dithered to the
-      inks via ``dither_image_to_palette``: deep blues break into a
-      blue/black stipple, specimen edges into a blue+white haze. If the asset
-      is missing, the flat blue ground is deepened with a blue→black Bayer
-      stipple instead.
-    * **White fern sprigs** in the corner margins.
-    * **Handwritten Latin labels** (Pinyon Script), rotated and stamped
-      binary.
-    * **Thin white plate rule** at inset 12.
+    """Anna Atkins 1843 botanical cyanotype plate.
 
     There is deliberately no body-text knockout: the quote sits directly on
     the photogram, and ``_draw_text_body`` stamps a per-glyph black halo
-    under the text for legibility over bright fronds.
+    under the text. Design notes: ``docs/themes.md`` § anna_atkins.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size

@@ -8,7 +8,9 @@
 
 Idle Hours is a literary clock: every few minutes it shows a sentence from a public-domain novel that names the current time, with the time phrase picked out in bold. Behind it is a pipeline that mines Project Gutenberg for phrases like "a quarter past seven", cleans and scores them, and bakes over two thousand quotes into a database ranked for each five-minute slot of the twelve-hour clock. A Raspberry Pi renders the pick for a six-colour eInk panel and runs unattended as a systemd appliance, with a small web UI for curating the corpus.
 
-<!-- TODO(#354): photo of the physical Inky Impression panel goes here. preview.png below is a render, not the device. -->
+![Idle Hours on its Inky Impression panel, showing the sampler theme at a quarter to three](docs/images/panel.jpg)
+
+The panel on my desk, in the `sampler` theme. Below are four more themes as straight renders:
 
 ![Idle Hours rendered in saloon, gothic, astrarium, and deco themes](idle_hours/assets/preview.png)
 
@@ -42,7 +44,11 @@ flowchart LR
 
 ## How it was built
 
-<!-- TODO(#354): owner-written. Say plainly that most commits are authored by Claude Code, describe the human role (issue specs, review, hardware integration, release process), and link two or three issues where the spec or review changed the outcome. -->
+I saw a similar product for sale, liked the idea, and wanted to see whether I could build my own with agentic development. So I set out to build the mining pipeline to amass quotes from open sources, then built the rest of the appliance, insisting on testing and quality throughout. My own panel lives on my desk, set to `random`, so each update gives me a fresh view of the time.
+
+Most commits here are authored by Claude Code. My part was writing the issue specs, setting the visual design direction, reviewing every change, wiring up the hardware, and running releases. Two examples: testing on the real panel turned up an SPI chip-select conflict that kept the Spectra 6 from refreshing on a fresh Pi, which no amount of desk-side rendering would have caught ([#270](https://github.com/gkoch02/Idle-Hours/issues/270)). And when the `gothic` theme's Fraktur made "o'clock" read closer to "v'clocf", I kept the font anyway: its character outweighs the legibility cost, and it stays until I find a better option ([#326](https://github.com/gkoch02/Idle-Hours/issues/326)).
+
+Now that the system is mature, I mostly build new themes for fun. I'll see a font I like, or get a theme idea, or simply can't sleep one night, and add a few more. That has become the ongoing hobby.
 
 What the project deliberately does not do, and why, is in [`docs/decisions.md`](docs/decisions.md).
 
@@ -143,7 +149,7 @@ The full pipeline order is documented in [Build pipeline notes](#build-pipeline-
 - `ops/idle-hours.service.example` - example systemd service for Pi deployment
 - `docs/pi_setup_inky_impression.md` - Pi setup notes
 - `scripts/bootstrap_pi_inky.sh` - helper bootstrap script for Pi setup
-- `Dockerfile` + `.dockerignore` - v2 multi-stage OCI build (ARM64-first, Pi-runtime extra not bundled). `docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:3.0 .`
+- `Dockerfile` + `.dockerignore` - v2 multi-stage OCI build (ARM64-first, Pi-runtime extra not bundled). `docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:3.1 .`
 - `docs/CONTRIBUTING.md`, `docs/SECURITY.md`, `docs/CODE_OF_CONDUCT.md` - process and policy docs
 
 ## Runtime data contract
@@ -292,16 +298,10 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 |---------------|---------|---------|-------|--------|----------------------|-------------------------------|
 | `default`     | <img src="idle_hours/assets/previews/default.png" width="240" alt="default theme preview">         | white       | black | red    | Playfair Display     | Classic broadsheet            |
 | `dark`        | <img src="idle_hours/assets/previews/dark.png" width="240" alt="dark theme preview">               | black       | white | yellow | Playfair Display     | Night mode                    |
-| `swiss`       | <img src="idle_hours/assets/previews/swiss.png" width="240" alt="swiss theme preview">             | white       | black | red    | Inter (grotesque sans) | Swiss International modernist |
-| `scholar`     | <img src="idle_hours/assets/previews/scholar.png" width="240" alt="scholar theme preview">         | white       | blue  | red    | Bitter (slab)        | Academic textbook             |
-| `herbarium`   | <img src="idle_hours/assets/previews/herbarium.png" width="240" alt="herbarium theme preview">     | cream/white | black | green  | IM Fell English (italic) | Pressed-plant specimen sheet |
 | `newsprint`   | <img src="idle_hours/assets/previews/newsprint.png" width="240" alt="newsprint theme preview">     | white/black | black | (none) | Old Standard TT      | Bold-weight, no chroma        |
 | `nightvision` | <img src="idle_hours/assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black       | green | yellow | Space Mono           | Retro terminal                |
-| `blueprint`   | <img src="idle_hours/assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | blue/white  | white | red    | Archivo (sans)       | Cyanotype drafting sheet      |
-| `illuminated` | <img src="idle_hours/assets/previews/illuminated.png" width="240" alt="illuminated theme preview"> | white       | red   | blue   | EB Garamond + UnifrakturMaguntia | Rubricated manuscript |
 | `gothic`      | <img src="idle_hours/assets/previews/gothic.png" width="240" alt="gothic theme preview">           | black       | white | red    | EB Garamond + UnifrakturMaguntia | Cathedral chronicle   |
 | `bauhaus`     | <img src="idle_hours/assets/previews/bauhaus.png" width="240" alt="bauhaus theme preview">         | white       | black | blue   | Jost (geometric sans) | Bauhaus poster               |
-| `risograph`   | <img src="idle_hours/assets/previews/risograph.png" width="240" alt="risograph theme preview">     | white       | red   | blue   | Rubik (rounded sans) | Two-colour riso zine          |
 | `comic`       | <img src="idle_hours/assets/previews/comic.png" width="240" alt="comic theme preview">             | yellow      | black | red    | Bangers (comic)      | Golden-age comic panel        |
 | `dispatch`    | <img src="idle_hours/assets/previews/dispatch.png" width="240" alt="dispatch theme preview">       | white       | black | red    | Special Elite (typewriter) | Vintage field dispatch  |
 | `atomic`      | <img src="idle_hours/assets/previews/atomic.png" width="240" alt="atomic theme preview">           | green/white | black | red    | Atomic Age           | Mid-century Sputnik age       |
@@ -309,10 +309,7 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `saloon`      | <img src="idle_hours/assets/previews/saloon.png" width="240" alt="saloon theme preview">           | white       | black | red    | Rye (wood-engraved slab) | Wild West wanted-poster   |
 | `roman`       | <img src="idle_hours/assets/previews/roman.png" width="240" alt="roman theme preview">             | white       | black | red    | Cinzel Decorative    | Roman lapidary inscription    |
 | `alchemy`     | <img src="idle_hours/assets/previews/alchemy.png" width="240" alt="alchemy theme preview">         | yellow/white | black | red    | IM Fell English + MedievalSharp | Parchment grimoire     |
-| `grimoire`    | <img src="idle_hours/assets/previews/grimoire.png" width="240" alt="grimoire theme preview">       | black       | white | sky-blue | IM Fell English + Eagle Lake   | Faustian spellbook       |
 | `deco`        | <img src="idle_hours/assets/previews/deco.png" width="240" alt="deco theme preview">               | white       | black | red    | Righteous (display sans) | 1930s art-deco poster     |
-| `glacier`     | <img src="idle_hours/assets/previews/glacier.png" width="240" alt="glacier theme preview">         | white       | blue  | green  | Iceland (techno display) | Icy / aurora panel        |
-| `mucha`       | <img src="idle_hours/assets/previews/mucha.png" width="240" alt="mucha theme preview">             | cream/white | maroon | teal  | Cormorant Garamond + Berkshire Swash | Art Nouveau (Mucha vines)  |
 | `chalkboard`  | <img src="idle_hours/assets/previews/chalkboard.png" width="240" alt="chalkboard theme preview">   | black       | white | yellow | Playwrite GB J Guides | Primary-school cursive guides |
 | `placard`     | <img src="idle_hours/assets/previews/placard.png" width="240" alt="placard theme preview">         | white       | black | red    | Patrick Hand SC      | Hand-lettered sandwich board  |
 | `chanbara`    | <img src="idle_hours/assets/previews/chanbara.png" width="240" alt="chanbara theme preview">       | black       | white | red    | Shojumaru (brush)    | Samurai-cinema poster         |
@@ -323,7 +320,6 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `kanagawa`    | <img src="idle_hours/assets/previews/kanagawa.png" width="240" alt="kanagawa theme preview">       | white       | black | red    | Yuji Boku (sumi-brush) | Hokusai-inspired seigaiha woodblock |
 | `marquee`     | <img src="idle_hours/assets/previews/marquee.png" width="240" alt="marquee theme preview">         | black       | white | red    | Cardo Italic + Bungee Shade | 1930s movie-palace marquee |
 | `tarot`       | <img src="idle_hours/assets/previews/tarot.png" width="240" alt="tarot theme preview">             | cream/white | black | Tyrian purple | EB Garamond + Cinzel Decorative | Major-arcana card |
-| `vinyl`       | <img src="idle_hours/assets/previews/vinyl.png" width="240" alt="vinyl theme preview">             | cream/white | black | tangerine | Cormorant Garamond | Turntable and spoken-word LP |
 | `vitrail`     | <img src="idle_hours/assets/previews/vitrail.png" width="240" alt="vitrail theme preview">         | jewel glass | black | violet | Liberation Serif + Uncial Antiqua | Gothic stained-glass window |
 | `cartograph`  | <img src="idle_hours/assets/previews/cartograph.png" width="240" alt="cartograph theme preview">   | cream/white | black | red    | IM Fell English Italic | Antique cartographer's chart |
 | `questline`   | <img src="idle_hours/assets/previews/questline.png" width="240" alt="questline theme preview">     | black       | white | yellow | Press Start 2P (pixel) | 8-bit RPG dialogue box |
@@ -331,7 +327,6 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `outrun`      | <img src="idle_hours/assets/previews/outrun.png" width="240" alt="outrun theme preview">           | black       | white | magenta | Oxanium (techno sans) | 1980s synthwave sunset |
 | `circuit`     | <img src="idle_hours/assets/previews/circuit.png" width="240" alt="circuit theme preview">         | forest green | white | gold   | Space Mono (mono)    | Printed circuit board |
 | `letter`      | <img src="idle_hours/assets/previews/letter.png" width="240" alt="letter theme preview">           | cream/white | black | red    | Dancing Script + Pinyon Script | Wax-sealed handwritten letter |
-| `grimdark`    | <img src="idle_hours/assets/previews/grimdark.png" width="240" alt="grimdark theme preview">       | black       | white | forge-amber | Cinzel Decorative + UnifrakturMaguntia | Warhammer 40K Imperial Gothic |
 | `sampler`     | <img src="idle_hours/assets/previews/sampler.png" width="240" alt="sampler theme preview">         | cream/white | black | red    | Silkscreen (pixel)   | Cross-stitch embroidery sampler |
 | `anna_atkins` | <img src="idle_hours/assets/previews/anna_atkins.png" width="240" alt="anna_atkins theme preview"> | Prussian blue | white | sky-blue | Libre Caslon Text + Pinyon Script | Anna Atkins botanical cyanotype |
 | `lieder`      | <img src="idle_hours/assets/previews/lieder.png" width="240" alt="lieder theme preview">           | cream/white | black | red    | Alegreya (literary serif) | Engraved art-song manuscript |
@@ -344,11 +339,10 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `bakelite`    | <img src="idle_hours/assets/previews/bakelite.png" width="240" alt="bakelite theme preview">       | brown CRT   | amber | white  | Jost + Space Mono    | Amber-phosphor CRT in bakelite |
 | `cardcatalog` | <img src="idle_hours/assets/previews/cardcatalog.png" width="240" alt="cardcatalog theme preview"> | manila      | black | violet | Special Elite (typewriter) | Library catalogue card |
 | `metro`       | <img src="idle_hours/assets/previews/metro.png" width="240" alt="metro theme preview">             | white       | black | red    | Jost + Space Mono    | Transit-map diagram |
-| `intaglio`    | <img src="idle_hours/assets/previews/intaglio.png" width="240" alt="intaglio theme preview">       | white       | black | green  | Old Standard TT + Cinzel Decorative | Banknote engraving |
 | `nocturne`    | <img src="idle_hours/assets/previews/nocturne.png" width="240" alt="nocturne theme preview">       | black       | white | yellow | Cormorant Garamond   | Whistler night river |
 | `plaque`      | <img src="idle_hours/assets/previews/plaque.png" width="240" alt="plaque theme preview">           | green       | yellow | white | Cinzel Decorative    | Patinated bronze plaque |
-| `daguerreotype` | <img src="idle_hours/assets/previews/daguerreotype.png" width="240" alt="daguerreotype theme preview"> | white   | black | red    | Libre Caslon Text    | Cased 1850s photograph |
-| `autochrome` | <img src="idle_hours/assets/previews/autochrome.png" width="240" alt="autochrome theme preview"> | white   | black | red    | Libre Caslon Text    | 1907 Lumière colour plate |
+| `daguerreotype` | <img src="idle_hours/assets/previews/daguerreotype.png" width="240" alt="daguerreotype theme preview"> | red velvet | gold | white  | Libre Caslon Text    | Cased 1850s photograph, lying open |
+| `autochrome` | <img src="idle_hours/assets/previews/autochrome.png" width="240" alt="autochrome theme preview"> | black   | white | yellow | Libre Caslon Text    | 1907 Lumière colour plate as a lantern slide |
 | `photo` | <img src="idle_hours/assets/previews/photo.png" width="240" alt="photo theme preview"> | white   | black | red    | Libre Caslon Text    | Your own picture via `--photo-path` |
 | `betweenus`   | <img src="idle_hours/assets/previews/betweenus.png" width="240" alt="betweenus theme preview">     | white/cream | black | red    | Fraunces + Inter      | Between Us app card, light |
 | `betweenus_dark` | <img src="idle_hours/assets/previews/betweenus_dark.png" width="240" alt="betweenus_dark theme preview"> | black       | white | amber  | Fraunces + Inter      | Between Us app card, dark |
@@ -385,6 +379,7 @@ Every theme in `render_quote.THEME_ORDER` ships built-in, each constrained to th
 | `gantry` | <img src="idle_hours/assets/previews/gantry.png" width="240" alt="gantry theme preview"> | black       | amber | white  | Lumen + Barlow Condensed | An overhead LED motorway sign at night, the source on a green exit sign |
 | `platform` | <img src="idle_hours/assets/previews/platform.png" width="240" alt="platform theme preview"> | black       | amber | amber  | Lumen Round Medium + Bold | A railway departure board: the book as the destination, the quote as its calling points |
 | `splitflap` | <img src="idle_hours/assets/previews/splitflap.png" width="240" alt="splitflap theme preview"> | black       | white | yellow | Bebas Neue | A split-flap message board on a wall, the time phrase on yellow tiles |
+| `imprimatur` | <img src="idle_hours/assets/previews/imprimatur.png" width="240" alt="imprimatur theme preview"> | white       | black | red | IM Fell English SC | The opening page of a 17th-century Oxford book: red-ruled, a fleuron headpiece, a woodcut initial, the time phrase rubricated in Fell small capitals |
 | `diags`       | <img src="idle_hours/assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
 
 Most themes share the standard literary layout. A number of them are **custom-render frames** that own their whole composition (a dial, a card, a flag, a transit map…); for those the `--mode debug` overlay does not apply. Almost none print the time as digits (the exceptions are objects that really are clocks: `vhs`'s camcorder on-screen display and `platform`'s departure board): the matched phrase in the quote carries it, sometimes alongside a themed hour marker such as a Roman numeral, a time signature or a depth gauge.
@@ -396,7 +391,7 @@ Design notes for every theme — layout, typeface, how each colour is synthesise
 Pass `--theme auto` to let the clock pick by wall-clock time. The defaults are `default` during the day (06:00–18:00) and `dark` at night (18:00–06:00) — the legacy binary contract. Broaden the rotation by setting `--auto-day-theme` and/or `--auto-night-theme` to any other registered theme, e.g.
 
 ```bash
-idle-hours run --theme auto --auto-day-theme scholar --auto-night-theme nightvision
+idle-hours run --theme auto --auto-day-theme newsprint --auto-night-theme nightvision
 ```
 
 `auto` itself is rejected for the day/night picks (would be a config typo, not a useful recursion). A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover, when the override clears and `auto` resumes.
@@ -405,19 +400,19 @@ Pass `--theme random` to pick a theme at random each time the displayed quote ch
 
 Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` / `random` mode.
 
-> Regenerate previews: the images under `idle_hours/assets/previews/` are built by looping over `render_quote.THEME_ORDER` and calling the `python -m idle_hours.render_quote` CLI. **Pin the quote** — the table reads as one passage shown eighty-nine ways, so a preview rendered from a fresh pick would show a different quote from its neighbours, and the picker's answer for a given time moves as the corpus grows:
+> Regenerate previews: the images under `idle_hours/assets/previews/` are built by looping over `render_quote.THEME_ORDER` and calling the `python -m idle_hours.render_quote` CLI. **Pin the quote** — the table reads as one passage shown in every theme, so a preview rendered from a fresh pick would show a different quote from its neighbours, and the picker's answer for a given time moves as the corpus grows:
 >
 > ```bash
-> for theme in default dark swiss scholar herbarium newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier mucha chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vinyl vitrail cartograph questline chrono outrun circuit letter grimdark sampler anna_atkins lieder izakaya abyssal pride pulp synoptic vhs bakelite cardcatalog metro intaglio nocturne plaque daguerreotype autochrome photo betweenus betweenus_dark carcosa control observation trisolaris biomech codex culture orbital furies bosch semiotic atropos saros expedition witcher hades expanse beksinski goya hal lumon dsky oblivion yorha hitchhiker escritoire lasvegas bladerunner traumateam redacted gantry platform splitflap diags; do
+> for theme in default dark newsprint nightvision gothic bauhaus comic dispatch atomic marker saloon roman alchemy deco chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vitrail cartograph questline chrono outrun circuit letter sampler anna_atkins lieder izakaya abyssal pride pulp synoptic vhs bakelite cardcatalog metro nocturne plaque daguerreotype autochrome photo betweenus betweenus_dark carcosa control observation trisolaris biomech codex culture orbital furies bosch semiotic atropos saros expedition witcher hades expanse beksinski goya hal lumon dsky oblivion yorha hitchhiker escritoire lasvegas bladerunner traumateam redacted gantry platform splitflap imprimatur diags; do
 >   idle-hours render --time 10:00 --theme "$theme" --mode production \
 >     --pin-quote 35:646 --pin-matched-text "ten o’clock" \
 >     --output "idle_hours/assets/previews/$theme.png"
 > done
 > ```
 >
-> That is H. G. Wells, *The Time Machine* — "It was at ten o’clock today that the first of all Time Machines began its career." — and the command above reproduces the checked-in image byte-for-byte for the themes whose frame carries no clock element. The set has been rebuilt per-theme as themes changed rather than all at once, so the themes that surface the hour or minute (`metro`, `astrarium`, `vinyl`, `cardcatalog`, `bakelite`, `intaglio`, `plaque`, `pulp`, `vhs`, `synoptic`, `tarot`, `vitrail`, `lieder`, `izakaya`, `abyssal` …) were rendered at other times and will shift if you re-run the whole loop. Regenerate the theme you changed, not the set.
+> That is H. G. Wells, *The Time Machine* — "It was at ten o’clock today that the first of all Time Machines began its career." — and the command above reproduces the checked-in image byte-for-byte for the themes whose frame carries no clock element. The set has been rebuilt per-theme as themes changed rather than all at once, so the themes that surface the hour or minute (`metro`, `astrarium`, `cardcatalog`, `bakelite`, `plaque`, `pulp`, `vhs`, `synoptic`, `tarot`, `vitrail`, `lieder`, `izakaya`, `abyssal` …) were rendered at other times and will shift if you re-run the whole loop. Regenerate the theme you changed, not the set.
 >
-> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled typeface ships under `idle_hours/fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Special Elite, Atomic Age, Permanent Marker, Rye, Cinzel Decorative, IM Fell English, MedievalSharp, Eagle Lake, Righteous, Iceland, Playwrite GB J Guides, Patrick Hand SC, Shojumaru, Antonio, Inter, Cormorant Garamond, Berkshire Swash, Bungee Shade) so the previews are reproducible without any system-font install. All bundled faces are OFL-licensed except Special Elite and Permanent Marker, which ship under Apache 2.0 (see `idle_hours/fonts/special-elite/LICENSE.txt` and `idle_hours/fonts/permanent-marker/LICENSE.txt`). Every family ships its licence text beside it, which both licences require and `tests/test_font_licenses.py` enforces. A previous release bundled `idle_hours/fonts/TFoust.ttf` in the `grimoire` matched-phrase slot; its metadata recorded `© 2025 myfont All rights reserved` with no grant, so it was not ours to redistribute under the MIT licence and has been replaced by Eagle Lake (Astigmatic, OFL). See the **Third-party content** section of [LICENSE](LICENSE).
+> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled typeface ships under `idle_hours/fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Special Elite, Atomic Age, Permanent Marker, Rye, Cinzel Decorative, IM Fell English, MedievalSharp, Eagle Lake, Righteous, Iceland, Playwrite GB J Guides, Patrick Hand SC, Shojumaru, Antonio, Inter, Cormorant Garamond, Berkshire Swash, Bungee Shade) so the previews are reproducible without any system-font install. All bundled faces are OFL-licensed except Special Elite and Permanent Marker, which ship under Apache 2.0 (see `idle_hours/fonts/special-elite/LICENSE.txt` and `idle_hours/fonts/permanent-marker/LICENSE.txt`). Every family ships its licence text beside it, which both licences require and `tests/test_font_licenses.py` enforces. A previous release bundled `idle_hours/fonts/TFoust.ttf` in a matched-phrase slot; its metadata recorded `© 2025 myfont All rights reserved` with no grant, so it was not ours to redistribute under the MIT licence and has been replaced by Eagle Lake (Astigmatic, OFL). See the **Third-party content** section of [LICENSE](LICENSE).
 
 ### Inky buttons (short and long press)
 
@@ -426,7 +421,7 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 | Button | Short press | Long press (2s) |
 |---|---|---|
 | **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
-| **B** | Cycle theme — advances through `default → dark → scholar → newsprint → nightvision → blueprint → illuminated → bauhaus → risograph → comic` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
+| **B** | Cycle theme — advances through `default → dark → newsprint → nightvision → gothic → bauhaus → comic → dispatch → atomic → marker` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
 | **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
 | **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the sleep frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
@@ -654,10 +649,10 @@ day and another overnight:
 
 ```bash
 # Fixed: a dark theme for the small hours
-idle-hours run --theme scholar --quiet-theme nightvision
+idle-hours run --theme newsprint --quiet-theme nightvision
 
 # Random: rerolled once per night, on entering quiet hours — not per tick
-idle-hours run --theme scholar --quiet-theme random
+idle-hours run --theme newsprint --quiet-theme random
 
 # Wall-clock day/night picks, same rule as --theme auto
 idle-hours run --quiet-theme auto
@@ -874,7 +869,7 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - The optional curator web UI (`--web-bind`) runs in-process on a daemon thread and shares the render lock with the button handlers; it's the safe remote alternative to SSHing in to tap the panel or edit `selection_overrides.json` by hand. LAN binds require `--web-token` / `--web-token-file`.
 - **Webhook notifications (v2):** `--webhook-url <url>` posts a JSON body for each alert-worthy telemetry event (errors, backoff, render/display/shutdown timeouts, button-died, state-validation issues, web-auth failures). Heartbeats and successful renders are always filtered (alerting once a minute is spam, not signal). Best-effort: dispatched on a daemon thread with a 5 s timeout, failures log but never block the render path. Pass `--webhook-all-events` to widen the filter.
 - **Prometheus `/metrics` (v2):** the curator UI exposes a standard text-exposition endpoint over a fixed 24 h window. Reuses the same `idle_hours_health.summarise` aggregation as `idle-hours health --json`, so the values match exactly. Stays open without auth on every bind so a Prometheus scraper on the LAN can hit it without managing a token.
-- **OCI container (v2):** `Dockerfile` provides a multi-stage build (ARM64-first) so the appliance can ship as a container instead of a git clone. Run with `docker run --rm -p 8080:8080 -v idle-hours-state:/state idle-hours:3.0 idle-hours run --buttons-off --skip-preflight --web-bind 0.0.0.0:8080 --state-path /state/state.json --history-path /state/history.jsonl --telemetry-path /state/telemetry.jsonl --pidfile /state/run_clock.pid` for a headless dev instance. The Pi-only `[pi]` extra (`gpiozero` / `inky`) is *not* installed by default — that's a Pi-runtime concern.
+- **OCI container (v2):** `Dockerfile` provides a multi-stage build (ARM64-first) so the appliance can ship as a container instead of a git clone. Run with `docker run --rm -p 8080:8080 -v idle-hours-state:/state idle-hours:3.1 idle-hours run --buttons-off --skip-preflight --web-bind 0.0.0.0:8080 --state-path /state/state.json --history-path /state/history.jsonl --telemetry-path /state/telemetry.jsonl --pidfile /state/run_clock.pid` for a headless dev instance. The Pi-only `[pi]` extra (`gpiozero` / `inky`) is *not* installed by default — that's a Pi-runtime concern.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.

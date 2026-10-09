@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import random
 
-from idle_hours import runtime_store
+from idle_hours import runtime_store, theme_names
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.theme_names import known_theme_names as _registered_themes
@@ -29,7 +29,7 @@ def auto_theme_for(time_str: str, day_theme: str = "default", night_theme: str =
     Defaults match the legacy binary contract (``default`` / ``dark``); callers
     that don't pass the kwargs see no behaviour change. Operators can broaden
     the rotation via ``--auto-day-theme`` / ``--auto-night-theme`` (see
-    ``run_clock`` argparse) — e.g. ``scholar`` by day + ``nightvision`` by
+    ``run_clock`` argparse) — e.g. ``newsprint`` by day + ``nightvision`` by
     night. Validation of the theme names lives at argparse / config-load time
     rather than here so the per-tick call stays cheap.
     """
@@ -43,15 +43,11 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
     """Pluck the auto-theme day/night picks off an argparse Namespace.
 
     Single seam so call sites that thread these into ``resolve_effective_theme``
-    don't each have to reach into ``args``; if we ever add a third dimension
-    (e.g. weekend/weekday split) only this helper changes. ``getattr`` defaults
-    cover programmatic ``argparse.Namespace`` constructions in tests (and any
-    caller predating these flags) — the legacy binary contract is preserved
-    when the attributes are absent.
+    don't each have to reach into ``args``.
     """
     return {
-        "auto_day_theme": getattr(args, "auto_day_theme", "default"),
-        "auto_night_theme": getattr(args, "auto_night_theme", "dark"),
+        "auto_day_theme": args.auto_day_theme,
+        "auto_night_theme": args.auto_night_theme,
     }
 
 
@@ -73,8 +69,7 @@ def random_theme_pool() -> tuple[str, ...]:
     :func:`pick_next_random_theme` (the main-loop bag refill) agree on
     which entries can show up.
     """
-    from idle_hours.theme_names import theme_cycle
-    return tuple(name for name in theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
+    return tuple(name for name in theme_names.theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
 
 
 def pick_random_theme() -> str:
@@ -108,25 +103,13 @@ def pick_next_random_theme(
 ) -> tuple[str, list[str]]:
     """Draw the next theme from a shuffled bag of unseen themes.
 
-    Returns ``(theme, updated_bag)`` — the caller stores ``updated_bag``
-    on :class:`RuntimeState`. When ``bag`` is empty it's refilled with a
-    fresh shuffle of the full cycle.
-
-    ``recent`` is the caller's rolling window of the most-recently-drawn
-    themes (most-recent last). On a refill the themes in ``recent`` are
-    moved to the *head* of the new bag — and since the bag is popped from
-    the end (``list.pop`` is O(1)), the head is drawn *last*. The
-    non-recent themes fill the tail and are drawn first, so a theme shown
-    near the end of the previous pass can't reappear at the start of the
-    next one. This is the cross-boundary generalisation of the old
-    "don't replay the single just-played theme" swap: independent
-    per-pass shuffles otherwise let a tail theme recur as the second pick
-    of the next pass (a gap of 2). See :func:`recent_window_size` for why
-    the caller caps ``recent`` at half the pool.
-
-    The refill draws from :func:`random_theme_pool` (= ``theme_cycle()``
-    minus :data:`RANDOM_EXCLUDED_THEMES`) rather than the full cycle, so
-    diagnostic-only themes never sneak in via a random pick.
+    Returns ``(theme, updated_bag)``; the caller stores the bag on
+    :class:`RuntimeState`. An empty bag is refilled from
+    :func:`random_theme_pool` (so diagnostic-only themes never appear), with
+    the themes in ``recent`` (most-recent last) moved to the head, which is
+    drawn last. That keeps a theme from the tail of one pass from reappearing
+    at the start of the next; docs/runtime.md explains the window and why
+    :func:`recent_window_size` caps it at half the pool.
     """
     bag = list(bag)  # never mutate the caller's list
     if not bag:
@@ -163,7 +146,7 @@ def resolve_effective_theme(
     derive from the wall clock using the configured day/night picks (default
     ``default`` / ``dark`` — the legacy binary contract). Any registered theme
     from ``render_quote.THEMES`` is accepted as an override — previously this
-    accepted only the legacy pair, so a manual flip to ``scholar`` /
+    accepted only the legacy pair, so a manual flip to ``newsprint`` /
     ``nightvision`` would silently revert to ``theme_arg`` and the cycle never
     advanced past ``dark``.
     """
@@ -192,32 +175,13 @@ def resolve_quiet_theme(
 ) -> str:
     """Resolve the theme for the quiet-hours sleep frame.
 
-    Precedence, highest first:
-
-    1. ``state.manual_theme`` — a button-B / web-dropdown override always wins,
-       here as everywhere else. An operator who deliberately picked a theme did
-       not pick it "except while asleep".
-    2. ``--quiet-theme`` when it is not :data:`QUIET_THEME_INHERIT`:
-
-       * a registered theme name — used as-is;
-       * ``auto`` — derived from the wall clock via the configured day/night
-         picks, same as ``--theme auto``. Nearly always resolves to the night
-         theme for a conventional quiet window, but it costs nothing to honour
-         and it means the flag accepts everything ``--theme`` does;
-       * ``random`` — a fresh pick held on ``state.quiet_theme`` for the
-         lifetime of the quiet window. ``enter_quiet`` is only called on the
-         rising edge and ``exit_quiet`` clears the field, so this rerolls once
-         per night rather than once per tick.
-    3. ``inherit`` (the default) — delegate to
-       :func:`resolve_effective_theme`, i.e. exactly what the clock would be
-       showing had quiet hours not started.
-
-    Note the asymmetry with ``--theme random``: that one rerolls whenever the
-    *displayed quote* changes, which is the right cadence for a clock. The
-    sleep frame's quote never changes, so the quiet window is the only
-    meaningful unit to reroll on.
+    Precedence, highest first: ``state.manual_theme``; ``--quiet-theme`` when
+    it is not :data:`QUIET_THEME_INHERIT` (a theme name, ``auto``, or
+    ``random``, which is held on ``state.quiet_theme`` so it rerolls once per
+    quiet window); otherwise :func:`resolve_effective_theme`, i.e. what the
+    clock would show. Why each rule: docs/runtime.md ("Quiet-hours theme").
     """
-    quiet_choice = getattr(args, "quiet_theme", QUIET_THEME_INHERIT) or QUIET_THEME_INHERIT
+    quiet_choice = args.quiet_theme or QUIET_THEME_INHERIT
 
     with state.lock:
         manual_theme = state.manual_theme

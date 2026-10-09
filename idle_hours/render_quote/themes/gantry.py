@@ -1,6 +1,6 @@
-"""The ``gantry`` theme's frame and the code only it uses.
+"""The ``gantry`` theme: an overhead highway LED message sign at night, shot as a long exposure.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § gantry
 """
 
 from __future__ import annotations
@@ -26,29 +26,6 @@ from ..primitives import _soft_ellipse_mask, _white_noise, paint_neon_mask
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._shared import _gantry_dot, _gantry_glyph, _gantry_tokens
-
-# ---------------------------------------------------------------------------
-# gantry — an overhead highway message sign at night.
-#
-# The quote runs on a full-matrix LED sign hung from a steel truss over a
-# motorway, shot as a long exposure: amber dots in their own bloom, the
-# matched phrase lit white, tail-light streaks running off under the sign
-# toward the vanishing point, and the source posted on a green guide sign at
-# the roadside with the hour as its exit number.
-#
-# **The font is read as dots, not outlines.** Lumen is a 5x7 matrix on a
-# strict grid one tenth of an em apart, so ``_gantry_glyph`` renders each
-# character once, supersampled, and reads the grid centres back as a set of
-# lit cells. Every LED is then drawn by the theme on ONE lattice that covers
-# the whole sign face, lit or not, the way a real sign is built: the dot
-# pitch is chosen per quote (big dots for short quotes, a tight grid for long
-# ones) and the glyphs always land on it. Drawing the outlines at an
-# arbitrary size instead would put each line's dots on its own grid.
-#
-# Letters are packed proportionally (ink columns plus one blank column), as
-# real sign fonts are, and the matched phrase is set bold the matrix way: the
-# glyph ORed with itself one column over.
-# ---------------------------------------------------------------------------
 
 _GANTRY_CABINET = (14, 30, 786, 354)
 _GANTRY_FACE = (30, 44, 770, 340)
@@ -472,7 +449,7 @@ def _gantry_paint_guide(image: Image.Image, title: str, subtitle: str, tab: str)
 
 
 def render_gantry_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """An overhead highway message sign at night (see the section comment).
+    """An overhead highway message sign at night (see docs/themes.md).
 
     Composed at the canonical 800x480 and NEAREST-downsampled for other
     sizes (``metro`` convention).

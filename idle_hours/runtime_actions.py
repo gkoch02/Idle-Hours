@@ -237,7 +237,7 @@ def action_theme(
     """Advance the theme (button B cycle) or jump to ``target`` (web dropdown).
 
     When ``target`` is ``None`` (button B / fire-and-forget web POST), cycle
-    to the next theme in ``render_quote.THEME_ORDER``. When ``target`` is a
+    to the next theme in ``theme_names.theme_cycle()``. When ``target`` is a
     known theme name, jump directly to it — lets the curator UI expose a
     dropdown without forcing the operator to mash B four times to reach
     ``nightvision``. An unknown ``target`` returns 400-equivalent
@@ -280,9 +280,9 @@ def action_theme(
         # ``commit_render_result`` and the field still describes the
         # pre-sleep *clock* frame. Deriving ``current`` from it during quiet
         # hours got both consumers below wrong: an explicit apply of the
-        # clock theme (say ``scholar``, while the sleep frame shows
+        # clock theme (say ``newsprint``, while the sleep frame shows
         # ``nightvision``) matched the stale value and was dropped as a
-        # no-op, and a button-B cycle advanced from ``scholar`` rather than
+        # no-op, and a button-B cycle advanced from ``newsprint`` rather than
         # from the ``nightvision`` the operator can see. Resolving through
         # ``resolve_quiet_theme`` asks the same function the frame itself
         # used, so "current" means "displayed" in both states.

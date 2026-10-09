@@ -1,35 +1,20 @@
 #!/usr/bin/env python3
 """Apply per-row content overrides on top of the enriched corpus.
 
-Final pipeline stage. Reads ``assets/content_overrides.json`` — a sidecar
-keyed by ``"<source_id>:<line_number>"`` — and patches matching rows from the
-input JSONL. This is how hand-curated fixes (a miscaptured time phrase, a bad
-display excerpt, a broken attribution) are kept *durable* across pipeline
-re-runs: the fix lives in the sidecar and re-applies every time, instead of
-being written into a derivable artifact and silently overwritten by the next
-miner run.
-
-The sidecar format is a flat dict:
+Patches rows from ``assets/content_overrides.json``, a sidecar keyed by
+``"<source_id>:<line_number>"``, so a hand-curated fix (a miscaptured time
+phrase, a bad excerpt, a broken attribution) re-applies on every pipeline run
+instead of living in a derived file the next miner run overwrites:
 
     {
       "141:482":  {"display_quote": "..."},
       "1342:99":  {"matched_text": "half past two", "normalized_time": "02:30"}
     }
 
-Allowed override fields: ``display_quote``, ``matched_text``, ``author``,
-``title``, ``quality_score``, ``hour``, ``minute``, ``normalized_time``. Any
-other key in the sidecar is ignored with a stderr warning. After applying,
-``fuzzy_bucket`` is re-derived from the post-override ``normalized_time`` so
-time-affecting overrides can't drift the bucket. Patched rows are stamped
-``override_applied: true`` so downstream debugging can tell which rows came
-from the sidecar, and carry ``override_originals`` — the values the sidecar
-replaced — so deleting an entry and re-running restores the row.
-
-Keys that don't match any row in the input are logged to stderr so typos and
-overrides for rows that later got dedup-dropped surface loudly rather than
-silently no-op'ing.
-
-Writes in-place by default (pass ``--output`` to redirect).
+Writes in place by default (``--output`` redirects). The allowed fields, the
+re-derived ``fuzzy_bucket``, ``override_applied`` / ``override_originals``
+(which make an override reversible) and the dangling-key warnings:
+docs/pipeline.md ("Content Overrides").
 """
 from __future__ import annotations
 

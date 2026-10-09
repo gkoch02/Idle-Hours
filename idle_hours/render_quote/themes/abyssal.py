@@ -1,4 +1,4 @@
-"""The ``abyssal`` theme's frame and the code only it uses (issue #335).
+"""The ``abyssal`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -19,18 +19,8 @@ from ..spec import FrameSpec
 
 # ─── abyssal (deep sea) ──────────────────────────────────────────────────────
 #
-# A quote read through deep water: a vertical gradient from a seafoam surface
-# to near-black, a caustic light net fading out below it, marine snow, and
-# bioluminescent jellyfish.
-#
-# The surface band is the catalogue's **seafoam (G+B+W @ 40/30/30)**, a 3-way
-# Bayer partition whose weights fall with depth (turquoise → pure blue).
-# Bioluminescence goes through ``paint_neon_mask``: a blue bloom for the prose
-# so it sits *in* the water, a mint-green bloom for the matched phrase.
-#
-# **The hour is a depth.** At 500 m per hour the sounding gauge down the left
-# margin runs 500 m at one o'clock to 6000 m at twelve — the floor of the
-# abyssal zone. ``time_str`` is therefore used.
+# A quote read through deep water. The hour is a depth on the sounding gauge,
+# so ``time_str`` is used. Design notes: docs/themes.md § abyssal.
 
 _ABYSSAL_SURFACE_BOTTOM = 96     # seafoam band fades to plain blue by here
 _ABYSSAL_CAUSTIC_BOTTOM = 172    # the light net dies out by here
@@ -241,7 +231,7 @@ def _abyssal_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw,
 
 
 def render_abyssal_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Deep sea (see the module section comment above).
+    """Deep sea (``docs/themes.md`` § abyssal).
 
     Laid out against the canonical 800×480; smaller canvases (``/api/preview``
     thumbnails) crop rather than reflow. Raw pixel writes clamp to

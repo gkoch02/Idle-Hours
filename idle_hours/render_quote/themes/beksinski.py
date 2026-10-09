@@ -1,6 +1,6 @@
-"""The ``beksinski`` theme's frame and the code only it uses (issue #335).
+"""The ``beksinski`` theme: a procession toward a cathedral of bone, after Beksiński's fantastic period.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § beksinski
 """
 
 from __future__ import annotations
@@ -18,42 +18,6 @@ from ..primitives import _lerp_stops, _smooth_noise, paint_craquelure
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# beksinski — Zdzisław Beksiński's fantastic period (c. 1964–1983): a
-# procession across a dead plain toward a cathedral of bone
-# ---------------------------------------------------------------------------
-# A plain under a dust-coloured haze with a dim sun, a cathedral of bone grown
-# on the horizon (spires, pointed openings, tendons into the ground), and
-# hooded figures walking toward it. The quote is set in the haze.
-#
-# **The procession is the hour**: one figure per hour, led from the
-# cathedral's foot back along the road, so the file grows and the leader never
-# moves. Hour-only, pinned byte-identical across the minutes of an hour by
-# ``TestBeksinskiFrame``. Each black figure has a 1 px bone-white edge toward
-# the cathedral, which with the pale road keeps it legible on the dark plain.
-#
-# **Sky and plain are painted in continuous tone and dithered** against the
-# calibrated inks (the ``expedition`` posture): umber-to-ochre gradient,
-# scraped-oil noise, the sun's glow behind the spires, a vignette. **No green
-# and no blue**: with green admitted the umber quantises to red-and-green
-# confetti. The plain is lighter at the horizon (atmospheric perspective).
-#
-# **The cathedral** is an ``L`` mask: a mound, six ragged spires with a bulge
-# so they read as bone rather than cones, pinnacles, tendon buttresses, and
-# windows and an oculus knocked through. It is painted before the dither as a
-# grained near-black body with a rust **rim light** (mask minus itself offset
-# down-right). A far ruin on the left horizon makes the plain wide. After the
-# dither ``paint_craquelure`` crazes the plain and the bone (not the sky),
-# keeping the byline clear.
-#
-# **Type**: Old Standard TT, the Didone of 20th-century Central European book
-# printing (Beksiński set no type): Regular body, Bold matched phrase in solid
-# red, bone-white byline.
-#
-# The scene is quote- and hour-independent and painted once per process
-# (``_BEKSINSKI_SCENE``, keyed on the painters). Composed at 800x480 and
-# NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _BEKSINSKI_SEED = 0x5A42               # ZB
 _BEKSINSKI_HORIZON = 318
 _BEKSINSKI_QUOTE_RECT = (46, 42, 490, 266)
@@ -320,7 +284,7 @@ def _beksinski_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 
 def render_beksinski_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A procession toward a cathedral of bone (see the section comment above)."""
+    """A procession toward a cathedral of bone (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _beksinski_scene().copy()
     draw = ImageDraw.Draw(image)

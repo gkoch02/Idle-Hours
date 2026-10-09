@@ -1,6 +1,7 @@
-"""The ``atropos`` theme's frame and the code only it uses (issue #335).
+"""The ``atropos`` theme's frame: night in the Overgrown Ruins of Atropos, after
+Housemarque's *Returnal* (2021), with the quote as a translated xenoglyph cipher.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § atropos
 """
 
 from __future__ import annotations
@@ -19,42 +20,6 @@ from ..primitives import _halo_paste, _lerp_stops, _smooth_noise, _white_noise, 
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# atropos — Housemarque's *Returnal* (2021): night in the Overgrown Ruins
-# ---------------------------------------------------------------------------
-# One night in the rain-soaked ruins: teal fog over a black plain, rain, the
-# Sentient statues, the wreck of the *Helios*, black tendrils glowing where
-# alive, bullet-hell orbs, and a HUD over it all. The quote is a **xenoglyph
-# cipher** the scout has just translated.
-#
-# **Cold scene, hot layer — two passes, two palettes.** The night is painted
-# in continuous tone and Floyd–Steinberg-dithered to **black / blue / green /
-# white only**, so error diffusion can never warm it; the teal is a B+G mix
-# whose density falls with the fog, hence dithered rather than stippled.
-# Everything that glows is laid on top through ``paint_neon_mask`` with
-# ``ground`` pinned to the three cold inks: ember nodules, hot orbs and the
-# matched phrase in a yellow core with a tangerine halo (red with yellow at
-# 3/8), violet orbs in a white core with a blue + red halo at 1/2.
-#
-# **The scene is quote-independent and cached** (``_ATROPOS_BACKGROUND``,
-# keyed on the painters, the ``biomech`` pattern). Orbs, cipher and HUD
-# readings are seeded from ``_row_digest``, never ``hash()`` or the clock.
-#
-# **The cipher is the quote in alien script.** ``_atropos_glyph`` builds a
-# 26-letter alphabet once from a fixed seed (three to five strokes on a 3x4
-# lattice plus an optional dot); the slab carries the matched phrase and then
-# the quote, so the same letter is always the same glyph. 1 px strokes are a
-# single white ink so they survive the snap.
-#
-# **The time is the cycle counter, hour only** (``CYCLE 07`` top-right),
-# pinned byte-identical across the minutes of an hour by ``TestAtroposFrame``.
-# Custom frames never draw the debug banner, so no ``_DEBUG_LABEL_RIGHT_INSET``.
-#
-# **Saira** for the translation, **Michroma** for the HUD: the nearest open
-# faces to Returnal's Erbaum and Kellion (see ``docs/themes.md``).
-#
-# Composed at 800x480 and NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _ATROPOS_SEED = 0xA7C0
 _ATROPOS_HORIZON = 334
 _ATROPOS_QUOTE_RECT = (166, 72, 666, 256)

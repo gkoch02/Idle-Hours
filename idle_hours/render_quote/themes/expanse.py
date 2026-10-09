@@ -1,6 +1,6 @@
-"""The ``expanse`` theme's frame and the code only it uses (issue #335).
+"""The ``expanse`` theme: the Rocinante's console from *The Expanse*, the quote an incoming tightbeam.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § expanse
 """
 
 from __future__ import annotations
@@ -31,39 +31,6 @@ from ..primitives import _fill_swatch_stipple, paint_neon_mask
 from ..spec import FrameSpec
 from ..text import draw_text_dithered, draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# expanse — *The Expanse* (2015–2022): the Rocinante's console
-# ---------------------------------------------------------------------------
-# One of the Rocinante's displays: dense modules on dark glass (a system plot
-# with station column heads, arc gauges, status pills, a framed feed, a boxed
-# contact list, waveform charts, and tiny ``//`` system text under each
-# module). The quote is the feed: an incoming tightbeam.
-#
-# **The hour is a bearing.** The tracked contact sits on the plot's outer ring
-# at the hour's clock-face position ("contact, two o'clock"), with a dashed
-# blue flyby track and a dashed orange intercept from the Roci, and its list
-# row reads the bearing in degrees (``BRG 060``). Hour-only, pinned
-# byte-identical across the minutes of an hour by ``TestExpanseFrame``.
-#
-# **Colour.** MCRN orange is an R+Y 50/50 stipple (a red-biased tangerine goes
-# dim on black) for the matched phrase, sender, header leads and lit pills;
-# gauge sweeps and chart fills are a B+W checker (the console's cyan);
-# hairlines are solid blue, since a hairline cannot carry a stipple, and never
-# red, which is a shade off black on the panel. Pills and bars are green for
-# nominal, red for armed or empty; running text is white.
-#
-# **Type**: Barlow (nearest open face to the show's modified DIN Pro) for the
-# body, matched phrase and sender; Barlow Condensed for labels; Share Tech
-# Mono for readouts, system text and the command line.
-#
-# **The ship's state is the quote's**: ``_row_digest`` deals the gauges,
-# pills, waveform, signal bars and transmission ID. Nothing prints a digit the
-# time could be read from.
-#
-# The chrome is quote- and hour-independent and painted once per process
-# (``_EXPANSE_SCENE``, keyed on the painters). Composed at 800x480 and
-# NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _EXPANSE_SEED = 0x524F4349            # ROCI
 _EXPANSE_GRID_PITCH = 23              # coprime with the 4x4 / 8x8 Bayer tiles
 _EXPANSE_TAG_RECT = (24, 8, 150, 54)
@@ -648,8 +615,7 @@ def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote
 
 
 def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The Rocinante's console with the quote as an incoming tightbeam (see
-    the section comment above)."""
+    """The Rocinante's console with the quote as an incoming tightbeam (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     del time_str
     image = _expanse_scene().copy()

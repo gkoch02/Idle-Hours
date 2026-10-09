@@ -1,6 +1,7 @@
-"""The ``expedition`` theme's frame and the code only it uses (issue #335).
+"""The ``expedition`` theme's frame: the Monolith seen from the Lumière promenade,
+after Sandfall Interactive's *Clair Obscur: Expedition 33* (2025); the Paintress's number is the hour.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § expedition
 """
 
 from __future__ import annotations
@@ -35,59 +36,6 @@ from ..primitives import _halo_paste, _lerp_stops, _smooth_noise, paint_flow_str
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# expedition — Sandfall Interactive's *Clair Obscur: Expedition 33* (2025):
-# the Monolith from the Lumière promenade
-# ---------------------------------------------------------------------------
-# The view from the Lumière promenade: stone balustrade and gas lamp in the
-# foreground, the dusk sea, and on the far islet the Monolith with the
-# Paintress beside it, brush raised. The number she has just painted is the
-# **hour**. The quote is a page from an expedition journal.
-#
-# **Clair-obscur, literally**: black zenith and silhouettes against one warm
-# light, the horizon glow behind the Monolith. The scene (dusk gradient,
-# pooled glow, a vignette keeping the journal's corner dark, the sea with
-# shimmer and broken reflection, silhouettes, a brush-stroke facture) is
-# painted in continuous tone and Floyd–Steinberg-dithered.
-#
-# **Dithered against the calibrated inks, not the nominal ones.** Tones are
-# specified in the panel's measured colour space and the quantiser is given
-# the same measured inks, so diffusion weighs red as the near-black it is on
-# the panel; indices are then re-labelled with the nominal inks
-# (``_dither_calibrated``). Nominal-RGB design goes to mud on the panel. The
-# sky is quantised without green (diffusion uses any ink it is given); the sea
-# gets green back for the B+G teal of lit water.
-#
-# **The number is paint.** ``_expedition_numeral_mask`` sets the hour in Bebas
-# Neue and roughs it into a brushed stroke (bristle gaps, swelling edges,
-# drips, a flick). Painted as a yellow core with white at 1/4 in a red + yellow
-# halo at 1/2 (a 5/8-red halo reads as shadow). The water carries its
-# reflection as a density stipple (``_expedition_stipple_field``). The
-# Paintress's brush tip reaches into the halo.
-#
-# **The petals are the Gommage**: a gust of rose petals along a cubic path from
-# the promenade toward the number, each a teardrop in a red + white stipple
-# (pink is the only way a petal reads against the night when panel red is so
-# dark), rimmed white on the lit side. Sizes fall along the path. Seeded from
-# ``_row_digest``; the gust keeps out of the journal, byline, wordmark, credo
-# and number.
-#
-# **The chroma**: ``paint_flow_strokes`` sweeps the sky round the number
-# through a swirl-plus-wind field, blue/white in the cold sky, red/yellow near
-# the glow.
-#
-# **The game's own faces.** The journal is **IM Fell Double Pica**, roman body
-# and (no bold exists) italic matched phrase, painted in the number's recipe.
-# The number and every label are **Bebas Neue**; solid-yellow Bebas at 15 px
-# survives the panel where a stippled serif would shred. The wordmark is
-# spaced **Cinzel Decorative** with a gold hairline and diamond.
-#
-# **Time surfaces.** The number is hour-only, pinned byte-identical across the
-# minutes of an hour by ``TestExpeditionFrame``. The scene is quote- and
-# hour-independent and cached once per process (``_EXPEDITION_BACKGROUND``,
-# keyed on the painters). Composed at 800x480 and NEAREST-downsampled (the
-# ``metro`` convention).
-# ---------------------------------------------------------------------------
 _EXPEDITION_SEED = 0xE33
 _EXPEDITION_HORIZON = 306
 _EXPEDITION_RAIL_TOP = 430

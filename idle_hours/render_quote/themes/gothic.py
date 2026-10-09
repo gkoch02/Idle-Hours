@@ -1,6 +1,7 @@
-"""The ``gothic`` theme's border painter and the code only it uses (issue #335).
+"""The ``gothic`` theme's border painter, cathedral-chronicle tracery: a doubled rubric
+rule, maroon corner quatrefoils, cream mid-edge diamonds and trefoil finials.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § gothic
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
     """Paint a Gothic-tracery border: double rule + maroon quatrefoils + cream mid-edge diamonds.
 
     An outer red rule and inner white rule (a two-colour doubled
-    rubrication, unlike ``illuminated``'s single ink).
+    rubrication).
 
     Four corner quatrefoils, each four lobes around a white centre dot.
     Lobes are painted red, then a per-lobe bbox post-pass flips half to

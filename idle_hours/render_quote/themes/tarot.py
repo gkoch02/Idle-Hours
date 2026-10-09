@@ -1,6 +1,8 @@
-"""The ``tarot`` theme's frame and the code only it uses (issue #335).
+"""The ``tarot`` theme's frame, a major-arcana trump for the hour laid on a foxed
+vellum cloth with the quote as its reading beside it, and its XVIII La Lune
+sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § tarot
 """
 
 from __future__ import annotations
@@ -10,8 +12,8 @@ import math
 from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
-from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import SLEEP_QUOTE_ROW, _clock_hour12, _fit_dotted_byline
+from ..fonts import load_font, normalize_dashes, theme_font_candidates
+from ..furniture import SLEEP_QUOTE_ROW, _clock_hour12, _fit_dotted_byline, _paint_placed, _place_lines
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..primitives import _white_noise
@@ -21,9 +23,9 @@ from ._shared import _TAROT_ROMAN_NUMERALS
 
 # Separated Tarot de Marseille trumps (Jean Dodal, Lyon, 1701-1715), one
 # 220x290 tile per hour on a 3x4 sheet (scripts/ingest_tarot_plates.py). Unlike
-# the plates above this is NOT dithered at render time: a woodcut is line and
-# flat colour, so the ingest separates it to white/black/red once. Absent, the
-# polygon painters still draw every hour.
+# other themes' plates this is NOT dithered at render time: a woodcut is line
+# and flat colour, so the ingest separates it to white/black/red once. Absent,
+# the polygon painters still draw every hour.
 TAROT_PLATES = BASE_DIR / "assets" / "tarot_plates.png"
 # The sleep frame's trump, XVIII La Lune, separated the same way into a single
 # tile (``ingest_tarot_plates.py --single``). Absent, a polygon moon stands in.
@@ -106,9 +108,9 @@ _TAROT_PAINTER_TRUMP_NAMES = {
 
 # Card and reading-column geometry: a portrait card (a real tarot card's
 # ratio is 0.58) laid on the cloth at the left, the interpretation written
-# beside it — the left-object / right-text composition of ``vinyl`` and
-# ``astrarium``. The emblem gets a tall panel, the quote a full column, and
-# the vellum shows on every side of the card.
+# beside it — the left-object / right-text composition of ``astrarium``. The
+# emblem gets a tall panel, the quote a full column, and the vellum shows on
+# every side of the card.
 _TAROT_CARD_RECT = (34, 24, 294, 456)  # 260 x 432 — ratio 0.602
 _TAROT_CARD_SHADOW = 4
 _TAROT_READING_RECT = (324, 54, 768, 426)
@@ -1138,37 +1140,9 @@ def _tarot_paint_body(
     )
     quote_block_height = len(wrapped_quote) * line_height
     block_top = y0 + max(0, (height - quote_block_height) // 2)
-    body_ascent = _font_ascent(quote_font)
-    y = block_top
-    for line in wrapped_quote:
-        # Trim leading/trailing whitespace tokens.
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        # Centre the line horizontally.
-        line_width: float = 0
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            line_width += bbox[2] - bbox[0]
-        x: float = x0 + max(0, (width - line_width) // 2)
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (body_ascent - _font_ascent(font))
-            if is_bold:
-                draw_text_dithered(
-                    image, (x, chunk_y), chunk, font=font,
-                    dark=RED, light=BLUE, light_density=0.5,
-                )
-            else:
-                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    for line in _place_lines(draw, wrapped_quote, x0=x0, width=width, top=block_top, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold):
+        _paint_placed(draw, line, BLACK, RED, image=image, accent_light=BLUE)
 
 
 def _tarot_paint_attribution(

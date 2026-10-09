@@ -1,4 +1,4 @@
-"""The ``vhs`` theme's frame and the code only it uses (issue #335).
+"""The ``vhs`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -10,8 +10,8 @@ import random
 from PIL import Image, ImageDraw
 
 from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES, PIXELIFYSANS_VARIABLE
-from ..fonts import _font_ascent, load_font, normalize_dashes
-from ..furniture import _row_digest, fallback_title
+from ..fonts import load_font, normalize_dashes
+from ..furniture import _place_lines, _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, _fill_swatch_stipple_3way
@@ -19,27 +19,9 @@ from ..spec import FrameSpec
 from ..text import draw_text_chroma_shift
 
 # ---------------------------------------------------------------------------
-# vhs — a camcorder OSD over a degraded tape (issue #211).
-#
-# The identity is ``draw_text_chroma_shift``: red ghost left, blue ghost right,
-# white core on top, so every glyph fringes like bled composite video.
-#
-# Four layers of wear, all deterministic:
-#
-#   * **Video noise**, denser toward the foot (the head sweep).
-#   * **Tracking tears** — row bands shifted sideways. A real row-shift of the
-#     painted pixels, applied AFTER the text, so whatever a tear crosses comes
-#     apart with it.
-#   * **Scanlines**, fainter than ``nightvision``'s (tape, not a terminal).
-#   * **Dropout flecks** — sparse short white dashes; more read as snow.
-#
-# **The time carrier is a camcorder burn-in** — the one theme where HH:MM
-# digits are authentic, since a camcorder OSD is a clock. Wall time, not a
-# tape-position counter.
-#
-# The **date** stamp is NOT today's date (that would make the frame
-# clock-dependent); it is derived from the quote via ``_row_digest`` — the
-# date the tape was *recorded*.
+# vhs — a camcorder OSD over a degraded tape (issue #211). The OSD burn-in is
+# the one authentic HH:MM; the date stamp comes from ``_row_digest``, never the
+# clock. Design notes: docs/themes.md § vhs.
 # ---------------------------------------------------------------------------
 _VHS_CHROMA_OFFSET = 2
 _VHS_QUOTE_RECT = (86, 96, 714, 372)
@@ -58,7 +40,7 @@ _VHS_TEAR_SHIFT = (5, 17)
 _VHS_HEAD_SWITCH_H = 9
 _VHS_DROPOUT_COUNT = 26
 _VHS_SCANLINE_STEP = 4
-# Tape-recorded date pool, indexed from the quote (see the section comment).
+# Tape-recorded date pool, indexed from the quote (docs/themes.md § vhs).
 _VHS_TAPE_YEARS = (1984, 1987, 1989, 1991, 1993, 1996, 1998)
 
 
@@ -188,29 +170,14 @@ def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: d
     block_h = len(wrapped) * line_height
     total = block_h + (credit_h + _VHS_CREDIT_GAP if credits else 0)
     y = y0 + max(0, ((y1 - y0) - total) // 2)
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        widths = []
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            box = draw.textbbox((0, 0), chunk, font=font)
-            widths.append(box[2] - box[0])
-        start_x = x0 + max(0, ((x1 - x0) - sum(widths)) // 2)
+    for line in _place_lines(draw, wrapped, x0=x0, width=x1 - x0, top=y, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold):
         # Two passes over the line: every ghost, then every core. Per-chunk
         # ghost-then-core lets the next chunk's left ghost land on the previous
         # chunk's core (from an offset of about 5), and the ``ground`` guard
         # cannot catch it since it lists the white core too.
         for pass_core in (False, True):
-            x = start_x
-            for (chunk, is_bold), chunk_w in zip(drawable, widths, strict=True):
-                font = quote_font_bold if is_bold else quote_font
-                chunk_y = y + (ascent - _font_ascent(font))
+            for x, chunk_y, chunk, font, is_bold, *_ in line:
                 draw_text_chroma_shift(
                     image, (x, chunk_y), chunk, font,
                     core=white if pass_core else None,
@@ -219,9 +186,7 @@ def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: d
                     offset=_VHS_CHROMA_OFFSET + (1 if is_bold else 0),
                     ground=ground,
                 )
-                x += chunk_w
-        y += line_height
-    return y
+    return y + len(wrapped) * line_height
 
 
 def _vhs_paint_osd(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict,
@@ -266,7 +231,7 @@ def _vhs_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row:
 
 
 def render_vhs_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A camcorder OSD over a worn tape (see the module section comment above).
+    """A camcorder OSD over a worn tape (``docs/themes.md`` § vhs).
 
     Composed at the canonical 800x480 (fixed panel coordinates) and
     NEAREST-downsampled for other sizes (``metro`` convention); an

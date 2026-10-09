@@ -1,6 +1,7 @@
-"""The ``questline`` theme's frame and the code only it uses (issue #335).
+"""The ``questline`` theme's frame, an 8-bit JRPG scene with the quote as NPC
+dialogue (the author on the nameplate), and its resting-at-the-inn sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § questline
 """
 
 from __future__ import annotations
@@ -10,20 +11,12 @@ import random
 
 from PIL import Image, ImageDraw
 
-from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import _fit_from_title
+from ..fonts import load_font, normalize_dashes, theme_font_candidates
+from ..furniture import _fit_from_title, _paint_placed, _place_lines
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple
 from ..spec import FrameSpec
-
-# ─── questline (pixel RPG dialogue) ──────────────────────────────────────────
-#
-# An 8/16-bit JRPG presents the quote as NPC dialogue: dithered sky over green
-# hills, a hero sprite, sun and clouds, and a bordered dialogue box. The author
-# is the speaker on the nameplate, the matched phrase glows yellow, a static ▼
-# arrow sits in the corner, and the title runs along the bottom. HH:MM is never
-# shown — the matched phrase carries the time.
 
 # 8-wide × 10-tall pixel hero: red cap, white face, blue tunic, black boots.
 # Painted as scale×scale blocks; '.' is transparent.
@@ -173,23 +166,9 @@ def _questline_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quo
         draw, display_quote, matched, box_w, box_h,
         font_max=40, font_min=10, line_height_mult=1.6, theme="questline",
     )
-    body_ascent = _font_ascent(quote_font)
-    y = y0
-    for line in wrapped_quote:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        x: float = x0
-        for chunk, is_bold in line[start:end]:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (body_ascent - _font_ascent(font))
-            draw.text((x, chunk_y), chunk, font=font, fill=YELLOW if is_bold else WHITE)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    for line in _place_lines(draw, wrapped_quote, x0=x0, width=box_w, top=y0, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold, align="left"):
+        _paint_placed(draw, line, WHITE, YELLOW)
 
 
 def _questline_paint_arrow(draw: ImageDraw.ImageDraw) -> None:
@@ -216,7 +195,7 @@ def _questline_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote
 
 
 def render_questline_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Pixel RPG dialogue scene (see the module section comment above).
+    """Pixel RPG dialogue scene (docs/themes.md § questline).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.
@@ -238,12 +217,6 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
 
 
 # ─── questline sleep frame (resting at the inn) ──────────────────────────────
-#
-# The same scene after dark: a navy night sky with a yellow crescent moon and
-# white pixel stars, the hills in forest green, and a pixel inn standing where
-# the hero stood. Its upstairs window is dark and white Z's drift up out of it;
-# a lantern-lit door and a hanging INN sign keep it welcoming. The innkeeper
-# speaks in the usual dialogue box. Nothing on the frame tells the time.
 
 _QUESTLINE_SLEEP_ROW = {
     "display_quote": "You rest at the inn. HP and MP are fully restored. Sleep well, traveller!",

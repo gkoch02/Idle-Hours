@@ -1,6 +1,8 @@
-"""The ``marquee`` theme's frame and the code only it uses (issue #335).
+"""The ``marquee`` theme's frame, a 1930s movie-palace facade at night: a bulb
+border round the book title as the feature, the quote as the feature copy,
+and its own closed-for-the-night sleep frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § marquee
 """
 
 from __future__ import annotations
@@ -8,19 +10,11 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES
-from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import fallback_title
+from ..fonts import load_font, normalize_dashes, theme_font_candidates
+from ..furniture import _paint_placed, _place_lines, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..spec import FrameSpec
-
-# ─── marquee (1930s movie-palace facade) ─────────────────────────────────────
-# A black theatre facade at night: a yellow/red bulb-light border, the book
-# title at the top as the chunky Bungee Shade "feature title", the quote below
-# as the feature copy in white Cardo Italic with a red matched-phrase accent,
-# and WRITTEN BY credit chrome along the bottom. (A Solari split-flap board
-# was tried for this slot; its wayfinding register fought the literary
-# content.)
 
 _MARQUEE_BULB_INSET = 16
 _MARQUEE_BULB_RADIUS = 5
@@ -220,30 +214,9 @@ def _marquee_paint_body(
     )
     quote_block_height = len(wrapped_quote) * line_height
     block_top = y0 + max(0, (height - quote_block_height) // 2)
-    body_ascent = _font_ascent(quote_font)
-    y = block_top
-    for line in wrapped_quote:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        line_w: float = 0
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            line_w += bbox[2] - bbox[0]
-        x: float = x0 + max(0, (width - line_w) // 2)
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (body_ascent - _font_ascent(font))
-            fill = RED if is_bold else WHITE
-            draw.text((x, chunk_y), chunk, font=font, fill=fill)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    for line in _place_lines(draw, wrapped_quote, x0=x0, width=width, top=block_top, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold):
+        _paint_placed(draw, line, WHITE, RED)
 
 
 def _marquee_paint_credits(
@@ -324,9 +297,6 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
 
 
 # ─── sleep frame: the house is closed for the night ─────────────────────────
-# The facade keeps its bulbs lit (a dark marquee reads as a dead panel) and the
-# changeable-letter board, backlit white, spells the closing notice in block
-# capitals, one letter per fixed-pitch tile on black track rails.
 
 _MARQUEE_SLEEP_BOARD = (64, 92, 736, 388)
 _MARQUEE_SLEEP_LINES = (

@@ -1,6 +1,7 @@
-"""The ``marker`` theme's border painter and the code only it uses (issue #335).
+"""The ``marker`` theme's border painter, a permanent-marker fridge doodle in every ink:
+dashed perimeter, corner asterisks, mid-edge dots and twinkles.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § marker
 """
 
 from __future__ import annotations

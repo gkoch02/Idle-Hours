@@ -1,4 +1,4 @@
-"""The ``cardcatalog`` theme's frame and the code only it uses (issue #335).
+"""The ``cardcatalog`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -17,23 +17,9 @@ from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
 # ---------------------------------------------------------------------------
-# cardcatalog — a library catalogue card with a date-due stamp grid
-# ---------------------------------------------------------------------------
-# A manila catalogue card: call number, typed author/title header, the quote
-# as the card's annotation, and a grid of date-due stamps down the right
-# margin. The panel's 5:3 ratio is a 3x5 index card, so the page is the card
-# face at full bleed.
-#
-# A custom frame, not a border painter with a ``clear_rect`` knockout (as
-# #210 proposed): at 800x480 the shared layout's body rect leaves no right
-# margin, and the stamp column is both the composition and the time carrier.
-#
-# The time carrier is the freshest stamp. Earlier impressions are faded and
-# askew with varying ink density; the current one is crisp, square, spans both
-# columns and reads ``DUE`` over the hour (reserve collections ran two-hour
-# loans). The minute stays with the matched phrase. Distinct from ``dispatch``
-# despite sharing Special Elite: manila and violet library ink, not a white
-# dossier with one maroon stamp.
+# cardcatalog — a library catalogue card with a date-due stamp grid (#210).
+# The freshest stamp reads ``DUE`` over the hour; the minute stays with the
+# matched phrase. Design notes: docs/themes.md § cardcatalog.
 # ---------------------------------------------------------------------------
 _CARDCATALOG_EDGE = 12
 _CARDCATALOG_CALL_X = 36
@@ -59,8 +45,9 @@ def _cardcatalog_paint_manila(image: Image.Image) -> None:
     """Cream base wash plus a sparse sepia foxing scatter — aged card stock.
 
     The two-layer aged-paper recipe ``tarot`` uses (Y+W cream under R+G sepia),
-    run lighter. Both passes only touch white ground pixels, so the painter is
-    idempotent and cannot re-tint furniture drawn over it.
+    run lighter. Both passes only touch card ground (white, or the wash's
+    cream), so the painter is idempotent and cannot re-tint furniture drawn
+    over it.
     """
     width, height = image.size
     px = pixel_access(image)
@@ -317,7 +304,7 @@ def _cardcatalog_paint_tracing(draw: ImageDraw.ImageDraw, quote_row: dict, heigh
 
 
 def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A library catalogue card (see the section comment above).
+    """A library catalogue card (``docs/themes.md`` § cardcatalog).
 
     Every rectangle is a fixed panel coordinate, so the card is composed at
     800x480 and NEAREST-downsampled otherwise (the ``metro`` convention); a

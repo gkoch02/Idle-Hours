@@ -1,7 +1,9 @@
-"""The Marain script and Culture data the ``culture`` and ``orbital`` themes share (issue #335).
+"""The Marain script and Culture data the ``culture`` and ``orbital`` themes share.
 
 One family's helpers, so neither theme module imports the other. Code more
 than one unrelated theme uses goes in ``_shared``.
+
+Design notes: docs/themes.md § culture, § orbital
 """
 
 from __future__ import annotations
@@ -14,30 +16,6 @@ from ..furniture import _row_digest
 from ..palette import SPECTRA6
 from ..primitives import position_noise
 
-# ---------------------------------------------------------------------------
-# The Culture — shared machinery for ``culture`` and ``orbital``
-# ---------------------------------------------------------------------------
-# Two views of one object, after Iain M. Banks's Culture novels: ``culture`` is
-# a Mind's signal with the Orbital it concerns beside it; ``orbital`` stands on
-# that Orbital and looks up at the far side of the ring.
-#
-# **Both tell the time with the Orbital itself.** The ring spins once a day,
-# so at any instant it carries every local time at once:
-#
-# * ``culture`` marks the plate whose local time is now; the marker travels
-#   the full ring once per 24 hours (lit inner face by day, hull by night).
-# * ``orbital`` paints the far side of the ring, which is twelve hours away:
-#   at noon the zenith is dark, at midnight it blazes across a black sky. The
-#   sky follows the hour too.
-#
-# Neither shows a digit; both use the full 24-hour clock to the minute.
-#
-# **Marain.** The glyphs are a generated *Marain-idiom* script on a 3x3 grid
-# (``_marain_code``), not Banks's own table. ``culture`` writes the matched
-# phrase out in it.
-#
-# **Ship names are invented**, not lifted from the novels.
-# ---------------------------------------------------------------------------
 _CULTURE_SHIP_NAMES = (
     "Punctuality Is A Lesser Virtue",
     "Late Again, As Foretold",

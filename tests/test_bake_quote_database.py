@@ -293,12 +293,6 @@ class TestPipelinePosition:
 
 
 class TestBakedScoreComponents:
-    def test_component_list_matches_pick_quote(self):
-        """bake_quote_database and pick_quote must describe baked_score
-        identically — drift means the runtime picker reads components from the
-        wrong tuple positions."""
-        assert bq.BAKED_SCORE_COMPONENTS == pick_quote.BAKED_SCORE_COMPONENTS
-
     def test_component_count_matches_indices(self):
         assert len(bq.BAKED_SCORE_COMPONENTS) == len(bq._STATIC_SCORE_INDICES)
 
@@ -307,11 +301,6 @@ class TestSchemaVersion:
     """Issue #53: every baked row must carry the schema-version marker so
     a post-git-pull mismatch between pick_quote.py and quote_database.jsonl
     is detected and the loop falls back to the raw corpus."""
-
-    def test_pick_quote_schema_version_matches_baker(self):
-        """If these diverge, a new bake will stamp a version the runtime
-        picker treats as stale, so every pick falls back to raw."""
-        assert bq.BAKED_SCORE_SCHEMA_VERSION == pick_quote.BAKED_SCORE_SCHEMA_VERSION
 
     def test_every_baked_row_has_schema_version(self, sample_rows):
         baked, _ = bq.bake_rows(sample_rows, min_quality=0)

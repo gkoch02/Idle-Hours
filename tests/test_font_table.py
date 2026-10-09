@@ -41,7 +41,7 @@ class TestFontTable:
 
     def test_fallback_faces_are_not_attributed(self):
         # Playfair backs nearly every chain; only the themes that set it count.
-        assert "swiss" not in _load().font_usage()["(top level)"]
+        assert "newsprint" not in _load().font_usage()["(top level)"]
 
     def test_a_face_only_listed_after_another_is_fallback_only(self):
         # control and semiotic set Jost / Archivo / Barlow Condensed and name

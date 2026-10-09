@@ -21,34 +21,13 @@ observable guarantees the code comments promise:
 """
 from __future__ import annotations
 
-import argparse
 import json
 import threading
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 from idle_hours import pick_quote, run_clock, runtime_actions
-
-
-def _args(tmp_path: Path, **overrides) -> argparse.Namespace:
-    defaults = dict(
-        render_script="render_quote.py",
-        output=str(tmp_path / "current.png"),
-        width=800,
-        height=480,
-        display_script=None,
-        mode="debug",
-        theme="default",
-        history_path=str(tmp_path / "history.jsonl"),
-        history_days=7,
-        telemetry_path="",
-        state_path=str(tmp_path / "state.json"),
-        quiet_image="",
-        shutdown_command="",
-    )
-    defaults.update(overrides)
-    return argparse.Namespace(**defaults)
+from tests.conftest import make_args
 
 
 class TestRenderGateDropsConcurrentPresses:
@@ -209,7 +188,7 @@ class TestActionBusyBehavior:
     def test_action_theme_is_dropped_when_render_in_flight(self, tmp_path):
         """If another thread is rendering, action_theme must return
         ``{"ok": False, "error": "busy"}`` without touching state."""
-        args = _args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
 
@@ -223,7 +202,7 @@ class TestActionBusyBehavior:
         """Launch two concurrent action_theme calls; the one that arrives
         while render_lock is held must drop, the other must succeed. This is
         the actual multi-thread property run_clock's HTTP + GPIO paths rely on."""
-        args = _args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
 
@@ -264,7 +243,7 @@ class TestActionThemeToggleArithmetic:
     def test_n_sequential_presses_return_to_head_of_cycle(self, tmp_path):
         from idle_hours.theme_names import theme_cycle
         cycle = theme_cycle()
-        args = _args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = cycle[0]
 
