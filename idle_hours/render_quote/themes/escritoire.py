@@ -407,6 +407,7 @@ def _escritoire_masks(quote_row: dict, layout: dict) -> tuple[Image.Image, Image
 
     y = layout["top"]
     ascent = max(_font_ascent(layout["regular"]), _font_ascent(layout["bold"]))
+    widest = 0.0
     for line in layout["lines"]:
         x = left
         for chunk, is_bold in _trim_line(line):
@@ -414,18 +415,23 @@ def _escritoire_masks(quote_row: dict, layout: dict) -> tuple[Image.Image, Image
             offset = ascent - _font_ascent(font)
             (dph if is_bold else dp).text((x, y + offset), chunk, font=font, fill=255)
             x += dp.textlength(chunk, font=font)
+        widest = max(widest, x - left)
         y += layout["line_h"]
     y += layout["gap"]
-    sig_right = left + _ESCRITOIRE_MEASURE * ss
+    # The signature ends where the writing does, not at the measure: the hand
+    # is ragged right, so a measure-flush signature hangs out past the letter.
+    sig = []
     if layout["author"]:
         font = load_font(theme_font_candidates("escritoire", "quote_bold"), size=layout["sig_size"])
-        author = _metro_ellipsize(dp, layout["author"], font, _ESCRITOIRE_MEASURE * ss)
-        dp.text((sig_right - dp.textlength(author, font=font), y), author, font=font, fill=255)
-        y += int(layout["sig_size"] * 1.15)
+        sig.append((_metro_ellipsize(dp, layout["author"], font, _ESCRITOIRE_MEASURE * ss), font,
+                    int(layout["sig_size"] * 1.15)))
     if layout["title"]:
         font = load_font(theme_font_candidates("escritoire", "quote_regular"), size=layout["title_size"])
-        title = _metro_ellipsize(dp, layout["title"], font, _ESCRITOIRE_MEASURE * ss)
-        dp.text((sig_right - dp.textlength(title, font=font), y), title, font=font, fill=255)
+        sig.append((_metro_ellipsize(dp, layout["title"], font, _ESCRITOIRE_MEASURE * ss), font, 0))
+    sig_right = left + max([widest] + [dp.textlength(text, font=font) for text, font, _ in sig])
+    for text, font, advance in sig:
+        dp.text((sig_right - dp.textlength(text, font=font), y), text, font=font, fill=255)
+        y += advance
     return prose, phrase, faint
 
 

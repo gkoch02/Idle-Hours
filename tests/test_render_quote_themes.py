@@ -7439,6 +7439,25 @@ class TestEscritoireFrame:
         # Sizes stay above the floor a script face needs after the warp.
         assert layout["size"] >= rq._ESCRITOIRE_SIZES[rq.choose_layout(row["display_quote"])][1] * rq._ESCRITOIRE_SS
 
+    @pytest.mark.parametrize("row_name", ["HERO", "ROW", "DENSE"])
+    def test_signature_ends_where_the_writing_does(self, row_name):
+        """The hand is ragged right, so a signature flush to the measure hangs
+        out past the letter; it ends at the widest written line instead, or at
+        its own width when it is wider than the quote."""
+        row = make_row(**getattr(self, row_name))
+        layout = rq._escritoire_layout(row)
+        prose, phrase, _ = rq._escritoire_masks(row, layout)
+        ink = ImageChops.lighter(prose, phrase)
+        split = layout["top"] + len(layout["lines"]) * layout["line_h"]
+        quote_box = ink.crop((0, 0, ink.width, split)).getbbox()
+        sig_box = ink.crop((0, split, ink.width, ink.height)).getbbox()
+        assert quote_box is not None and sig_box is not None
+        left = rq._ESCRITOIRE_LEFT * rq._ESCRITOIRE_SS
+        if sig_box[2] - sig_box[0] < quote_box[2] - left:
+            # Ink bboxes differ from advance widths by a side bearing or two.
+            assert abs(sig_box[2] - quote_box[2]) <= 6 * rq._ESCRITOIRE_SS, (row_name, quote_box, sig_box)
+        assert sig_box[2] <= left + rq._ESCRITOIRE_MEASURE * rq._ESCRITOIRE_SS
+
     def test_faint_lines_are_seeded_from_the_quote(self):
         a = make_row(**self.ROW)
         b = make_row(**dict(self.ROW, source_id="48"))
