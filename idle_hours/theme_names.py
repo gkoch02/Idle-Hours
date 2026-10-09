@@ -99,6 +99,7 @@ THEME_ORDER: tuple[str, ...] = (
     "gantry",
     "platform",
     "splitflap",
+    "imprimatur",
     "diags",
 )
 # Themes registered in THEMES but excluded from every rotation (button B, web

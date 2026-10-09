@@ -106,6 +106,10 @@ CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorativ
 # safe in body and ornament slots. Body face for ``alchemy``.
 IMFELLENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
 IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
+# IM Fell English SC — the same Fell types cut as roman capitals with true small
+# capitals in the lowercase slots (OFL). One weight. ``imprimatur``'s heading,
+# opening line, rubricated phrase, initial and byline.
+IMFELLENGLISHSC_REGULAR = str(BASE_DIR / "fonts/im-fell-english-sc/IMFellEnglishSC-Regular.ttf")
 # IM Fell Double Pica (expedition body + matched phrase) — the Fell types at Double Pica size,
 # the face Clair Obscur: Expedition 33 sets its UI text in. Roman and italic only; no bold exists.
 IMFELLDOUBLEPICA_REGULAR = str(BASE_DIR / "fonts/im-fell-double-pica/IMFELLDoublePica-Regular.ttf")

@@ -9,6 +9,11 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New theme `imprimatur`: the opening page of a 17th-century book from the
+  Fell press at Oxford, set in IM Fell English SC (newly bundled) with its
+  companion roman. A red-ruled page, a fleuron headpiece, a criblé woodcut
+  initial cut from the quote's first letter, the opening line in small
+  capitals and the time phrase rubricated in red small capitals.
 - A `systemctl restart` no longer cuts a panel refresh short. The sample
   unit now stops only the loop (`KillMode=mixed`), which already waits for
   an in-flight render, and the wait covers a whole render plus a whole

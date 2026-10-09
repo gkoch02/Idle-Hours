@@ -41,6 +41,7 @@ THEME_SATURATION: dict[str, float] = {
     "diags": 0.5,
     "dispatch": 0.5,
     "escritoire": 0.5,
+    "imprimatur": 0.5,
     "kanagawa": 0.5,
     "letter": 0.5,
     "lieder": 0.5,

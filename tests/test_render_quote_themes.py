@@ -9136,3 +9136,60 @@ class TestPaintHatchedTone:
                               ground=frozenset({rq.SPECTRA6["white"]}))
         counts = ink_counts(img.crop((20, 20, 40, 40)))
         assert counts == {rq.SPECTRA6["red"]: 400}, "hatch painted over a non-ground ink"
+
+
+class TestImprimaturFrame:
+    """``imprimatur`` — the opening page of a Fell-press book: red ruling, a
+    fleuron headpiece, a criblé initial cut from the quote's first letter,
+    the matched phrase rubricated in Fell small capitals."""
+
+    THEME = "imprimatur"
+    ROW = dict(
+        display_quote="It was a quarter past six when we left Baker Street, and it still wanted "
+                      "ten minutes to the hour when we found ourselves in Serpentine Avenue.",
+        matched_text="a quarter past six",
+        author="Arthur Conan Doyle",
+        title="The Adventures of Sherlock Holmes",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="18:15", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.5
+        assert rq.theme_font_candidates(self.THEME, "quote_bold")[0].endswith("IMFellEnglishSC-Regular.ttf")
+
+    def test_three_inks_only(self):
+        assert distinct_inks(self._render()) <= {rq.SPECTRA6["white"], rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+
+    def test_initial_takes_the_first_letter_and_keeps_the_phrase(self):
+        imp = rq_themes.imprimatur
+        mark, initial, segments = imp._imprimatur_split_initial(
+            make_row(display_quote="“Twelve o’clock,” said Alice.", matched_text="Twelve o’clock"))
+        assert (mark, initial) == ("“", "T")
+        assert segments[0] == ("welve o’clock,”", True)
+
+    def test_no_initial_when_the_quote_opens_on_a_digit(self):
+        _, initial, segments = rq_themes.imprimatur._imprimatur_split_initial(
+            make_row(display_quote="12 o'clock and all is well.", matched_text="12 o'clock"))
+        assert initial == "" and segments[0][0].startswith("12")
+
+    def test_lines_break_only_at_whitespace_across_the_peel(self):
+        imp = rq_themes.imprimatur
+        _, _, segments = imp._imprimatur_split_initial(make_row(**self.ROW))
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        lines, drop, _, _ = imp._imprimatur_set_page(draw, segments, has_initial=True, size=30)
+        assert drop == 3
+        words = " ".join("".join(t for t, _ in rq.layout._trim_line(items)) for _, _, items, _ in lines).split()
+        assert words == "".join(t for t, _ in segments).split()
+
+    def test_degenerate_rows_still_render(self):
+        for row in (dict(display_quote="", matched_text=""), dict(display_quote="At noon.", matched_text="noon")):
+            assert self._render(row).size == (800, 480)
+        assert self._render(size=(200, 120)).size == (200, 120)
+
+    def test_frame_ignores_the_clock(self):
+        assert pixel_bytes(self._render(time_str="18:15")) == pixel_bytes(self._render(time_str="03:40"))
