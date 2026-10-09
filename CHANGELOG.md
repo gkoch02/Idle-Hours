@@ -9,6 +9,9 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The `escritoire` signature and book title now end where the handwriting
+  does, instead of hanging out past a short or ragged quote toward the
+  sheet's edge.
 - The `sampler` and `cardcatalog` themes wrap a long book title onto a second
   line instead of cutting it off mid-word; a title too long for two lines is
   cut on a word boundary with an ellipsis.
