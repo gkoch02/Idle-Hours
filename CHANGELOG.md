@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The bundled Playfair Display Medium, SemiBold and Bold files now carry
+  their own font names and style bits instead of all claiming to be
+  Playfair Display Regular, so software that registers fonts by name sees
+  four distinct faces. Rendering is unchanged.
 - New `splitflap` theme: a split-flap message board on a wall, in the manner
   of a Vestaboard. The quote is set in capitals on a fixed grid of flap
   tiles, each split by its hinge, with the matched phrase on yellow colour
