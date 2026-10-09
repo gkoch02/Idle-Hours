@@ -245,7 +245,7 @@ def _sampler_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
 
 def _sampler_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, block_bottom: int) -> None:
     """Stitch the attribution below the quote: author in blue floss, title in
-    green. Small fixed stitch size; single truncated lines.
+    green. Small fixed stitch size; the title wraps to two lines.
     """
     width, height = image.size
     px = pixel_access(image)
@@ -272,7 +272,27 @@ def _sampler_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
         stitch_centred(author, y, blue)
         y += _SAMPLER_LINE_ROWS * size + 2
     if title:
-        stitch_centred(f"- {title} -", y, green)
+        # A title that fits keeps its dashes on one line; a longer one wraps
+        # onto at most two stitched lines at word boundaries, cut on a word
+        # only when it overflows both. (stitch_centred clips a lone word wider
+        # than the body by character.)
+        lines: list[str] = []
+        words = [] if int(round(draw.textlength(f"- {title} -", font=font))) <= max_cols else title.split()
+        if not words:
+            lines.append(f"- {title} -")
+        while words and len(lines) < 2:
+            line = words.pop(0)
+            while words and int(round(draw.textlength(f"{line} {words[0]}", font=font))) <= max_cols:
+                line = f"{line} {words.pop(0)}"
+            lines.append(line)
+        if words:
+            last = lines[-1]
+            while " " in last and int(round(draw.textlength(last + "...", font=font))) > max_cols:
+                last = last.rsplit(" ", 1)[0]
+            lines[-1] = last + "..."
+        for line in lines:
+            stitch_centred(line, y, green)
+            y += _SAMPLER_LINE_ROWS * size + 2
 
 
 def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:

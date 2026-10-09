@@ -9,6 +9,9 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The `sampler` and `cardcatalog` themes wrap a long book title onto a second
+  line instead of cutting it off mid-word; a title too long for two lines is
+  cut on a word boundary with an ellipsis.
 - The baker and picker now skip a quote whose time phrase sits inside a
   hyphenated compound ("struck three-quarters", "twenty-three o'clock"),
   which the panel showed with no highlighted phrase. Two such quotes left
