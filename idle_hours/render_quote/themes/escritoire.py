@@ -428,7 +428,10 @@ def _escritoire_masks(quote_row: dict, layout: dict) -> tuple[Image.Image, Image
     if layout["title"]:
         font = load_font(theme_font_candidates("escritoire", "quote_regular"), size=layout["title_size"])
         sig.append((_metro_ellipsize(dp, layout["title"], font, _ESCRITOIRE_MEASURE * ss), font, 0))
-    sig_right = left + max([widest] + [dp.textlength(text, font=font) for text, font, _ in sig])
+    # Capped at the measure: an unbreakable token wider than it (a URL in a raw
+    # row) overflows the quote, and must not drag the signature off the sheet.
+    sig_right = left + min(max([widest] + [dp.textlength(text, font=font) for text, font, _ in sig]),
+                           _ESCRITOIRE_MEASURE * ss)
     for text, font, advance in sig:
         dp.text((sig_right - dp.textlength(text, font=font), y), text, font=font, fill=255)
         y += advance

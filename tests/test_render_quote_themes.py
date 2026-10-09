@@ -7343,6 +7343,9 @@ class TestEscritoireFrame:
         "Besides, you overlook the fact that the crime was committed at twenty minutes past eleven "
         "in the evening, as is shown by the clock, while the nocturnal visit, mentioned by the "
         "concierge, occurred at three o'clock in the morning."), matched_text="twenty minutes past eleven")
+    # A raw row the curator can preview: one token wider than the measure,
+    # which the wrapper leaves whole rather than breaking mid-word.
+    UNBREAKABLE = dict(ROW, display_quote="At half past two: " + "x" * 120 + ".", matched_text="half past two")
 
     @classmethod
     def _render(cls, row=None, time_str="14:30", size=(800, 480)):
@@ -7439,7 +7442,7 @@ class TestEscritoireFrame:
         # Sizes stay above the floor a script face needs after the warp.
         assert layout["size"] >= rq._ESCRITOIRE_SIZES[rq.choose_layout(row["display_quote"])][1] * rq._ESCRITOIRE_SS
 
-    @pytest.mark.parametrize("row_name", ["HERO", "ROW", "DENSE"])
+    @pytest.mark.parametrize("row_name", ["HERO", "ROW", "DENSE", "UNBREAKABLE"])
     def test_signature_ends_where_the_writing_does(self, row_name):
         """The hand is ragged right, so a signature flush to the measure hangs
         out past the letter; it ends at the widest written line instead, or at
@@ -7453,10 +7456,13 @@ class TestEscritoireFrame:
         sig_box = ink.crop((0, split, ink.width, ink.height)).getbbox()
         assert quote_box is not None and sig_box is not None
         left = rq._ESCRITOIRE_LEFT * rq._ESCRITOIRE_SS
-        if sig_box[2] - sig_box[0] < quote_box[2] - left:
+        right = left + rq._ESCRITOIRE_MEASURE * rq._ESCRITOIRE_SS
+        if sig_box[2] - sig_box[0] < quote_box[2] - left and quote_box[2] <= right:
             # Ink bboxes differ from advance widths by a side bearing or two.
             assert abs(sig_box[2] - quote_box[2]) <= 6 * rq._ESCRITOIRE_SS, (row_name, quote_box, sig_box)
-        assert sig_box[2] <= left + rq._ESCRITOIRE_MEASURE * rq._ESCRITOIRE_SS
+        # An overflowing token never drags the signature past the measure
+        # (beyond a script glyph's overhang of its advance).
+        assert sig_box[2] <= right + 6 * rq._ESCRITOIRE_SS, (row_name, sig_box)
 
     def test_faint_lines_are_seeded_from_the_quote(self):
         a = make_row(**self.ROW)
