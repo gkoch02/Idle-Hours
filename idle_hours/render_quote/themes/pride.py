@@ -1,4 +1,4 @@
-"""The ``pride`` theme's frame and the code only it uses (issue #335).
+"""The ``pride`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -12,40 +12,15 @@ from PIL import Image, ImageDraw
 
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
-from ..layout import fit_quote, strip_underscore_emphasis
+from ..layout import _trim_line, fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
 # ---------------------------------------------------------------------------
-# pride — the Progress Pride flag, flying.
-#
-# Eleven bands, all on-palette: native red / yellow / green / blue / white /
-# black, plus documented two-ink recipes for orange (R+Y 5/8:3/8), violet
-# (R+B 1:1), pink (R+W), light blue (B+W 1:1) and brown (R+G 1:1).
-#
-# The cloth is *lit*: a low-density white overlay on faces turned toward the
-# light and a black one on faces turned away, riding the wave that displaces
-# the stripes. Two constraints:
-#
-#   1. **Displacement and shading are 90 degrees apart.** The stripes displace
-#      by the height field ``h``; the light sees the tilt ``dh/dx``. Shading the
-#      crest instead of the slope reads as a corrugated roof, which is why
-#      ``_pride_wave`` returns both from one pass.
-#   2. **One sine reads as corrugation.** Two incommensurate frequencies
-#      billow; the phases drift with ``y`` so the folds lean.
-#
-# The stripe lookup is clamped, so the frame reads as a crop of a larger flag.
-# The chevron is resolved against the same wave-displaced row, so it rides the
-# cloth rather than sitting on it like a decal.
-#
-# The quote sits in a white cartouche with a black drop-shadow ledge, in the
-# rainbow field RIGHT of the chevron's point (a centred card would swallow the
-# arrow). Body type is Jost; the matched phrase is in the flag's own violet.
-# HH:MM is never shown.
-#
-# Deliberately *not* done: nothing encodes the hour in the bands. Their count
-# and order carry meaning that is not a designer's to spend on a clock gimmick.
+# pride — the Progress Pride flag, flying: eleven on-palette bands on lit,
+# billowing cloth, the quote on a white card right of the chevron. HH:MM is
+# never shown. Design notes: docs/themes.md § pride.
 # ---------------------------------------------------------------------------
 _PRIDE_STRIPES = 6
 # (dark ink, light ink, light density) per stripe, top to bottom: red, orange,
@@ -286,13 +261,7 @@ def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict, width: int, height
     lines = []
     block_w: float = 0
     for line in wrapped:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
+        drawable = _trim_line(line)
         widths = []
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
@@ -385,7 +354,7 @@ def _pride_paint_text(image: Image.Image, draw: ImageDraw.ImageDraw, layout: dic
 
 
 def render_pride_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The Progress Pride flag, flying (see the module section comment above).
+    """The Progress Pride flag, flying (``docs/themes.md`` § pride).
 
     ``time_str`` is unused (the matched phrase carries the time); kept for
     dispatch-signature uniformity.

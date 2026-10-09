@@ -219,25 +219,6 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "default",
     },
-    # The three operator-choice themes each use a distinct bundled typeface
-    # (Bitter / Old Standard TT / Space Mono). The golden pins both the
-    # colour palette (already covered by the field-set / palette tests) AND
-    # the font choice — a regression that reverted any of these back to the
-    # default Playfair chain would flip thousands of glyph pixels and blow
-    # past ``MAX_DIFF_RATIO``. Standard layout is chosen because it exercises
-    # both wrap-line and bold-phrase glyph rendering, which is where font
-    # drift shows up most visibly.
-    {
-        "name": "standard_scholar_production",
-        "time": "08:55",
-        "row": _row(
-            "Do you think I should be standing here at five minutes to nine "
-            "looking for it if I had it in my pocket all the while?",
-            "five minutes to nine",
-        ),
-        "mode": "production",
-        "theme": "scholar",
-    },
     {
         "name": "standard_newsprint_production",
         "time": "08:55",
@@ -277,45 +258,15 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "bauhaus",
     },
-    # Blueprint paints a drafting-sheet border — thin blue outer rectangle
-    # plus red crosshair registration marks at each corner. Parallel
-    # reasoning to the bauhaus golden: catch a silent drop of
-    # ``draw_blueprint_border`` or a regression in crosshair placement.
-    {
-        "name": "standard_blueprint_production",
-        "time": "08:55",
-        "row": _row(
-            "Do you think I should be standing here at five minutes to nine "
-            "looking for it if I had it in my pocket all the while?",
-            "five minutes to nine",
-        ),
-        "mode": "production",
-        "theme": "blueprint",
-    },
-    # Illuminated paints a manuscript-style border — double red rubricated
-    # rule with a blue jewel at each outer corner. Pin the painted pixels
-    # so a regression that dropped ``draw_illuminated_border`` would flip
-    # thousands of margin pixels against the empty-margin baseline.
-    {
-        "name": "standard_illuminated_production",
-        "time": "08:55",
-        "row": _row(
-            "Do you think I should be standing here at five minutes to nine "
-            "looking for it if I had it in my pocket all the while?",
-            "five minutes to nine",
-        ),
-        "mode": "production",
-        "theme": "illuminated",
-    },
     # Bauhaus in *debug* mode pins the ``_DEBUG_LABEL_RIGHT_INSET``
     # contract — the TR blue square sits at x=width-28 to width-6, which
     # would clip the default "DEBUG MODE" banner at x=width-SIDE_MARGIN.
     # The inset entry shifts the label left by 18px; a regression that
     # removed the inset would land the label back on top of the square
     # and flip thousands of pixels here. Bauhaus is chosen because it
-    # has the most aggressive inset (38px); blueprint / illuminated
-    # insets are less load-bearing and their production goldens already
-    # catch graphic-placement regressions.
+    # has the most aggressive inset (38px); the other insets are less
+    # load-bearing and their production goldens already catch
+    # graphic-placement regressions.
     {
         "name": "standard_bauhaus_debug",
         "time": "08:55",
@@ -346,21 +297,6 @@ SCENARIOS: list[dict] = [
         ),
         "mode": "production",
         "theme": "deco",
-    },
-    # Glacier paints a thin blue outer rule, four corner frost-crystal
-    # clusters (two blue shards + one green-tipped diagonal shard each),
-    # and four mid-edge snowflake-tick stars. Pins both the painted pixels
-    # and Iceland's font load.
-    {
-        "name": "standard_glacier_production",
-        "time": "08:55",
-        "row": _row(
-            "Do you think I should be standing here at five minutes to nine "
-            "looking for it if I had it in my pocket all the while?",
-            "five minutes to nine",
-        ),
-        "mode": "production",
-        "theme": "glacier",
     },
     # Chalkboard pins the doubled white wooden frame and the BL chalk-dust
     # scatter. Also locks the Playwrite GB J Guides handwriting font load —
@@ -608,10 +544,10 @@ SCENARIOS: list[dict] = [
         "theme": "dark",
     },
     {
-        "name": "goodnight_scholar",
+        "name": "goodnight_newsprint",
         "message": "Good night.",
         "mode": "goodnight",
-        "theme": "scholar",
+        "theme": "newsprint",
     },
     # A theme's own sleep frame (``spec.sleep``), drawn in place of the
     # bundled sleep quote by ``render_sleep_frame``.
@@ -746,22 +682,19 @@ for _theme in sorted(rq.THEMES):
     )
 
 
-# A fixed instant for the two themes that read the wall clock. ``astrarium``
+# A fixed instant for the theme that reads the wall clock. ``astrarium``
 # prints the date in its header strip and derives its solar-elevation and
-# lunar-phase datums from the day of year; ``vinyl`` stamps a copyright year on
-# the label and seeds its sleeve wear-speckle from ``YYYYMMDD`` so the pattern
-# drifts day to day (by design — see the theme's note in docs/themes.md).
+# lunar-phase datums from the day of year.
 #
-# Both are legitimate behaviours and both make an un-frozen golden expire
-# overnight, which is why neither theme had a fixture before. Freezing the
-# clock for the comparison keeps the rest of each frame — the dial, the
-# tonearm geometry, the liner-notes typography — under the same regression
-# fence as every other theme. The set is verified against the renderer rather
+# That is a legitimate behaviour that makes an un-frozen golden expire
+# overnight, which is why the theme had no fixture before. Freezing the clock
+# for the comparison keeps the rest of the frame — the dial, the datum strip —
+# under the same regression fence as every other theme. The set is verified against the renderer rather
 # than trusted: ``test_clock_dependent_theme_list_is_accurate`` re-renders
 # every theme at two instants and fails if this list is wrong in either
 # direction.
 GOLDEN_NOW = datetime.datetime(2026, 4, 19, 14, 30, 0)
-CLOCK_DEPENDENT_THEMES = frozenset({"astrarium", "vinyl"})
+CLOCK_DEPENDENT_THEMES = frozenset({"astrarium"})
 
 
 @contextlib.contextmanager
@@ -905,6 +838,17 @@ class TestGoldenStructure:
         cheap to detect: render every theme at two well-separated instants and
         see which frames move.
 
+        The second render is spent only where it can show anything (issue
+        #397). Every theme renders once at ``GOLDEN_NOW`` with the seam
+        counting its calls; a theme that never calls ``clock.now`` cannot move
+        at a different instant, because
+        ``test_renderer_reads_the_clock_only_through_now`` holds every clock
+        read in the renderer to that one seam. The themes that do call it are
+        re-rendered at the far instant and compared, so a theme that asks for
+        the time but draws nothing from it still counts as clock-free. That
+        is the same answer the two-renders-per-theme sweep gave, at about half
+        the cost.
+
         The sysinfo strip is pinned because it is the one live input the
         clock freeze does not cover: ``diags`` renders ``/proc/uptime`` at
         minute granularity, and when the machine's uptime minute ticks between
@@ -922,16 +866,23 @@ class TestGoldenStructure:
         row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
         drifted = set()
         original = rq.clock.now
+        reads = []
+
+        def render_at(instant, theme):
+            def counting_now():
+                reads.append(theme)
+                return instant
+            rq.clock.now = counting_now
+            return rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
+                             mode="production", theme=theme).convert("RGB")
+
         try:
             for theme in sorted(rq.THEMES):
-                frames = []
-                for instant in (GOLDEN_NOW, far_future):
-                    rq.clock.now = lambda _i=instant: _i
-                    frames.append(
-                        rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
-                                  mode="production", theme=theme).convert("RGB")
-                    )
-                if ImageChops.difference(*frames).getbbox() is not None:
+                reads.clear()
+                frame = render_at(GOLDEN_NOW, theme)
+                if not reads:
+                    continue
+                if ImageChops.difference(frame, render_at(far_future, theme)).getbbox() is not None:
                     drifted.add(theme)
         finally:
             rq.clock.now = original

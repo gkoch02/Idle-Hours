@@ -1,6 +1,7 @@
-"""The ``firmament`` theme's border painter and the code only it uses (issue #335).
+"""The ``firmament`` theme's border painter, a 17th-century celestial atlas: a navy
+ground, Milky Way, stars, constellations and corner astronomy ornaments.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § firmament
 """
 
 from __future__ import annotations
@@ -105,34 +106,13 @@ def _paint_firmament_star(pixels, width: int, height: int, sx: int, sy: int, mag
 
 
 def draw_firmament_border(image: Image.Image, colors: dict) -> None:
-    """Paint a 17th-century celestial-atlas frame around the quote.
+    """Paint a 17th-century celestial-atlas frame around the quote: navy
+    ground, Milky Way, star field, constellations, corner ornaments, hour
+    markers and the ecliptic arc, in that Z-order.
 
-    Layers, in Z-order:
-
-    * **Layer 0: navy ground.** ``page_bg`` is black; half of it flips to
-      blue on ``(x + y) & 1`` (B+K navy). Idempotent: the second
-      ``_paint_theme_border`` call after the text finds no ``page_bg``
-      pixels left to flip (the shape ``mucha`` / ``fillmore`` / ``atomic``
-      use).
-    * **Layer 1: Milky Way.** Two irregular rotated blobs (top, right of
-      centre; bottom, left of centre) filled with a dense scatter of
-      yellow pin-stars and sparse red / blue "nebular dust", thinning
-      toward the rim; everything else reverts to the navy ground.
-    * **Layer 2: star field** from ``_build_firmament_stars``, confined to
-      the top and bottom margins.
-    * **Layer 3: constellations**: Cassiopeia (TL), Orion's Belt (BR),
-      Lyra with Vega (TR) and Crux (BL), joined by 1 px white lines and
-      labelled in small Cardo italic.
-    * **Layer 4: corner ornaments**: a yellow sun with a carved face (TL),
-      a sky-blue (B+W) crescent moon with craters (TR, centre y=50, below
-      the y=14-29 debug band, so no ``_DEBUG_LABEL_RIGHT_INSET`` entry), a
-      white portolan compass rose with a yellow pivot and "N" (BL), and
-      a tangerine Saturn with an equatorial band and two cyan (G+B)
-      rings (BR).
-    * **Layer 4b: Roman-numeral hour markers** XII / III / VI / IX at the
-      page's cardinal edges, an astrolabe rim.
-    * **Layer 5: ecliptic arc**: a shallow sky-blue arc across the top
-      margin.
+    Layer 0 is idempotent: the second ``_paint_theme_border`` call after the
+    text finds no ``page_bg`` pixels left to flip (the shape ``fillmore`` /
+    ``atomic`` use). Design notes: docs/themes.md § firmament.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size

@@ -5,6 +5,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+from idle_hours import run_clock
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = REPO_ROOT / "scripts" / "bootstrap_pi_inky.sh"
 UNIT = REPO_ROOT / "ops" / "idle-hours.service.example"
@@ -65,3 +67,16 @@ def test_docs_never_tell_operators_to_relocate_working_directory():
         text = doc.read_text(encoding="utf-8")
         assert "- `WorkingDirectory=`" not in text, f"{doc.name} still lists WorkingDirectory= as an install-path edit"
         assert "/home/pi/IdleHours/output" not in text
+
+
+def test_systemd_stop_lets_the_in_flight_push_finish():
+    """A ``systemctl restart`` used to SIGTERM the display subprocess too (the
+    default KillMode=control-group), cutting the panel refresh short about one
+    deploy in ten. ``mixed`` signals only the loop, which drains the render;
+    the stop timeout has to outlast that drain or systemd SIGKILLs the child
+    regardless."""
+    text = UNIT.read_text(encoding="utf-8")
+    assert _unit_directive(text, "KillMode") == "mixed"
+    stop = _unit_directive(text, "TimeoutStopSec")
+    assert stop.endswith("s") and stop[:-1].isdigit(), stop
+    assert int(stop[:-1]) > run_clock.SHUTDOWN_DRAIN_SECONDS

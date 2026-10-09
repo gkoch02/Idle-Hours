@@ -1,6 +1,6 @@
 """Smoke tests for the custom-render themes that bypass the standard literary layout.
 
-These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``, ``vinyl``,
+These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``,
 ``vitrail``, ``outrun``, ``sampler``, ``lieder``, ``izakaya``, ``abyssal``) each dispatch out of ``render()`` into
 their own frame function and own their composition top to bottom. The contracts
 every custom-render frame must keep:
@@ -18,11 +18,13 @@ custom paths add.
 from __future__ import annotations
 
 import bisect
+import functools
 import json
 import math
 import pathlib
 import threading
 from itertools import pairwise
+from types import MappingProxyType
 
 import pytest
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
@@ -36,9 +38,28 @@ from idle_hours.render_quote import themes as rq_themes
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya",
-                 "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro", "bakelite", "intaglio",
+CUSTOM_THEMES = ("marquee", "tarot", "vitrail", "outrun", "sampler", "lieder", "izakaya",
+                 "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro", "bakelite",
                  "nocturne", "plaque", "daguerreotype")
+
+
+# Input samples for the sweeps that pin a frame to the hour (issue #397).
+# "Every minute of an hour renders identically" and "every hour renders" are
+# properties that break at boundaries, not in the middle of a range, so the
+# sweeps render the boundaries instead of all 60 minutes or all 24 hours.
+#
+# EDGE_MINUTES straddles every way a minute could leak in. ``buckets`` rounds
+# with ((minute + 2) // 5) * 5, so 00 and 02 share the :00 bucket and 03 opens
+# the :05 one; 27 | 28 and 32 | 33 are the two edges of the :30 bucket, with
+# the half hour between them; and 58 and 59 round forward into the *next*
+# hour's :00 bucket while 57 does not. A raw minute, a rounded minute, a
+# past/to switch at the half hour and an hour rolled forward by rounding each
+# separate at least two of these.
+EDGE_MINUTES = (0, 2, 3, 27, 28, 30, 32, 33, 57, 58, 59)
+# EDGE_HOURS covers the 12-hour clock's wraps (midnight 00 and noon 12, which
+# both read 12; 11 -> 12 -> 1 and its PM twin 23 / 13) plus one mid-afternoon
+# hour away from any wrap.
+EDGE_HOURS = (0, 1, 11, 12, 13, 15, 23)
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -584,115 +605,6 @@ class TestTarotFrame:
         assert pixel_bytes(crops[0]) == pixel_bytes(crops[1])
 
 
-class TestVinylFrame:
-    """Turntable + LP back-cover — tonearm angle math + catalog number."""
-
-    @staticmethod
-    def _stylus_centroid(img):
-        """Centroid of the red stylus pin, in disc-centre coordinates.
-
-        The only red inside the programme band is the cartridge's stylus
-        pin: the label is red but sits inside ``_VINYL_LABEL_R``, and the
-        counterweight ring is outside the disc entirely.
-        """
-        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
-        r_outer, r_label = rq._VINYL_DISK_R, rq._VINYL_LABEL_R
-        red = rq.SPECTRA6["red"]
-        xs, ys = [], []
-        for y in range(cy - r_outer, cy + r_outer + 1):
-            for x in range(cx - r_outer, cx + r_outer + 1):
-                r = math.hypot(x - cx, y - cy)
-                if not r_label + 4 < r <= r_outer:
-                    continue
-                if img.getpixel((x, y)) == red:
-                    xs.append(x)
-                    ys.append(y)
-        assert xs, "no stylus pin found on the programme band"
-        return sum(xs) / len(xs), sum(ys) / len(ys)
-
-    def test_stylus_tracks_inward_across_the_hour(self):
-        """The minute drives the stylus *radius*, outside-in.
-
-        A record plays from the outer edge toward the run-out, so the
-        stylus creeps inward over the hour. An earlier revision swept the
-        cartridge a full 360 degrees around the *rim* at the minute's
-        clock angle, which no tonearm does — it read as a scratch across
-        the record rather than as an arm — so this pins the direction of
-        travel, not a set of cardinal positions.
-        """
-        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
-        radii = []
-        for minute in (0, 15, 30, 45, 59):
-            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
-            sx, sy = self._stylus_centroid(img)
-            radii.append(math.hypot(sx - cx, sy - cy))
-        # Strictly decreasing, not merely non-increasing: a stylus pinned
-        # to the rim gives a constant radius, which "sorted(reverse=True)"
-        # accepts — and a rim-pinned stylus is precisely the bug here.
-        assert all(b < a for a, b in pairwise(radii)), f"stylus did not track inward: {radii}"
-        assert radii[0] - radii[-1] > 20, "stylus barely moved across the hour"
-
-    def test_stylus_stays_on_the_programme_band(self):
-        """Never off the edge of the record, never onto the label."""
-        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
-        for minute in range(0, 60, 7):
-            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
-            sx, sy = self._stylus_centroid(img)
-            r = math.hypot(sx - cx, sy - cy)
-            assert rq._VINYL_LABEL_R < r <= rq._VINYL_DISK_R, f"minute {minute}: r={r:.1f}"
-
-    def test_arm_length_is_constant(self):
-        """The stylus stays one arm's length from the bearing.
-
-        This is the invariant that separates a pivoted arm from a point
-        placed at an angle: the tip may swing, but its distance from the
-        pivot cannot change. Reading the two ratios off the module is
-        reading constants, not reimplementing the two-circle solve the
-        painter runs.
-        """
-        cx, cy, r_outer = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY, rq._VINYL_DISK_R
-        pivot_x, pivot_y = rq._vinyl_tonearm_pivot(cx, cy, r_outer)
-        expected = r_outer * rq._VINYL_ARM_LENGTH_RATIO
-        for minute in (0, 20, 40, 59):
-            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
-            sx, sy = self._stylus_centroid(img)
-            reach = math.hypot(sx - pivot_x, sy - pivot_y)
-            assert abs(reach - expected) < 6, f"minute {minute}: reach={reach:.1f} vs {expected:.1f}"
-
-    def test_catalog_number_format(self):
-        assert rq._vinyl_catalog_number("h2_half_past") == "IH-H2-30"
-        assert rq._vinyl_catalog_number("h12_exact") == "IH-H12-00"
-        assert rq._vinyl_catalog_number("h7_quarter_to") == "IH-H7-45"
-
-    def test_catalog_number_handles_garbage(self):
-        assert rq._vinyl_catalog_number("") == "IH-?"
-        assert rq._vinyl_catalog_number(None) == "IH-?"
-        assert rq._vinyl_catalog_number("h2_unknown_state") == "IH-H2-?"
-
-    def test_wear_speckle_is_deterministic_per_seed(self):
-        """Same seed must produce the same wear-mark pattern so the
-        per-day daily-seeded variation is stable across re-renders within
-        the same day."""
-        img_a = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
-        img_b = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
-        rq._astrarium_paint_cream_wash(img_a)
-        rq._astrarium_paint_cream_wash(img_b)
-        rq._vinyl_paint_wear_speckle(img_a, seed=20260521)
-        rq._vinyl_paint_wear_speckle(img_b, seed=20260521)
-        assert pixel_bytes(img_a) == pixel_bytes(img_b)
-
-    def test_wear_speckle_varies_with_seed(self):
-        """Different seeds must produce different wear-mark patterns
-        (i.e., the speckle isn't a no-op)."""
-        img_a = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
-        img_b = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
-        rq._astrarium_paint_cream_wash(img_a)
-        rq._astrarium_paint_cream_wash(img_b)
-        rq._vinyl_paint_wear_speckle(img_a, seed=20260101)
-        rq._vinyl_paint_wear_speckle(img_b, seed=20261231)
-        assert pixel_bytes(img_a) != pixel_bytes(img_b)
-
-
 class TestVitrailFrame:
     """Gothic stained-glass cathedral window — leaded jewel-tone panes,
     rose-window Roman numeral, and a clear white-glass quote cartouche."""
@@ -766,10 +678,12 @@ class TestVitrailFrame:
         assert png(1) == png(2)
 
     def test_every_hour_renders_on_palette(self):
-        """All twelve numeral mappings (and the 00→XII rollover) render
-        without raising and stay on-palette."""
+        """The numeral mapping renders without raising and stays on-palette
+        across the 12-hour clock's wraps (the 00 and 12 -> XII rollovers,
+        11 -> XII -> I) and a mid-afternoon hour. A numeral that broke would
+        break at a wrap, so ``EDGE_HOURS`` stands in for all 24 (issue #397)."""
         palette = set(rq.SPECTRA6.values())
-        for hh in range(24):
+        for hh in EDGE_HOURS:
             img = rq.render(f"{hh:02d}:15", make_row(), 800, 480, theme="vitrail")
             assert img.size == (800, 480)
             assert distinct_inks(img).issubset(palette), f"off-palette at hour {hh}"
@@ -1272,8 +1186,15 @@ class TestPrideChevronBands:
     TOLERANCE = 0.06
 
     @staticmethod
-    def _bands(width: int = 800, height: int = 480) -> list[dict]:
-        """Ink histograms per chevron band, bucketed by the painter's own term."""
+    @functools.cache
+    def _bands(width: int = 800, height: int = 480) -> tuple[MappingProxyType, ...]:
+        """Ink histograms per chevron band, bucketed by the painter's own term.
+
+        Memoised (read-only) because the walk is a per-pixel Python loop that
+        costs ~10 s and the three tests below all read the same 800x480 flag:
+        measuring it once per worker instead of once per test (issue #397)
+        changes nothing they assert.
+        """
         image = rq.Image.new("RGB", (width, height), rq.SPECTRA6["white"])
         rq._pride_paint_flag(image)
         px = image.load()
@@ -1297,7 +1218,7 @@ class TestPrideChevronBands:
                     continue
                 ink = names[px[x, y]]
                 buckets[band][ink] = buckets[band].get(ink, 0) + 1
-        return buckets
+        return tuple(MappingProxyType(bucket) for bucket in buckets)
 
     def test_band_inks_and_order(self):
         buckets = self._bands()
@@ -1863,8 +1784,8 @@ class TestFixedGeometryFramesDownscale:
     and palette-subset, both of which a cropped fragment satisfies.
     """
 
-    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
-                             "plaque", "daguerreotype", "autochrome", "photo", "tarot", "vinyl",
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "nocturne",
+                             "plaque", "daguerreotype", "autochrome", "photo", "tarot",
                              "control", "observation", "trisolaris", "biomech", "codex",
                              "culture", "orbital", "furies", "bosch", "saros", "goya",
                              "hal", "lumon", "dsky", "oblivion", "yorha", "hitchhiker",
@@ -1913,7 +1834,10 @@ class TestBakeliteHourIndex:
     do, by showing a *setting index* rather than a clock reading, and the way to
     keep that honest is mechanical: if a minute could reach the frame, the
     readout would be a clock. So every minute of an hour must render identically
-    for a fixed row, and the twelve hours must all differ.
+    for a fixed row, and the hours must all differ.
+
+    Both sweeps render the boundaries rather than the whole range (issue
+    #397): ``EDGE_MINUTES`` for the minutes, ``EDGE_HOURS`` for the hours.
     """
 
     ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
@@ -1924,15 +1848,23 @@ class TestBakeliteHourIndex:
         return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="bakelite"))
 
     def test_no_minute_reaches_the_console(self):
-        frames = {self._frame(f"09:{minute:02d}") for minute in range(60)}
+        frames = {self._frame(f"09:{minute:02d}") for minute in EDGE_MINUTES}
         assert len(frames) == 1, (
             "the minute is reaching the bakelite frame — the console shows an hour "
             "index, not a clock reading, and the matched phrase is the time carrier"
         )
 
     def test_every_hour_renders_differently(self):
-        frames = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
-        assert len(frames) == 12, "two hours render the same console"
+        """Hours a 12-hour clock tells apart render differently, and the AM
+        and PM twins (00 and 12, 01 and 13, 11 and 23) render the same."""
+        frames = {hour: self._frame(f"{hour:02d}:30") for hour in EDGE_HOURS}
+        for hour in EDGE_HOURS:
+            for other in EDGE_HOURS:
+                same_hour = hour % 12 == other % 12
+                assert (frames[hour] == frames[other]) == same_hour, (
+                    f"{hour:02d}:30 and {other:02d}:30 "
+                    + ("render different consoles" if same_hour else "render the same console")
+                )
 
 
 class TestBakelitePhosphorHalo:
@@ -2178,92 +2110,6 @@ class TestBakeliteMoulding:
         assert counts.get(rq.SPECTRA6["black"], 0) == 0, "the slab is painting black"
 
 
-class TestIntaglioEngraving:
-    """The line-work tone mechanism and the banknote's time-carrier contract.
-
-    ``paint_hatched_tone`` is the theme's reason to exist — tone carried by
-    line *weight* at constant pitch — so the fences here are on the mechanism
-    (weight tracks the tone field, the darkest passage never saturates, the
-    ground guard holds) plus the two premise rules: the denomination carries
-    the hour and only the hour, and the serial never derives from the clock.
-    """
-
-    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
-                   matched_text="half past two", author="L. M. Montgomery",
-                   title="Anne of Avonlea")
-
-    def _frame(self, time_str):
-        return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="intaglio"))
-
-    def test_hatch_weight_tracks_tone(self):
-        img = Image.new("RGB", (300, 100), rq.SPECTRA6["white"])
-        rq.paint_hatched_tone(img, (0, 0, 300, 100), lambda x, y: x / 300.0,
-                              33.0, 5.0, rq.SPECTRA6["black"])
-        px = img.load()
-        thirds = [0, 0, 0]
-        for y in range(100):
-            for x in range(300):
-                if px[x, y] == rq.SPECTRA6["black"]:
-                    thirds[x // 100] += 1
-        assert thirds[0] < thirds[1] < thirds[2], (
-            f"hatch ink per tone third is {thirds} — line weight is not tracking the tone field"
-        )
-        # The mean tones of the outer thirds are 1/6 and 5/6; the painted-ink
-        # ratio should sit in that neighbourhood, not merely be ordered.
-        assert thirds[2] > 3 * thirds[0], f"tone contrast collapsed: {thirds}"
-
-    def test_hatch_never_saturates(self):
-        img = Image.new("RGB", (120, 120), rq.SPECTRA6["white"])
-        rq.paint_hatched_tone(img, (0, 0, 120, 120), lambda x, y: 1.0,
-                              33.0, 5.0, rq.SPECTRA6["black"])
-        black = ink_counts(img).get(rq.SPECTRA6["black"], 0)
-        assert black / (120 * 120) <= 0.85 + 0.05, (
-            "a full-tone hatch filled past max_duty — paper must survive between the "
-            "lines or the mechanism collapses to flat ink"
-        )
-        assert ink_counts(img).get(rq.SPECTRA6["white"], 0) > 0
-
-    def test_hatch_respects_ground(self):
-        img = Image.new("RGB", (60, 60), rq.SPECTRA6["white"])
-        ImageDraw.Draw(img).rectangle((20, 20, 39, 39), fill=rq.SPECTRA6["red"])
-        rq.paint_hatched_tone(img, (0, 0, 60, 60), lambda x, y: 1.0,
-                              33.0, 5.0, rq.SPECTRA6["black"],
-                              ground=frozenset({rq.SPECTRA6["white"]}))
-        counts = ink_counts(img.crop((20, 20, 40, 40)))
-        assert counts == {rq.SPECTRA6["red"]: 400}, "hatch painted over a non-ground ink"
-
-    def test_roulette_curve_closes_and_stays_dense(self):
-        pts = rq._intaglio_roulette_points(0.0, 0.0, 34, 10, 8.0)
-        assert abs(pts[0][0] - pts[-1][0]) < 0.01 and abs(pts[0][1] - pts[-1][1]) < 0.01, (
-            "the hypotrochoid did not close — the lcm-derived revolution count is wrong"
-        )
-        reach = (34 - 10) + 8.0 + 0.01
-        assert all(x * x + y * y <= reach * reach for x, y in pts), "curve escaped its bound"
-        worst = max(math.dist(a, b) for a, b in pairwise(pts))
-        assert worst <= 1.6, (
-            f"max polyline segment is {worst:.2f} px — a coarse roulette leaves dotted "
-            "gaps on shallow arcs at width 1"
-        )
-
-    def test_denomination_tracks_hour_only(self):
-        frames = {self._frame(f"09:{minute:02d}") for minute in (0, 7, 15, 29, 30, 44, 55, 59)}
-        assert len(frames) == 1, (
-            "two minutes of the same hour rendered differently — a minute is reaching "
-            "the intaglio frame, whose only time carrier is the hour denomination"
-        )
-        hours = {self._frame(f"{hour:02d}:15") for hour in range(1, 13)}
-        assert len(hours) == 12, "two different hours produced the same note face"
-
-    def test_serial_is_row_stable_and_never_time_derived(self):
-        import re as _re
-        serial = rq._intaglio_serial(self.ROW)
-        assert _re.fullmatch(r"[A-Z] \d{7} [A-Z]", serial), serial
-        assert serial == rq._intaglio_serial(dict(self.ROW)), "serial is not row-stable"
-        other = make_row(display_quote="Different row entirely.", matched_text="",
-                         source_id="999", line_number=123)
-        assert rq._intaglio_serial(other) != serial, "two rows share a serial"
-
-
 class TestNocturneBrushwork:
     """The flow-field stroke mechanism and the frame's suspended-moment contract.
 
@@ -2340,21 +2186,29 @@ class TestNocturneBrushwork:
         assert water > sky, "the water is no denser than the upper sky"
 
     def test_gold_stays_confined_to_the_lit_elements(self):
+        """No yellow or red pixel lies outside the quote, rocket, water and butterfly.
+
+        Built as a mask with the allowed boxes blanked out (inclusive bounds,
+        as ``ImageDraw.rectangle`` draws them) rather than a per-pixel Python
+        walk of the frame, which cost ~9 s for the same answer (issue #397).
+        """
         img = self._render()
-        px = img.load()
+        gold = Image.new("L", img.size, 0)
+        for ink in (rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]):
+            delta = ImageChops.difference(img, Image.new("RGB", img.size, ink)).split()
+            off_ink = ImageChops.lighter(ImageChops.lighter(delta[0], delta[1]), delta[2])
+            gold = ImageChops.lighter(gold, off_ink.point(lambda v: 255 if v == 0 else 0))
         qx0, qy0, qx1, qy1 = rq._NOCTURNE_QUOTE_RECT
-        strays = []
-        for y in range(480):
-            for x in range(800):
-                if px[x, y] not in (rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]):
-                    continue
-                in_quote = qx0 - 16 <= x <= qx1 + 16 and qy0 - 16 <= y <= qy1 + 16
-                in_rocket = 520 <= x <= 800 and 0 <= y <= 262
-                in_water = y >= rq._NOCTURNE_SHORE[0] - 6
-                in_butterfly = 728 <= x <= 780 and 408 <= y <= 452
-                if not (in_quote or in_rocket or in_water or in_butterfly):
-                    strays.append((x, y))
-        assert not strays, f"gold ink leaked outside the lit elements: {strays[:10]}"
+        blank = ImageDraw.Draw(gold)
+        blank.rectangle((qx0 - 16, qy0 - 16, qx1 + 16, qy1 + 16), fill=0)    # the quote
+        blank.rectangle((520, 0, 800, 262), fill=0)                          # the rocket
+        blank.rectangle((0, rq._NOCTURNE_SHORE[0] - 6, 800, 480), fill=0)    # the water
+        blank.rectangle((728, 408, 780, 452), fill=0)                        # the butterfly
+        bbox = gold.getbbox()
+        if bbox is not None:
+            mask = gold.load()
+            strays = [(x, y) for y in range(bbox[1], bbox[3]) for x in range(bbox[0], bbox[2]) if mask[x, y]]
+            pytest.fail(f"gold ink leaked outside the lit elements: {strays[:10]}")
 
     def test_time_never_reaches_the_canvas(self):
         frames = {pixel_bytes(self._render(t)) for t in ("03:07", "03:52", "09:30", "23:59")}
@@ -2607,13 +2461,26 @@ class TestPlaqueRelief:
         assert render() == render(contact=None), "the default grew a side effect"
 
     def test_dedication_tracks_hour_only(self):
-        frames = {self._frame(f"04:{minute:02d}") for minute in (0, 9, 17, 30, 48, 59)}
-        assert len(frames) == 1, (
+        """Every minute of an hour casts the same tablet; every hour its own.
+
+        Sampled at the boundaries (issue #397): the minutes of the noon hour,
+        where a minute rounded forward (12:58 -> 13:00) would also cross the
+        12 -> 1 wrap, and ``EDGE_HOURS`` at the half hour, whose AM and PM
+        twins must cast the same Roman hour.
+        """
+        noon = {minute: self._frame(f"12:{minute:02d}") for minute in EDGE_MINUTES}
+        assert len(set(noon.values())) == 1, (
             "two minutes of the same hour rendered differently — a minute is reaching "
             "the plaque, whose only time device is the ERECTED year's Roman hour"
         )
-        hours = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
-        assert len(hours) == 12, "two different hours produced the same tablet"
+        hours = {hour: noon[30] if hour == 12 else self._frame(f"{hour:02d}:30") for hour in EDGE_HOURS}
+        for hour in EDGE_HOURS:
+            for other in EDGE_HOURS:
+                same_hour = hour % 12 == other % 12
+                assert (hours[hour] == hours[other]) == same_hour, (
+                    f"{hour:02d}:30 and {other:02d}:30 "
+                    + ("cast different tablets" if same_hour else "produced the same tablet")
+                )
 
 
 class TestDaguerreotypePlate:
@@ -2622,7 +2489,8 @@ class TestDaguerreotypePlate:
     Atkinson must be *measurably* different from Floyd-Steinberg on the 2-ink
     sub-palette — blown highlights, crushed shadows — or the dithering half of
     the theme's pitch collapses. The case rules: the silver stays achromatic,
-    the tarnish stays in its rim annulus, no clock reaches the canvas, and a
+    the tarnish stays in its rim annulus, the quote is stamped on the lid's
+    velvet, the case opens on a hinge, no clock reaches the canvas, and a
     stripped install still gets a photograph-shaped fallback.
     """
 
@@ -2698,10 +2566,32 @@ class TestDaguerreotypePlate:
     def test_missing_plate_falls_back_gracefully(self, monkeypatch):
         monkeypatch.setattr(rq_themes.daguerreotype, "DAGUERREOTYPE_PLATE", rq.BASE_DIR / "assets" / "no_such_plate.png")
         img = self._render()
-        counts = ink_counts(img.crop((200, 100, 340, 380)))
+        counts = ink_counts(img.crop((540, 120, 650, 380)))
         assert counts.get(rq.SPECTRA6["white"], 0) > 0 and counts.get(rq.SPECTRA6["black"], 0) > 0, (
             "the fallback did not paint a photograph-shaped silver image"
         )
+
+    def test_the_quote_is_stamped_on_the_velvet(self):
+        """The case lies open: the quote sits on the lid's red pad in gold,
+        the matched phrase in white, with no cream card anywhere."""
+        text = self._render().crop(rq._DAG_TEXT)
+        inks = distinct_inks(text)
+        allowed = {rq.SPECTRA6[c] for c in ("red", "black", "yellow", "white")}
+        assert inks <= allowed, f"stray inks {inks - allowed} on the velvet"
+        counts = ink_counts(text)
+        assert counts.get(rq.SPECTRA6["red"], 0) > 0.5 * text.width * text.height, (
+            "the pad behind the stamped quote is no longer velvet"
+        )
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 0, "the gold stamping is missing"
+        assert counts.get(rq.SPECTRA6["white"], 0) > 0, "the matched phrase lost its white"
+
+    def test_the_case_opens_on_a_hinge(self):
+        """Black leather between the halves, pewter knuckles on the spine."""
+        px = self._render().load()
+        spine = (rq._DAG_LID[2] + rq._DAG_BASE[0]) // 2
+        assert px[spine, 240] == rq.SPECTRA6["black"], "the spine is not leather"
+        knuckle = {px[spine + dx, rq._DAG_HINGES[0] + 10 + dy] for dx in (0, 1) for dy in (0, 1)}
+        assert knuckle == {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}, "the hinge is missing"
 
 
 class TestBetweenUs:
@@ -3078,94 +2968,6 @@ class TestBetweenUs:
         assert (Path(rq.FRAUNCES_VARIABLE).parent / "OFL.txt").exists()
 
 
-class TestGrimoireMatchedPhrase:
-    """``grimoire``'s matched phrase is sky blue (B+W 1:1), matching its ornaments.
-
-    History worth keeping, because this seam has now moved twice. It began as
-    the "candlelit" 3/4-red mix, which read as dim rather than warm at panel
-    distance against the black ground. The fix at the time was solid white —
-    which cured the dimness but left the phrase as the only *untinted* text on
-    a plate where the border and the oversized quote marks are all coloured,
-    so on the panel it stopped reading as a highlight at all. It is now the
-    same B+W 1:1 sky blue the theme's own ornament marks use, which is neither
-    of the previous failure modes: half white rather than three-quarters red,
-    and already proven at ornament scale on this exact ground.
-    """
-
-    ROW = {
-        "display_quote": "It was a quarter past three in the morning when the candle guttered out.",
-        "matched_text": "a quarter past three",
-        "author": "M. R. James",
-        "title": "Ghost Stories of an Antiquary",
-    }
-
-    def _phrase_only(self, size=40):
-        """Draw just the phrase on a bare ground, so no body text contaminates.
-
-        Measuring a rect off the full frame is what makes this kind of ratio
-        assertion wrong: the phrase shares its lines with white body words, and
-        including any of them drags the measured blue share toward zero.
-        """
-        image = Image.new("RGB", (520, 90), rq.SPECTRA6["black"])
-        draw = ImageDraw.Draw(image)
-        font = rq.load_font(rq.theme_font_candidates("grimoire", "quote_bold"), size=size)
-        rq._draw_text_body(
-            image, draw, (10, 15), "a quarter past three",
-            font=font, fill=rq.SPECTRA6["red"], theme="grimoire",
-        )
-        return ink_counts(image)
-
-    def test_phrase_is_a_one_to_one_blue_white_stipple(self):
-        counts = self._phrase_only()
-        blue = counts.get(rq.SPECTRA6["blue"], 0)
-        white = counts.get(rq.SPECTRA6["white"], 0)
-        assert blue and white, "phrase painted in a single ink — the stipple seam did not fire"
-        assert 0.4 < blue / (blue + white) < 0.6
-
-    def test_phrase_carries_no_red(self):
-        """The red ``accent`` slot is a sentinel, never painted.
-
-        The border's pentagrams, rules and planetary sigils own the red on this
-        plate; a phrase sharing that ink would stop reading as separate from
-        them. ``_draw_text_body`` is therefore passed red and must emit none.
-        """
-        assert self._phrase_only().get(rq.SPECTRA6["red"], 0) == 0
-
-    def test_phrase_shares_the_ornament_marks_recipe(self):
-        """Greg's ask: the phrase should match the large quote marks.
-
-        Reads the recipe out of ``THEMES`` rather than restating it, so the two
-        cannot drift apart — recolouring the ornaments without the phrase (or
-        vice versa) fails here.
-        """
-        theme = rq.THEMES["grimoire"]
-        assert {theme["ornament_dark"], theme["ornament_light"]} == {
-            rq.SPECTRA6["blue"], rq.SPECTRA6["white"],
-        }
-        counts = self._phrase_only()
-        assert set(counts) - {rq.SPECTRA6["black"]} == {
-            theme["ornament_dark"], theme["ornament_light"],
-        }
-
-    def test_phrase_is_visibly_distinct_from_the_body(self):
-        """The regression that prompted this: solid white made the phrase and
-        the body the same ink, leaving face and weight to carry it alone."""
-        image = Image.new("RGB", (520, 90), rq.SPECTRA6["black"])
-        draw = ImageDraw.Draw(image)
-        font = rq.load_font(rq.theme_font_candidates("grimoire", "quote_regular"), size=40)
-        rq._draw_text_body(
-            image, draw, (10, 15), "a quarter past three",
-            font=font, fill=rq.THEMES["grimoire"]["text"], theme="grimoire",
-        )
-        body = ink_counts(image)
-        assert body.get(rq.SPECTRA6["blue"], 0) == 0, "body text must stay solid white"
-        assert self._phrase_only().get(rq.SPECTRA6["blue"], 0) > 0
-
-    def test_full_frame_still_snaps_on_palette(self):
-        image = rq.render("03:15", dict(self.ROW), 800, 480, mode="production", theme="grimoire")
-        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
-
-
 class TestAutochromePlate:
     """The full-palette dither is the theme's entire pitch, so it is measured.
 
@@ -3178,9 +2980,9 @@ class TestAutochromePlate:
     regenerates the art with punchier colour, or quietly narrows the palette
     the way every other plate theme does, these fail.
 
-    The case rules follow: the caption card stays clean so a dense quote is
-    legible over a photograph, no clock reaches the canvas, and a stripped
-    install still gets a colour picture.
+    The slide rules follow: the caption is lettered on the black mask under
+    the window, the mask frames the plate on every side, no clock reaches the
+    canvas, and a stripped install still gets a colour picture.
     """
 
     ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
@@ -3279,29 +3081,39 @@ class TestAutochromePlate:
 
     # -- the case ------------------------------------------------------------
 
-    def test_the_caption_card_stays_clean(self):
-        """A dense literary quote sits on this card over a photograph, so the
-        knockout has to be complete: only card stock, rule and ink inside it."""
-        px = self._render().load()
-        x0, y0, x1, y1 = rq._AUTOCHROME_CARD
-        allowed = {rq.SPECTRA6[c] for c in ("white", "yellow", "black", "red")}
-        for y in range(y0 + 2, y1 - 1, 3):
-            for x in range(x0 + 2, x1 - 1, 3):
-                assert px[x, y] in allowed, (
-                    f"photograph bleeding through the caption card at ({x}, {y}) — "
-                    "the card must be knocked out of the plate, not laid over it"
-                )
+    def test_the_caption_is_lettered_on_the_mask(self):
+        """The slide carries its caption on the black mask, not on a card: the
+        strip under the window holds only mask, white letters and the yellow
+        matched phrase, and all three are present."""
+        caption = self._render().crop(rq._AUTOCHROME_CAPTION)
+        inks = distinct_inks(caption)
+        allowed = {rq.SPECTRA6[c] for c in ("black", "white", "yellow")}
+        assert inks <= allowed, (
+            f"stray inks {inks - allowed} under the window — the plate is leaking "
+            "into the caption, or a card has crept back"
+        )
+        counts = ink_counts(caption)
+        assert counts.get(rq.SPECTRA6["black"], 0) > 0.6 * caption.width * caption.height, (
+            "the caption strip is not mostly black mask"
+        )
+        assert rq.SPECTRA6["yellow"] in inks, "the matched phrase lost its yellow"
 
-    def test_the_card_is_lifted_off_the_plate(self):
-        """The shadow ledge, without which the card reads as a hole cut in the
-        photograph rather than as paper resting on it."""
-        px = self._render().load()
-        _, _, x1, y1 = rq._AUTOCHROME_CARD
-        ledge = rq._AUTOCHROME_LEDGE
-        for offset in range(1, ledge + 1):
-            assert px[x1 + offset, y1] == rq.SPECTRA6["black"], (
-                "the caption card's drop-shadow ledge is missing"
+    def test_the_mask_frames_the_window(self):
+        """Black paper on every side of the window, the plate's chroma only
+        inside it, and the projectionist's white thumb-spot in the corner."""
+        image = self._render()
+        px = image.load()
+        black = rq.SPECTRA6["black"]
+        x0, y0, x1, y1 = rq._AUTOCHROME_WINDOW
+        for x, y in ((x0 // 2, 240), ((x1 + 800) // 2, 240), (400, y0 // 3), (400, 476)):
+            assert px[x, y] == black, f"mask missing at ({x}, {y})"
+        window = image.crop((x0 + 12, y0 + 12, x1 - 12, y1 - 12))
+        for ink in ("blue", "green", "red"):
+            assert ink_counts(window).get(rq.SPECTRA6[ink], 0) > 0, (
+                f"no {ink} in the window — the transparency is not a colour plate"
             )
+        cx, cy, _ = rq._AUTOCHROME_THUMB_SPOT
+        assert px[cx, cy] == rq.SPECTRA6["white"], "the thumb-spot is missing"
 
     def test_no_clock_reaches_the_canvas(self):
         """A photograph carries no clock — ``daguerreotype``'s rule, for the
@@ -3327,16 +3139,6 @@ class TestAutochromePlate:
                 f"blooms are what make it read as a colour photograph at all"
             )
         rq._DITHER_CACHE.clear()
-
-    def test_the_tape_binds_all_four_edges(self):
-        """The passe-partout: a bound plate is taped on every edge, and the
-        tape is also what stops the photograph running off the panel."""
-        px = self._render().load()
-        black = rq.SPECTRA6["black"]
-        mid = rq._AUTOCHROME_TAPE // 2
-        for x, y in ((400, mid), (400, 479 - mid), (mid, 240), (799 - mid, 240)):
-            assert px[x, y] == black, f"binding tape missing at ({x}, {y})"
-
 
 class TestPhotoTheme:
     """The open-ended theme: the art is a file the operator chooses.
@@ -3864,17 +3666,35 @@ class TestPhotoTheme:
             "could never be invalidated"
         )
 
+    def test_the_default_picture_is_not_autochromes(self):
+        """Unconfigured, the theme shows its own coast, not ``autochrome``'s
+        garden: borrowing that plate made the two themes look the same in the
+        rotation. The coast is a blue-and-yellow picture where the garden is
+        a green-and-red one, so the ink mix tells them apart."""
+        assert rq_themes.photo.PHOTO_PLATE != rq.AUTOCHROME_PLATE
+        rq.clear_photo_cache()
+        plate, _ = rq_themes.photo._photo_fallback_frame(800, 480)
+        counts = ink_counts(plate)
+        coast = counts.get(rq.SPECTRA6["blue"], 0) + counts.get(rq.SPECTRA6["yellow"], 0)
+        meadow = counts.get(rq.SPECTRA6["green"], 0) + counts.get(rq.SPECTRA6["red"], 0)
+        assert coast > 2 * meadow, (
+            f"blue+yellow {coast} vs green+red {meadow} — the default picture no "
+            "longer reads as a coast"
+        )
+        for ink in rq.SPECTRA6.values():
+            assert counts.get(ink, 0) > 0, "the coast plate has dropped an ink"
+
     def test_a_stripped_install_still_renders(self, tmp_path, monkeypatch):
         """Fallback of the fallback: nothing configured *and* the bundled plate
-        gone. The synthesised garden keeps the theme a colour picture."""
-        monkeypatch.setattr(rq_themes.photo, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        gone. The synthesised coast keeps the theme a colour picture."""
+        monkeypatch.setattr(rq_themes.photo, "PHOTO_PLATE", tmp_path / "absent.png")
         rq.clear_photo_cache()
         rq._DITHER_CACHE.clear()
         image = self._render()
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
         counts = ink_counts(image)
         total = 800 * 480
-        for ink in ("blue", "green"):
+        for ink in ("blue", "yellow", "green"):
             assert counts.get(rq.SPECTRA6[ink], 0) / total > 0.01, (
                 f"the synthesised fallback has almost no {ink}"
             )
@@ -7330,14 +7150,27 @@ class TestYorhaFrame(_CustomFrameCase):
         above = ink_counts(scene.crop((x0 + 40, y0 - 8, x1 - 40, y0 - 2))).get(rq.SPECTRA6["black"], 0)
         assert below > above * 1.5
 
-    def test_pod_is_modelled_with_a_lens(self):
+    def test_pod_is_lit_from_the_upper_left(self):
         image = self._render()
+        faces = rq._yorha_pod_faces()
+
+        def black_share(name):
+            xs, ys = [p[0] for p in faces[name]], [p[1] for p in faces[name]]
+            # The face's interior, clear of its outline.
+            counts = ink_counts(image.crop((min(xs) + 3, min(ys) + 2, max(xs) - 2, max(ys) - 1)))
+            return counts.get(rq.SPECTRA6["black"], 0) / sum(counts.values())
+
+        top = image.crop((min(p[0] for p in faces["top"]) + 12, faces["top"][2][1] + 2,
+                          faces["top"][1][0] - 2, faces["top"][0][1] - 1))
+        assert set(ink_counts(top)) == {rq.SPECTRA6["white"]}               # the lit top
+        assert black_share("front") > 0.15                                   # the shaded end, and its port
+        hands = [arm[-1] for arm in faces["arms"]]
+        for hx, hy in hands:
+            assert ink_counts(image.crop((hx - 3, hy - 1, hx, hy + 2))) == {rq.SPECTRA6["black"]: 9}
+        # The white keyline lifts it off the stippled sheet, and nothing reaches the menu.
         cx, cy = rq._YORHA_POD_CENTRE
-        pod = ink_counts(image.crop((cx - 60, cy - 42, cx + 48, cy + 22)))
-        assert pod.get(rq.SPECTRA6["black"], 0) > 900
-        assert pod.get(rq.SPECTRA6["white"], 0) > 1500
-        lens = ink_counts(image.crop((cx + 24, cy - 8, cx + 41, cy + 9)))
-        assert lens.get(rq.SPECTRA6["black"], 0) > 120 and lens.get(rq.SPECTRA6["white"], 0) > 4
+        assert min(p[1] for p in faces["top"]) - 3 > rq._YORHA_MENU_RECT[3]
+        assert image.getpixel((faces["side"][0][0] - 2, cy)) == rq.SPECTRA6["white"]
 
     def test_hour_is_the_inverted_row(self):
         rows = rq._yorha_menu_rows()
@@ -7350,10 +7183,35 @@ class TestYorhaFrame(_CustomFrameCase):
                 black = counts.get(rq.SPECTRA6["black"], 0)
                 assert (black > area * 0.6) == (i + 1 == hour), (hour, i)
 
+    def test_menu_labels_sit_centred_in_their_rows(self):
+        """EB Garamond's ascent carries accent room over the caps, so a
+        top-anchored label sat low; the cap height is centred instead."""
+        image = self._render(time_str="05:00")
+        for i, (x0, y0, _x1, y1) in enumerate(rq._yorha_menu_rows()):
+            ink = rq.SPECTRA6["white" if i == 4 else "black"]
+            rows = [y for y in range(y0 + 2, y1 - 1)
+                    if any(image.getpixel((x, y)) == ink for x in range(x0 + 24, x0 + 60))]
+            above, below = rows[0] - y0, y1 - rows[-1]
+            assert abs(above - below) <= 2, (i, above, below)
+
+    def test_phrase_box_hugs_the_ink(self):
+        """The bar spans the bold face's ascender top to its descender foot
+        with an even margin, not the whole line height."""
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        placed = rq._yorha_layout(draw, make_row(**self.ROW))
+        bold = next(item[3] for item in placed if item[4])
+        (bx0, by0, bx1, by1), = rq._yorha_phrase_boxes(draw, placed)
+        y = next(item[1] for item in placed if item[4])
+        _l, ink_top, _r, ink_foot = bold.getbbox("hp", anchor="la")
+        assert 0 < (y + ink_top) - by0 <= bold.size * 0.15
+        assert 0 < by1 - (y + ink_foot) <= bold.size * 0.15
+        assert abs(((y + ink_top) - by0) - (by1 - (y + ink_foot))) <= 1
+        assert (by1 - by0) < bold.size * 1.3
+
     def test_phrase_is_knocked_out_of_a_black_box(self):
         image = self._render()
         draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
-        boxes = rq._lumon_hover_boxes(draw, rq._yorha_layout(draw, make_row(**self.ROW)))
+        boxes = rq._yorha_phrase_boxes(draw, rq._yorha_layout(draw, make_row(**self.ROW)))
         assert len(boxes) == 1
         box = ink_counts(image.crop(boxes[0]))
         area = (boxes[0][2] - boxes[0][0]) * (boxes[0][3] - boxes[0][1])
@@ -7533,6 +7391,28 @@ class TestEscritoireFrame:
         # The far edge is foreshortened: narrower on the canvas than the near.
         (tlx, _), (trx, _), (brx, _), (blx, _) = rq._ESCRITOIRE_QUAD
         assert 0.5 < (trx - tlx) / (brx - blx) < 0.7
+
+    @staticmethod
+    def _vanishing_point(p0, p1, q0, q1):
+        (x1, y1), (x2, y2), (x3, y3), (x4, y4) = p0, p1, q0, q1
+        den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        a, b = x1 * y2 - y1 * x2, x3 * y4 - y3 * x4
+        return ((a * (x3 - x4) - (x1 - x2) * b) / den, (a * (y3 - y4) - (y1 - y2) * b) / den)
+
+    def test_sheet_is_a_real_perspective_with_a_level_horizon(self):
+        # A sheet lying flat on the desk, seen by a level eye: the vanishing
+        # points of its rows and of its sides share one horizontal horizon.
+        # A quad drawn freehand can rise along its far edge while its sides
+        # lean as if it were turned the other way; the writing then follows
+        # neither and reads as climbing off the paper.
+        tl, tr, br, bl = rq._ESCRITOIRE_QUAD
+        rows = self._vanishing_point(tl, tr, bl, br)
+        sides = self._vanishing_point(tl, bl, tr, br)
+        assert sides[1] < 0, "the horizon sits above the panel"
+        tilt = math.degrees(math.atan2(rows[1] - sides[1], rows[0] - sides[0]))
+        assert abs(tilt) < 0.25, (rows, sides)
+        # Turned so the right side lies further away: every row rises to the right.
+        assert rows[0] > 800 and tr[1] < tl[1] and br[1] < bl[1]
 
     def test_quote_is_black_and_the_phrase_blue_on_the_paper(self):
         image = self._render()
@@ -7975,7 +7855,6 @@ class TestRedactedFrame:
             assert rq.SPECTRA6["red"] not in top, seed
             plain = self._render(dict(row, matched_text=""))
             assert rq.SPECTRA6["red"] not in ink_counts(plain.crop((0, rq._REDACTED_FIELDS_Y + 24, 800, 480))), seed
-
 
 
 class TestRedactedSleepFrame:
@@ -9215,3 +9094,102 @@ class TestSplitflapSleepFrame:
         for col, row in rq._SPLITFLAP_MOON:
             x, y = rq._splitflap_tile_xy(col, row)
             assert image.getpixel((x + 4, y + 4)) == rq.SPECTRA6["yellow"]
+
+
+class TestPaintHatchedTone:
+    """``paint_hatched_tone``: a parallel line family whose weight tracks a
+    tone field at constant pitch (``witcher`` uses it)."""
+
+    def test_hatch_weight_tracks_tone(self):
+        img = Image.new("RGB", (300, 100), rq.SPECTRA6["white"])
+        rq.paint_hatched_tone(img, (0, 0, 300, 100), lambda x, y: x / 300.0,
+                              33.0, 5.0, rq.SPECTRA6["black"])
+        px = img.load()
+        thirds = [0, 0, 0]
+        for y in range(100):
+            for x in range(300):
+                if px[x, y] == rq.SPECTRA6["black"]:
+                    thirds[x // 100] += 1
+        assert thirds[0] < thirds[1] < thirds[2], (
+            f"hatch ink per tone third is {thirds} — line weight is not tracking the tone field"
+        )
+        # The mean tones of the outer thirds are 1/6 and 5/6; the painted-ink
+        # ratio should sit in that neighbourhood, not merely be ordered.
+        assert thirds[2] > 3 * thirds[0], f"tone contrast collapsed: {thirds}"
+
+    def test_hatch_never_saturates(self):
+        img = Image.new("RGB", (120, 120), rq.SPECTRA6["white"])
+        rq.paint_hatched_tone(img, (0, 0, 120, 120), lambda x, y: 1.0,
+                              33.0, 5.0, rq.SPECTRA6["black"])
+        black = ink_counts(img).get(rq.SPECTRA6["black"], 0)
+        assert black / (120 * 120) <= 0.85 + 0.05, (
+            "a full-tone hatch filled past max_duty — paper must survive between the "
+            "lines or the mechanism collapses to flat ink"
+        )
+        assert ink_counts(img).get(rq.SPECTRA6["white"], 0) > 0
+
+    def test_hatch_respects_ground(self):
+        img = Image.new("RGB", (60, 60), rq.SPECTRA6["white"])
+        ImageDraw.Draw(img).rectangle((20, 20, 39, 39), fill=rq.SPECTRA6["red"])
+        rq.paint_hatched_tone(img, (0, 0, 60, 60), lambda x, y: 1.0,
+                              33.0, 5.0, rq.SPECTRA6["black"],
+                              ground=frozenset({rq.SPECTRA6["white"]}))
+        counts = ink_counts(img.crop((20, 20, 40, 40)))
+        assert counts == {rq.SPECTRA6["red"]: 400}, "hatch painted over a non-ground ink"
+
+
+class TestImprimaturFrame:
+    """``imprimatur`` — the opening page of a Fell-press book: red ruling, a
+    fleuron headpiece, a criblé initial cut from the quote's first letter,
+    the matched phrase rubricated in Fell small capitals."""
+
+    THEME = "imprimatur"
+    ROW = dict(
+        display_quote="It was a quarter past six when we left Baker Street, and it still wanted "
+                      "ten minutes to the hour when we found ourselves in Serpentine Avenue.",
+        matched_text="a quarter past six",
+        author="Arthur Conan Doyle",
+        title="The Adventures of Sherlock Holmes",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="18:15", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.5
+        assert rq.theme_font_candidates(self.THEME, "quote_bold")[0].endswith("IMFellEnglishSC-Regular.ttf")
+
+    def test_three_inks_only(self):
+        assert distinct_inks(self._render()) <= {rq.SPECTRA6["white"], rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+
+    def test_initial_takes_the_first_letter_and_keeps_the_phrase(self):
+        imp = rq_themes.imprimatur
+        mark, initial, segments = imp._imprimatur_split_initial(
+            make_row(display_quote="“Twelve o’clock,” said Alice.", matched_text="Twelve o’clock"))
+        assert (mark, initial) == ("“", "T")
+        assert segments[0] == ("welve o’clock,”", True)
+
+    def test_no_initial_when_the_quote_opens_on_a_digit(self):
+        _, initial, segments = rq_themes.imprimatur._imprimatur_split_initial(
+            make_row(display_quote="12 o'clock and all is well.", matched_text="12 o'clock"))
+        assert initial == "" and segments[0][0].startswith("12")
+
+    def test_lines_break_only_at_whitespace_across_the_peel(self):
+        imp = rq_themes.imprimatur
+        _, _, segments = imp._imprimatur_split_initial(make_row(**self.ROW))
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        lines, drop, _, _ = imp._imprimatur_set_page(draw, segments, has_initial=True, size=30)
+        assert drop == 3
+        words = " ".join("".join(t for t, _ in rq.layout._trim_line(items)) for _, _, items, _ in lines).split()
+        assert words == "".join(t for t, _ in segments).split()
+
+    def test_degenerate_rows_still_render(self):
+        for row in (dict(display_quote="", matched_text=""), dict(display_quote="At noon.", matched_text="noon")):
+            assert self._render(row).size == (800, 480)
+        assert self._render(size=(200, 120)).size == (200, 120)
+
+    def test_frame_ignores_the_clock(self):
+        assert pixel_bytes(self._render(time_str="18:15")) == pixel_bytes(self._render(time_str="03:40"))

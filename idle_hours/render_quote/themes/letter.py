@@ -1,4 +1,4 @@
-"""The ``letter`` theme's border painter and the code only it uses (issue #335).
+"""The ``letter`` theme's border painter and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -75,31 +75,11 @@ def _letter_paint_aged_paper(image: Image.Image, width: int, height: int, page_b
 
 def draw_letter_border(image: Image.Image, colors: dict,
                        clear_rect: tuple[int, int, int, int] | None = None) -> None:
-    """Wax-sealed letter decoration: aged, lightly-crumpled paper ground +
-    fold/crumple creases + a pressed oxblood / maroon wax seal in the
-    bottom-right corner.
+    """Wax-sealed letter decoration: aged paper, fold creases and a wax seal.
 
     Everything stays in the margins and paints before the text, so the
-    creases sit behind the glyphs as real folds do and the quote block never
-    reaches the seal's corner. Layers, bottom to top:
-
-    * **Layer 0 — aged paper.** ``letter_aged_paper.png`` dithered to
-      white/yellow/red/green (W+Y cream, R+G foxing), so palette-snap is a
-      no-op; ``_letter_paint_aged_paper`` synthesises it when the asset is
-      missing.
-    * **Writing-area knockout** — with ``clear_rect``, the body rect is reset
-      to clean cream with a feathered edge, so foxing doesn't speckle the
-      thin script strokes.
-    * **Crumple creases** — two dotted fold creases at the thirds, plus (in
-      the fallback path only) a few soft tonal wrinkles. Painted only on bare
-      paper; the body text overpaints them.
-    * **The wax seal** (bottom-right) — an oxblood dome lit from the upper
-      left: a scalloped rim (two summed sinusoids), a Bayer ramp anchored on
-      R+K maroon (red on the lit shoulder, white for coral gloss, black
-      climbing toward the rim), a stippled cast shadow, a specular hotspot, a
-      ring of shaded beads and a recessed hourglass emblem, plus a few
-      spatter flecks. It sits clear of the attribution and the y=14-29 debug
-      band, so ``letter`` needs no ``_DEBUG_LABEL_RIGHT_INSET`` entry.
+    creases sit behind the glyphs as real folds do. Design notes:
+    ``docs/themes.md`` § letter.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size

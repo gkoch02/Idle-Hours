@@ -1,6 +1,7 @@
-"""The ``comic`` theme's border painter and the code only it uses (issue #335).
+"""The ``comic`` theme's border painter, a golden-age comic panel: a Ben-Day dot corner,
+a racing-stripe chevron and a heavy black gutter.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § comic
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ from PIL import Image, ImageDraw
 from ..palette import SPECTRA6
 from ..spec import BorderSpec
 
+# Hardcoded: the comic THEMES entry has only two non-bg slots, and adding
+# a blue / green one would re-pin the cross-theme invariant tests.
 _COMIC_STRIPE_PALETTE = (
     SPECTRA6["blue"],
     SPECTRA6["green"],
@@ -20,27 +23,8 @@ _COMIC_STRIPE_PALETTE = (
 
 def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     """Paint a comic-book panel: Ben-Day halftone corner, racing-stripe
-    chevron, and a heavy black panel gutter.
-
-    * **Ben-Day halftone dots**: a grid of small red dots filling a
-      right-triangle in the top-left corner, balancing the bottom-right
-      stripes. The grid starts ≥22 px in from both edges so the corner,
-      and the ``(15, 15)`` pixel the theme-gating test samples, stays
-      yellow page_bg.
-    * **Racing-stripe chevron**: four parallel 45° bands (bottom-left to
-      top-right) cycling ``_COMIC_STRIPE_PALETTE`` (blue / green / red /
-      black), with yellow gaps, masked to a right-isoceles triangle in the
-      bottom-right corner with legs ``height // 2``. The hypotenuse runs at
-      the stripes' own slope, so no band is clipped at an angle, and the
-      longest dense-layout lines never reach it. Painted before any text,
-      so a glyph that does land there sits on top.
-    * **Heavy black panel border** just inside the canvas edge, painted
-      last over the dots and stripes.
-
-    The stripe palette is hardcoded because the comic THEMES entry has
-    only two non-bg slots (text=black, accent=red), and extending the
-    schema would re-pin the cross-theme invariant tests. The gap colour
-    comes from ``colors["page_bg"]``.
+    chevron, and a heavy black panel gutter. The stripe gaps take
+    ``colors["page_bg"]``. Design notes: docs/themes.md § comic.
     """
     width, height = image.size
 

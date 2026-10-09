@@ -1,6 +1,7 @@
-"""The ``newsprint`` theme's border painter and the code only it uses (issue #335).
+"""The ``newsprint`` theme's border painter: an old broadsheet's Scotch-rule
+frame and furniture on halftoned, foxed newsprint.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § newsprint
 """
 
 from __future__ import annotations
@@ -12,31 +13,20 @@ from ..spec import BorderSpec
 
 
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
-    """Paint a broadsheet-style Scotch-rule border around the canvas margin.
-
-    * **Layer 0: newsprint halftone + faint sepia foxing.** On a 4×4 Bayer
-      tile, ``page_bg`` pixels with value < 2 turn black (the 12.5% grey
-      pulp halftone), value 6 red and value 9 green. The red and green
-      cells sit one row apart in the same column and average to R+G 1:1
-      sepia (aged lignin). Values 6 and 9 are chosen to miss every pinned
-      border / cross-gating sample coordinate
-      (``test_newsprint_inner_hairline_is_one_pixel_and_has_gap_above``,
-      ``test_blueprint_border_is_theme_gated`` at (6, 16),
-      ``test_illuminated_border_is_theme_gated`` at (400, 22)). The colour
-      lives on the paper only, so ``test_newsprint_theme_has_no_colour_accent``
-      still holds. All pixels are pure inks, so palette-snap is a no-op.
-    * **Scotch rule frame**: a heavy outer and a hairline inner rectangle
-      with white between, and nothing else.
-    * **Broadsheet typographic furniture**: a thick+thin masthead rule with
-      two column-rule ticks, a centred folio rule at the foot, and a small
-      black printer's diamond on each. Ink only; all clear of the text
-      (y ≥ 72).
+    """Paint the newsprint ground (halftone + sepia foxing), the Scotch-rule
+    frame and the broadsheet furniture, all in pure inks so the palette snap
+    is a no-op. Design notes: docs/themes.md § newsprint.
     """
     width, height = image.size
     page_bg = colors.get("page_bg")
     ink = colors["text"]
 
-    # Layer 0: halftone + sepia foxing (see docstring). Only exact
+    # Layer 0: halftone + sepia foxing. Cells 6 and 9 (one row apart in the
+    # same column, averaging to R+G 1:1 sepia) miss every pinned border /
+    # cross-gating sample coordinate
+    # (``test_newsprint_inner_hairline_is_one_pixel_and_has_gap_above``,
+    # ``test_blueprint_border_is_theme_gated`` at (6, 16),
+    # ``test_illuminated_border_is_theme_gated`` at (400, 22)). Only exact
     # ``page_bg`` pixels are touched; skipped when ``page_bg`` is absent so
     # direct-call test paths that only provide ``text`` stay valid.
     if page_bg is not None:

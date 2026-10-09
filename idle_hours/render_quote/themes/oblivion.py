@@ -1,6 +1,6 @@
-"""The ``oblivion`` theme's frame and the code only it uses (issue #335).
+"""The ``oblivion`` theme: the Sky Tower's light table from *Oblivion* (2013).
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § oblivion
 """
 
 from __future__ import annotations
@@ -18,29 +18,6 @@ from ..primitives import _shade_silhouette, _smooth_noise, _soft_ellipse_mask, p
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# oblivion — *Oblivion* (2013): the Sky Tower's light table
-# ---------------------------------------------------------------------------
-# The Sky Tower's desk is a light table whose glass is the interface: a glow
-# pooled under the hand, frosted panes, hairline geometry, a topographic map
-# with the hydro rigs, a drone, and one warm accent. Full design notes:
-# docs/themes.md (``oblivion``).
-#
-# The glass (grey edges, a white pool under the quote, darker soft-edged
-# panes, the drone's blurred shadow, a fine grain) and the drone (a sphere
-# shaded by ``shade_height_field``, pods by ``_shade_silhouette``) are painted in
-# continuous tone and Floyd–Steinberg dithered to white and black
-# (``_dither_calibrated``). The map's contours (a seeded height field sliced at
-# ``_OBLIVION_CONTOUR_LEVELS`` levels, each slice's one-pixel rim), the
-# hairlines, the type and the red go on after the dither.
-#
-# The hour is the rig and the bearing: the hour's rig is red with a leader to
-# its number, the dial's tick at the hour's clock-face position is a red wedge
-# with a red dot on station, and the hour's cell in the status row is filled.
-# All pinned across the minutes; the matched phrase carries the minute. The
-# waveform and numeral columns are seeded from the quote. Composed at 800x480
-# and NEAREST-downsampled otherwise (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _OBLIVION_SEED = 0x4F424C56           # OBLV
 _OBLIVION_INKS = ("white", "black")
 _OBLIVION_QUOTE_RECT = (40, 112, 450, 366)
@@ -371,8 +348,7 @@ def _oblivion_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 
 def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The Sky Tower's light table with the hour's rig and bearing (see the
-    section comment above)."""
+    """The Sky Tower's light table with the hour's rig and bearing (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = _oblivion_scene().copy()
     draw = ImageDraw.Draw(image)

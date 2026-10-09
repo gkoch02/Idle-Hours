@@ -1,4 +1,4 @@
-"""The ``synoptic`` theme's border painter and the code only it uses (issue #335).
+"""The ``synoptic`` theme's border painter and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -16,21 +16,8 @@ from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 # ---------------------------------------------------------------------------
-# synoptic — a meteorological surface analysis (issue #215).
-#
-# The weather chart of the navigation family (``firmament`` celestial atlas,
-# ``astrarium`` instrument, ``cartograph`` terrestrial chart): a field laid
-# over geography — nested isobars, pressure centres and front symbols.
-#
-# The occluded front is drawn purple on a real chart because it is a cold
-# and a warm front merged, so the R+B 1:1 mix is semantically right here.
-#
-# The time rides the validity stamp, ``VALID 1630 LT`` — a real chart
-# carries its observation time, so a number genuinely belongs.
-#
-# Shared literary layout plus this painter and a ``clear_rect`` knockout.
-# Everything is drawn with ImageDraw primitives that PIL clips, so the
-# ``/api/preview`` thumbnail path crops rather than raises.
+# synoptic — a meteorological surface analysis (issue #215). The time rides
+# the validity stamp, ``VALID 1630 LT``. Design notes: docs/themes.md § synoptic.
 # ---------------------------------------------------------------------------
 # Pressure centres as (x, y, label, innermost radius) in 800x480 space, in
 # opposite corners so the isobars sweep diagonally across the page.
@@ -242,7 +229,7 @@ def _synoptic_paint_stamp(draw: ImageDraw.ImageDraw, width: int, height: int, ti
 
 
 def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time_str: str | None = None) -> None:
-    """Surface analysis behind the quote (see the section comment above).
+    """Surface analysis behind the quote (``docs/themes.md`` § synoptic).
 
     ``time_str`` is optional because only ``render``'s knockout pass passes it
     (the spec sets ``wants_time``). The plain pass, which is all the button-C

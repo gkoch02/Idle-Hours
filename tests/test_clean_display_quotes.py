@@ -544,6 +544,31 @@ class TestCorpusHygiene:
         assert cdq.clean_edges("I. said so at five o'clock.").startswith("I.")
         assert cdq.clean_edges("C. Dickens came at five o'clock.").startswith("C.")
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # The three shipped rows that carried one (issue #403).
+            ("V When Archie got back to his hotel at two o’clock.", "When Archie got back to his hotel at two o’clock."),
+            ("X June 20th.—Eight o’clock. The sun is shining.", "June 20th.—Eight o’clock. The sun is shining."),
+            ("L She plunged into the darkness as the clock struck ten.", "She plunged into the darkness as the clock struck ten."),
+        ],
+    )
+    def test_periodless_single_letter_numeral_is_stripped(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "I Think it was two o’clock.",  # the pronoun
+            "C Company marched at two o’clock.",  # a label
+            "V. When came at two o’clock.",  # a period makes it an initial
+            "X marks the spot at two o’clock.",  # lowercase follows: not a heading
+            "X-Ray plates were ready at two o’clock.",
+        ],
+    )
+    def test_single_letter_that_is_not_a_numeral_survives(self, text):
+        assert cdq.clean_edges(text) == text
+
     def test_all_caps_chapter_title_is_stripped(self):
         text = "—CONTINUATION OF THE ENIGMA The night wind had risen at two o’clock."
         assert cdq.clean_edges(text) == "The night wind had risen at two o’clock."

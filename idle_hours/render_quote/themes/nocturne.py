@@ -1,4 +1,4 @@
-"""The ``nocturne`` theme's frame and the code only it uses (issue #335).
+"""The ``nocturne`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -16,35 +16,9 @@ from ..primitives import _flow_stroke_hash, paint_flow_strokes, paint_neon_mask,
 from ..spec import FrameSpec
 
 # ---------------------------------------------------------------------------
-# nocturne — Whistler, Nocturne in Blue and Gold
-#
-# The Thames at Battersea as Whistler painted it around 1875: a near-black
-# blue night of brushwork, punctured by gold. Sky and water are short
-# streamline strokes advected through direction fields (``paint_flow_strokes``)
-# rather than per-pixel stipple. Full design notes: docs/themes.md
-# (``nocturne``).
-#
-# **Two fields, one vocabulary.** The sky's strokes are sparse, thin and
-# near-horizontal, thinning with altitude; the water's are denser, wider and
-# shimmer, with an occasional stroke flipped to green in the mid-water (the
-# verdigris glaze). The shore is painted *after* the strokes as a solid
-# silhouette (plus the shot tower and a chimney), so land reads as the
-# absence of light and crops any stroke overhang.
-#
-# **The gold is bakelite's split-band recipe** (red-major tangerine halo at
-# Y 3/8, yellow-major core at Y 5/8, on the 8x8 tile): shore lights, the
-# rocket's sparks, the matched phrase and the butterfly monogram. The
-# reflections are a third ``paint_flow_strokes`` pass with a near-vertical
-# swaying field. Each gold tier accumulates into ONE mask and blooms once (no
-# double exposure), and every pass takes ``ground=_nocturne_ground()`` so
-# later light never eats earlier light.
-#
-# **The quote sits in the night.** Prose has white cores with a faint cold
-# blue halo; the matched phrase is the brightest gold after the rocket. The
-# block sits left of centre so the spark shower owns the upper right.
-#
-# **No hour carrier: ``time_str`` is del-asserted**, so every render of a row
-# is byte-identical at any clock time (pinned by ``TestNocturneBrushwork``).
+# nocturne — Whistler, Nocturne in Blue and Gold: flow-field brushwork with
+# synthesised-gold light. ``time_str`` is del-asserted, so every render of a
+# row is byte-identical. Design notes: docs/themes.md § nocturne.
 _NOCTURNE_SKY_BOTTOM = 238
 _NOCTURNE_SHORE = (238, 272)
 _NOCTURNE_TOWER = (588, 196, 610, 238)         # the Battersea shot tower
@@ -269,13 +243,13 @@ def _nocturne_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote
 
 
 def render_nocturne_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Whistler's blue-and-gold night river (see the section comment).
+    """Whistler's blue-and-gold night river (``docs/themes.md`` § nocturne).
 
     Composed at 800x480 and NEAREST-downsampled otherwise (the ``metro``
     convention): the geometry is absolute, and interpolation would average the
     strokework into blues the panel cannot print.
     """
-    del time_str  # see the section comment; deliberately unused.
+    del time_str  # see docs/themes.md § nocturne; deliberately unused.
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     _nocturne_paint_night(image)
     _nocturne_paint_strokes(image)

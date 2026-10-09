@@ -1,6 +1,7 @@
-"""The ``observation`` theme's frame and the code only it uses (issue #335).
+"""The ``observation`` theme's frame: S.A.M.'s camera feed over Saturn, after No
+Code's *Observation* (2019).
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § observation
 """
 
 from __future__ import annotations
@@ -26,43 +27,6 @@ from ..primitives import paint_neon_mask, position_noise, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
 
-# ---------------------------------------------------------------------------
-# observation — S.A.M.'s camera feed, after No Code's *Observation* (2019)
-# ---------------------------------------------------------------------------
-# The quote as seen by S.A.M., the AI of the Observation station orbiting
-# Saturn: one camera feed with the AI's interface laid over it.
-#
-# * **The feed.** Black space, a seeded star field, and Saturn — a banded
-#   disc shaded by a terminator, its blue-grey north polar cap carrying the
-#   hexagonal jet stream, and the rings cast as a tilted annulus that passes
-#   *behind* the planet on the far side and *in front* of it on the near side.
-#   Titan is a small tangerine disc. Faint blue sensor noise, and three
-#   tracking tears shear bands of the feed sideways.
-# * **The anomaly.** Nested glowing hexagons (white core, blue bloom) below
-#   the rings, boxed by a yellow tracking reticle.
-# * **The HUD.** Camera-frame corner brackets, the S.A.M. identifier, a red
-#   REC tally and the camera's designation across the top; an uplink meter
-#   and a station schematic along the foot, the current camera's module lit.
-# * **The quote is an audio log.** An opaque terminal panel on the left with
-#   an inverted header naming the author as the log's source, the quote set
-#   ragged-right in white Plex Mono, the matched phrase yellow with a
-#   tangerine halo, a playback waveform, and the title as the file name.
-#
-# **Saturn's shading** is a *single* ``BAYER_8x8`` read partitioned three
-# ways: the lowest ranks take black for the terminator and the rest split
-# between the band's two inks in its own ratio (``pride``'s rule — a second
-# read would drift the hue across the terminator instead of darkening it).
-#
-# **The time is the camera number, hour only** (``CAM 07`` reads as a feed);
-# the frame is pinned byte-identical across the minutes of an hour by
-# ``TestObservationFrame``. The hour also picks the lit schematic module.
-#
-# The log number and the waveform are seeded from ``_row_digest``, never the
-# clock.
-#
-# Composed at the canonical 800x480 and NEAREST-downsampled for other sizes
-# (``metro`` convention).
-# ---------------------------------------------------------------------------
 _OBSERVATION_PANEL = (26, 50, 436, 424)
 _OBSERVATION_HEADER_H = 24
 _OBSERVATION_QUOTE_RECT = (44, 92, 420, 346)

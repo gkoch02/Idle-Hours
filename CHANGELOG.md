@@ -13,6 +13,59 @@ these entries under the new dated version heading.
   their own font names and style bits instead of all claiming to be
   Playfair Display Regular, so software that registers fonts by name sees
   four distinct faces. Rendering is unchanged.
+- New theme `imprimatur`: the opening page of a 17th-century book from the
+  Fell press at Oxford, set in IM Fell English SC (newly bundled) with its
+  companion roman. A red-ruled page, a fleuron headpiece, a criblé woodcut
+  initial cut from the quote's first letter, the opening line in small
+  capitals and the time phrase rubricated in red small capitals.
+- A `systemctl restart` no longer cuts a panel refresh short. The sample
+  unit now stops only the loop (`KillMode=mixed`), which already waits for
+  an in-flight render, and the wait covers a whole render plus a whole
+  display push instead of a flat 30 seconds; `TimeoutStopSec` is set above
+  it. Restarts landing mid-push used to leave the panel half-refreshed and
+  log a display error. Existing installs need the two directives copied
+  into their unit and a `daemon-reload`.
+- Every render finishes about a quarter of a second sooner on a desktop,
+  and far more on a Pi: the final snap of the frame to the six panel inks
+  ran a Python loop over all 384,000 pixels and now runs in Pillow's C
+  routines. The output is byte-identical (checked against every one of the
+  16.7 million RGB colours, and the render fingerprint of every theme is
+  unchanged). The curator web server also stops within 50 ms of being asked
+  instead of half a second. Together they take about a third off the test
+  suite's wall time.
+
+## [3.1.0] - 2026-10-08
+
+- Three passages no longer open with a stray chapter number ("V When Archie
+  got back…", "X June 20th.—Eight o'clock…", "L She plunged into…"). The
+  cleaner already stripped a bare numeral of two or more letters; it now
+  also strips a lone V, X or L with no period when a capitalised sentence
+  follows. A lone I or C is still left alone, as the pronoun or a label.
+  The affected rows were re-cleaned in place and the corpus re-baked (#403).
+- `escritoire`'s letter now sits on its paper. The sheet was drawn with a
+  far edge rising to the right and sides leaning as if it were turned the
+  other way, so the writing fanned between them and seemed to climb off the
+  page. It is now a flat sheet turned slightly on the desk, seen straight on.
+- Retired twelve themes: `swiss`, `scholar`, `herbarium`, `blueprint`,
+  `illuminated`, `risograph`, `grimoire`, `glacier`, `mucha`, `vinyl`,
+  `grimdark` and `intaglio`. They are gone from the rotation, `--theme`,
+  the curator UI and the docs, and kept whole under `retired/` (module,
+  registration, design notes, goldens, preview and tests per theme, plus the
+  five font families only they used) with steps to restore one. The other
+  themes render byte-for-byte as before. An appliance whose config names a
+  retired theme logs a warning and falls back to the default, and a saved
+  button-B choice of one is ignored; set a new theme to clear the warning.
+- `daguerreotype` and `autochrome` have new compositions, so the three
+  photographic themes no longer look alike. `daguerreotype` is now a case
+  lying open: the plate sits in a portrait oval behind the brass mat, and
+  the quote is stamped in gold on the lid's red velvet. `autochrome` is now
+  a lantern slide: the plate sits in a wide window in a black mask, with the
+  caption lettered beneath in white, the matched phrase in yellow. `photo`
+  keeps its floating card and is now the only one with a card. Both themes
+  move to the 0.7 saturation tier for their darker grounds.
+- `photo` has its own default picture: a coast with a lighthouse, shown
+  when no `--photo-path` is set or the configured picture can't be read.
+  It used to borrow `autochrome`'s garden, so the two showed the same image.
 - New `splitflap` theme: a split-flap message board on a wall, in the manner
   of a Vestaboard. The quote is set in capitals on a fixed grid of flap
   tiles, each split by its hinge, with the matched phrase on yellow colour

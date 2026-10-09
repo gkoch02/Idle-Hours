@@ -38,16 +38,11 @@ def baked_rows() -> list[dict]:
 
 
 class TestBakedDbSchemaAlignment:
-    def test_baker_and_picker_schema_constants_agree(self):
-        # Drift between the two module-level constants is how pick-equivalence
-        # silently breaks. The baked DB is stamped by the baker's constant and
-        # read against the picker's — any mismatch means a fresh bake would
-        # fall back to raw-corpus mode on first load.
-        assert (
-            bake_quote_database.BAKED_SCORE_SCHEMA_VERSION
-            == pick_quote.BAKED_SCORE_SCHEMA_VERSION
-        )
-        assert bake_quote_database.BAKED_SCORE_COMPONENTS == pick_quote.BAKED_SCORE_COMPONENTS
+    def test_baker_reads_the_picker_constants(self):
+        # The baker stamps with the picker's own objects rather than a copy
+        # (issue #394), so the two cannot drift.
+        assert bake_quote_database.BAKED_SCORE_SCHEMA_VERSION is pick_quote.BAKED_SCORE_SCHEMA_VERSION
+        assert bake_quote_database.BAKED_SCORE_COMPONENTS is pick_quote.BAKED_SCORE_COMPONENTS
 
     def test_committed_db_schema_version_matches_picker(self, baked_rows):
         expected = pick_quote.BAKED_SCORE_SCHEMA_VERSION

@@ -52,8 +52,8 @@ class BorderSpec:
     a pad is painted the same way both times.
 
     ``knockout`` replaces ``paint`` for the knockout pass, for a theme that
-    needs more than one call there (blueprint repaints its grid inside the
-    rect).
+    needs more than one call there (say, repainting a ground pattern inside
+    the rect). No live theme sets it today.
 
     ``debug_label_inset`` pushes the debug-mode "DEBUG MODE" banner inward,
     measured from the right canvas edge, for a border that paints a graphic

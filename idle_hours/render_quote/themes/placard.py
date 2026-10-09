@@ -1,6 +1,7 @@
-"""The ``placard`` theme's border painter and the code only it uses (issue #335).
+"""The ``placard`` theme's border painter, a hand-painted shop sign: a weathered doubled
+frame, coral thumbtacks, dividers and hanging price tags.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § placard
 """
 
 from __future__ import annotations

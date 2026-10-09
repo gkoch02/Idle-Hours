@@ -1,4 +1,4 @@
-"""The ``photo`` theme's frame and the code only it uses (issue #335).
+"""The ``photo`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -22,44 +22,27 @@ from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import (
     SPECTRA6,
     SPECTRA6_PALETTE,
+    BAYER_8x8,
     _load_dithered_plate,
     dither_image_to_palette,
     gray_pixel_access,
+    pixel_access,
     snap_image_to_palette,
 )
+from ..primitives import _flow_stroke_hash
 from ..spec import FrameSpec
-from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_garden_fallback
 
 # ---------------------------------------------------------------------------
-# photo — the operator's own picture
-#
-# ``autochrome``'s machinery pointed at a file the operator chooses — the only
-# theme whose art is not committed. Full design notes: docs/themes.md
-# (``photo``).
-#
-# **The path arrives through the environment, not argv**
-# (``IDLE_HOURS_PHOTO_PATH``): an operator's own ``--render-script`` would
-# reject an unknown flag and send the appliance into render backoff (see
-# ``run_clock._corpus_render_args``). ``run_clock.main`` exports it into its
-# own environment, so render children inherit it and in-process callers
-# (``/api/preview``, ``contact_sheet``) read the same value.
-#
-# **An arbitrary photograph does not dither well**: a saturated source
-# quantises to chunky colour bars. ``_photo_condition`` pulls saturation and
-# contrast into the band that survives, adaptively — factors computed from the
-# source and clamped so they only ever reduce, leaving a gentle photo alone.
-# A dark photograph is lifted by gamma, part way, so it keeps its blacks.
-#
-# **The card cannot sit in a fixed place**, because that place might be the
-# face. ``_photo_card_rect`` scores candidate positions by the detail and
-# salience each would cover, measured on the conditioned image before
-# dithering, and takes the cheapest.
-#
-# Everything else is defensive. The source is a file or a directory (rotated
-# with the quote via ``_row_digest``), and every operator failure mode — a
-# missing path, a misnamed file, CMYK, EXIF rotation, a decompression bomb, an
-# empty directory — degrades to the bundled ``autochrome`` plate with a
-# latched warning rather than raising into the per-tick render path.
+# photo — the operator's own picture (``IDLE_HOURS_PHOTO_PATH``), conditioned,
+# dithered to six inks and captioned on a card placed where it covers least.
+# Every failure degrades to the bundled plate. Design notes: docs/themes.md § photo.
+
+# The picture shown when nothing is configured or the configured source
+# cannot be read: a coast with a lighthouse (scripts/generate_photo_plate.py).
+# It is deliberately not ``autochrome``'s garden, which this theme borrowed
+# until the two read as one theme in the rotation. Dithered against all six
+# inks, like an operator's photograph.
+PHOTO_PLATE = BASE_DIR / "assets" / "photo_coast.png"
 
 # Extensions attempted from a directory listing: an allowlist, because probing
 # every file with Image.open is slow and a wider attack surface.
@@ -236,26 +219,11 @@ def _photo_cap_chroma(image: Image.Image) -> Image.Image:
 def _photo_condition(image: Image.Image) -> Image.Image:
     """Pull an arbitrary photograph into the band that dithers to grain.
 
-    **The brightness target is decided from the source, before anything moves
-    it.** A bright photograph is pulled down to ``_PHOTO_TARGET_MEAN`` (the
-    autochrome reference); a dark one is lifted only to
-    ``_PHOTO_LIFT_TARGET``; anything between keeps its own mean. Deciding
-    after the chroma correction would misread a saturated photo as dark,
-    because blending toward grey lowers the lightest channel of a saturated
-    pixel.
-
-    **Chroma, then lift, then levels.** The lift is a gamma curve so the black
-    point stays put, but gamma widens the channel spread in the shadows, so
-    chroma is re-capped after each lift; the re-cap costs a little luminance
-    back, hence the short loop. Levels runs last and is stable:
-    ``v * scale + offset`` with ``scale <= 1`` leaves ``max - min`` unchanged
-    or lower, so chroma never rises back above target. It never adds a
-    positive offset, because that raises the black point and turns a dark
-    scene to fog: when compressing contrast would need one, it scales toward
-    black and restores the mean with the gamma lift instead.
-
-    Chroma and contrast are clamped to only reduce, so a photograph already in
-    the band comes through untouched.
+    The brightness target is decided from the source before anything moves it
+    (the chroma correction makes a saturated photo measure dark). Order is
+    chroma, then lift, then levels; levels never adds a positive offset, which
+    would raise the black point. Chroma and contrast only ever reduce. Design
+    notes: ``docs/themes.md`` § photo.
     """
     _, source_mean, _ = _photo_measure(image)
     if source_mean > _PHOTO_TARGET_MEAN + _PHOTO_MEAN_TOLERANCE:
@@ -370,7 +338,7 @@ def _photo_frame_for(quote_row: dict, width: int, height: int) -> tuple[Image.Im
     smooth regions into high-edge-energy stipple, inverting the score so the
     card lands on the part of the picture worth keeping.
 
-    Falls back to the bundled ``autochrome`` garden when nothing is configured
+    Falls back to the bundled coast plate (``PHOTO_PLATE``) when nothing is configured
     or the source cannot be read, so the theme always renders and, with the
     environment variable unset, is byte-deterministic (it has a golden
     fixture).
@@ -401,20 +369,49 @@ def _photo_frame_for(quote_row: dict, width: int, height: int) -> tuple[Image.Im
 
 
 def _photo_fallback_frame(width: int, height: int) -> tuple[Image.Image, tuple[int, int, int, int]]:
-    """The bundled ``autochrome`` garden, measured for card placement the same
-    way an operator's photograph is - off the continuous-tone source, not the
+    """The bundled coast plate, measured for card placement the same way an
+    operator's photograph is - off the continuous-tone source, not the
     dithered plate."""
-    plate = _load_dithered_plate(AUTOCHROME_PLATE, width, height, palette=_AUTOCHROME_PALETTE)
+    plate = _load_dithered_plate(PHOTO_PLATE, width, height, palette=SPECTRA6_PALETTE)
     try:
-        with Image.open(AUTOCHROME_PLATE) as raw:
+        with Image.open(PHOTO_PLATE) as raw:
             source = raw.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
     except (OSError, ValueError):
         source = None
     if plate is None:
         plate = Image.new("RGB", (width, height), SPECTRA6["white"])
-        _autochrome_paint_garden_fallback(plate)
+        _photo_paint_coast_fallback(plate)
     rect = _photo_card_rect(source if source is not None else plate, width, height)
     return plate, rect
+
+
+def _photo_paint_coast_fallback(image: Image.Image) -> None:
+    """A stripped install still gets a coast-shaped colour picture: sky
+    paling to the horizon, a blue sea, a white surf line and yellow sand, as
+    ``BAYER_8x8`` density ramps, with a dark headland on the left so the card
+    still has a quiet side to find."""
+    px = pixel_access(image)
+    width, height = image.size
+    white, black, blue, green, yellow = (
+        SPECTRA6[c] for c in ("white", "black", "blue", "green", "yellow"))
+    horizon, shore = int(height * 0.47), int(height * 0.70)
+    for y in range(height):
+        row = BAYER_8x8[y % 8]
+        for x in range(width):
+            if y < horizon:
+                density, ink, ground = 0.40 * (1.0 - y / horizon) ** 0.8, blue, white
+            elif y < shore - 3:
+                density, ink, ground = 0.38 + 0.20 * (shore - y) / (shore - horizon), blue, white
+                if _flow_stroke_hash(x // 6, y, 5) < 0.06:
+                    ink = white
+            elif y < shore + 3:
+                density, ink, ground = 0.0, black, white
+            else:
+                density, ink, ground = 0.42, yellow, white
+            cliff = horizon - (height * 0.16) * max(0.0, 1.0 - (x / (width * 0.40)) ** 2.2)
+            if x < width * 0.42 and cliff <= y < shore:
+                density, ink, ground = 0.55, black, green
+            px[x, y] = ink if row[x % 8] < 64 * density else ground
 
 
 def _photo_cost_map(image: Image.Image, cols: int = 20, rows: int = 12) -> list[list[float]]:
@@ -470,9 +467,8 @@ def _photo_card_rect(image: Image.Image, width: int, height: int) -> tuple[int, 
 
 def _photo_paint_card(image: Image.Image, draw: ImageDraw.ImageDraw,
                       rect: tuple[int, int, int, int], quote_row: dict) -> None:
-    """The caption card: the shared cream mount, keylined heavier than
-    ``daguerreotype``'s because an arbitrary photograph may be pale right up
-    against the card's edge, where a controlled plate never is."""
+    """The caption card: the shared cream mount, keylined at 2 px because an
+    arbitrary photograph may be pale right up against the card's edge."""
     x0, y0, x1, y1 = rect
     black, red = SPECTRA6["black"], SPECTRA6["red"]
     paint_mount_card(image, draw, rect, ledge=3, outline_width=2)

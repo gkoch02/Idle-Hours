@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
     from PIL._imaging import PixelAccess
@@ -97,6 +97,15 @@ BAYER_8x8: tuple[tuple[int, ...], ...] = tuple(
 
 
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
+    """Replace every pixel with the nearest colour in ``palette``.
+
+    Nearest is squared RGB distance; a tie goes to the colour that comes first
+    in ``palette``. The six-ink panel palette takes the C-speed path below,
+    which is byte-identical to the per-pixel loop (``TestSnapFastPath`` checks
+    every one of the 16.7M RGB colours); any other palette takes the loop.
+    """
+    if palette == SPECTRA6_PALETTE and image.mode in ("RGB", "RGBA"):
+        return _snap_to_spectra6(image)
     snapped = Image.new("RGB", image.size)
     src = rgb_pixel_access(image)
     dst = pixel_access(snapped)
@@ -115,6 +124,66 @@ def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]
                 cache[pixel] = nearest
             dst[x, y] = nearest
     return snapped
+
+
+# Per-channel lookup tables for the Spectra 6 fast path: the channel's nearer
+# extreme, and the two ``L`` masks that ``ImageChops.add`` / ``subtract``
+# clipping turns into exact comparisons (see ``_snap_to_spectra6``).
+_LUT_NEARER_EXTREME = bytes(255 if v >= 128 else 0 for v in range(256))
+_LUT_IS_255 = bytes(255 if v == 255 else 0 for v in range(256))
+_LUT_IS_0 = bytes(255 if v == 0 else 0 for v in range(256))
+
+
+def _snap_to_spectra6(image: Image.Image) -> Image.Image:
+    """``snap_image_to_palette`` for ``SPECTRA6_PALETTE`` in Pillow's C ops.
+
+    The six inks are the corners of the RGB cube minus cyan ``(0, 255, 255)``
+    and magenta ``(255, 0, 255)``. Rounding each channel to its nearer extreme
+    gives the nearest of all eight corners, which is the answer whenever that
+    corner is an ink. A pixel whose nearest corner is cyan is nearest to one of
+    white, blue or green, and expanding the squared distances gives the choice
+    as sums and differences of channels:
+
+    * white beats green iff ``r + b >= 255``, white beats blue iff ``r + g >= 255``
+    * blue beats green iff ``g <= b``
+
+    with ``>=`` / ``<=`` because a tie goes to the earlier palette entry (white,
+    then blue, then green). Magenta is the mirror image: white beats red iff
+    ``g + b >= 255``, white beats blue iff ``r + g >= 255``, red beats blue iff
+    ``b <= r``. ``ImageChops.add`` clips at 255, so a clipped sum of exactly 255
+    means ``a + b >= 255``; ``subtract`` clips at 0, so a clipped difference of
+    0 means ``a <= b``. Pillow's own ``quantize(dither=NONE)`` is *not* exact
+    here: its palette cache rounds colours to 4-wide boxes and mis-sorts the
+    near-cyan and near-magenta pixels that antialiased blue-on-green edges
+    produce.
+    """
+    r, g, b = image.convert("RGB").split()
+    big_r, big_g, big_b = (band.point(_LUT_NEARER_EXTREME) for band in (r, g, b))
+    small_r, small_g, small_b = (ImageChops.invert(band) for band in (big_r, big_g, big_b))
+    out = Image.merge("RGB", (big_r, big_g, big_b))
+
+    def sum_at_least_255(a: Image.Image, c: Image.Image) -> Image.Image:
+        return ImageChops.add(a, c).point(_LUT_IS_255)
+
+    def at_most(a: Image.Image, c: Image.Image) -> Image.Image:
+        return ImageChops.subtract(a, c).point(_LUT_IS_0)
+
+    def both(a: Image.Image, c: Image.Image) -> Image.Image:
+        return ImageChops.multiply(a, c)
+
+    white_beats_blue = sum_at_least_255(r, g)
+    # Nearest corner is cyan: green unless blue is nearer, unless white is.
+    cyan = both(both(small_r, big_g), big_b)
+    out.paste(SPECTRA6["green"], mask=cyan)
+    out.paste(SPECTRA6["blue"], mask=both(cyan, at_most(g, b)))
+    out.paste(SPECTRA6["white"], mask=both(cyan, both(sum_at_least_255(r, b), white_beats_blue)))
+    # Nearest corner is magenta: blue unless red is nearer, unless white is.
+    magenta = both(both(big_r, small_g), big_b)
+    out.paste(SPECTRA6["blue"], mask=magenta)
+    out.paste(SPECTRA6["red"], mask=both(magenta, at_most(b, r)))
+    out.paste(SPECTRA6["white"], mask=both(magenta, both(sum_at_least_255(g, b), white_beats_blue)))
+    return out
+
 
 # ---------------------------------------------------------------------------
 # Render-time image dithering to the Spectra-6 palette.
@@ -232,19 +301,34 @@ def dither_image_to_palette(
 
 
 def _load_dithered_plate(path: Path, width: int, height: int, method: str = "floyd-steinberg",
-                         palette: list[tuple[int, int, int]] | None = None) -> Image.Image | None:
+                         palette: list[tuple[int, int, int]] | None = None,
+                         focus: tuple[float, float] | None = None) -> Image.Image | None:
     """Open a committed plate PNG, resize it, and dither it to ``palette``
     (default the full Spectra-6 set), memoised. Returns ``None`` if the asset
     is missing or unreadable, so a stripped install degrades to a plain
-    ground."""
+    ground.
+
+    With ``focus`` (x, y fractions, 0..1) the plate is scaled to *cover* the
+    box and the overflow cropped about that point, for a window whose aspect
+    differs from the plate's; without it the plate is stretched to fit.
+    """
     pal = palette if palette is not None else SPECTRA6_PALETTE
-    key = (str(path), width, height, method, tuple(pal))
+    key = (str(path), width, height, method, tuple(pal), focus)
     cached = _DITHER_CACHE.get(key)
     if cached is not None:
         return cached
     try:
         with Image.open(path) as raw:
-            resized = raw.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
+            rgb = raw.convert("RGB")
+            if focus is None:
+                resized = rgb.resize((width, height), Image.Resampling.LANCZOS)
+            else:
+                scale = max(width / rgb.width, height / rgb.height)
+                sw, sh = max(width, round(rgb.width * scale)), max(height, round(rgb.height * scale))
+                left = round((sw - width) * min(1.0, max(0.0, focus[0])))
+                top = round((sh - height) * min(1.0, max(0.0, focus[1])))
+                resized = rgb.resize((sw, sh), Image.Resampling.LANCZOS).crop(
+                    (left, top, left + width, top + height))
     except (OSError, ValueError):
         return None
     dithered = dither_image_to_palette(resized, pal, method=method)

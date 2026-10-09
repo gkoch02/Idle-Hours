@@ -1,6 +1,7 @@
-"""The ``furies`` theme's frame and the code only it uses (issue #335).
+"""The ``furies`` theme's frame: Francis Bacon's *Three Studies for Figures at the
+Base of a Crucifixion* (1944) under glass in gilt, with the quote as wall text.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § furies
 """
 
 from __future__ import annotations
@@ -33,54 +34,6 @@ from ..primitives import (
 )
 from ..spec import FrameSpec
 
-# ---------------------------------------------------------------------------
-# furies — Francis Bacon, *Three Studies for Figures at the Base of a
-# Crucifixion* (1944)
-# ---------------------------------------------------------------------------
-# The triptych hung under glass in gilt frames on a dark gallery wall, with
-# the quote beneath it as wall text:
-#
-# * **Left.** A hunched, draped figure on a table, its head bowed under a
-#   hanging mass of dark hair.
-# * **Centre.** A long-necked figure on a pedestal, eyes bound by a white
-#   bandage, the lower face opened into a mouth of teeth.
-# * **Right.** A body on stalk legs rooted in a tuft of grass, its neck
-#   stretched horizontal to end in a screaming mouth.
-#
-# All three stand on flat cadmium orange with a few thin perspective lines.
-#
-# **The painting is built in memory as separate paint layers** (ground, lines,
-# flesh, pedestal, grass), each with its own soft alpha, then:
-#
-# 1. **Dragged.** ``_furies_drag`` pulls each figure along a vector in fading,
-#    striated steps (noise held constant *along* the drag, like bristles), so
-#    the trail reads as a smear, not a motion blur; the core is carried at
-#    partial strength so the form itself is smeared.
-# 2. **Separated per layer against its own inks** (Floyd–Steinberg): ground
-#    red/yellow, flesh white/black/red, grass green/yellow/black. One pass over
-#    the flattened image would scatter green into grey flesh and white into
-#    the orange.
-# 3. **Composited through a dithered alpha** (``BAYER_8x8`` threshold, not a
-#    50% cut), so smeared edges interpenetrate instead of reading as stickers.
-#
-# Flesh is modelled under an upper-left light (``_shade_silhouette``) and given
-# brush marks before the drag so they smear with it. Mouths and the bandage are
-# painted *after* the drag — the focal points stay sharp.
-#
-# Each panel sits in a bevelled gilt moulding, and one diagonal window
-# reflection crosses all three panes as a sparse white stipple.
-#
-# **The matched phrase is the scream**: wall text in white Libre Franklin, the
-# phrase in yellow-major orange (``_FURIES_PHRASE_RED_RANKS``) with a red smear
-# dragged off it. The trail is written only onto the black wall, so it never
-# cuts a prose glyph.
-#
-# ``time_str`` is ``del``-asserted (a painting carries no clock). The triptych
-# is quote-independent and deterministic, so it is composed once and cached.
-#
-# Composed at the canonical 800x480 and NEAREST-downsampled for other sizes
-# (``metro`` convention).
-# ---------------------------------------------------------------------------
 _FURIES_PANEL_W, _FURIES_PANEL_H = 212, 268
 _FURIES_PANEL_Y = 24
 _FURIES_PANEL_XS = (60, 294, 528)

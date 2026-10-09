@@ -1,48 +1,23 @@
 #!/usr/bin/env python3
 """Bake the runtime quote database from the attributed corpus.
 
-Final pipeline stage. Reads ``assets/candidates-attributed.jsonl`` (the output
-of ``apply_content_overrides.py``) and produces ``assets/quote_database.jsonl``:
-a *display-ready* corpus with scoring pre-computed.
+Final pipeline stage: reads ``assets/candidates-attributed.jsonl`` (after
+``apply_content_overrides``) and writes ``assets/quote_database.jsonl``
+atomically, dropping the rows the picker would filter anyway and caching
+each kept row's ten row-intrinsic score components (``baked_score``), its
+``inferred_quote_minute`` and a curator-facing ``baked_rank``. The picker
+then recomputes only the two request-time components. Selection overrides
+stay runtime concerns and are never baked.
 
-At runtime the picker no longer has to filter quality / drop daypart-only rows
-/ compute the nine row-intrinsic score components on every tick. Instead it
-reads this file and only recomputes the two request-time components
-(``minute_penalty``, ``override_bonus``); the remaining ten components live in
-``baked_score`` on each row.
-
-Baking drops rows that the runtime picker would have filtered anyway:
-
-* missing / empty ``fuzzy_bucket`` — daypart-only harvests that never match an
-  ``h{1..12}_{state}`` bucket, so ``pick_best`` can never surface them;
-* missing / empty ``display_quote`` — same filter ``pick_best`` applies today;
-* ``quality_score < --min-quality`` — same gate the picker applies on every
-  tick, paid once at bake time instead of per-render.
-
-Each kept row gets:
-
-* ``baked_score``: list of the ten row-intrinsic score components in the same
-  order the runtime picker expects when it interleaves the request-time
-  components back in (see ``pick_quote.compose_baked_score_key``);
-* ``inferred_quote_minute``: what minute this row *claims* (for the runtime
-  ``minute_penalty``) — cached once so the picker skips regex work per tick;
-* ``baked_rank``: 0-based ordinal within the row's bucket after sorting by
-  ``baked_score`` ascending. Purely for curator-UI readability; the runtime
-  picker sorts again once the request-time components are known.
-
-The baker never applies ``selection_overrides.json`` (bans / boosts /
-preferred buckets) — those are edited live via the web UI and stay runtime
-concerns. ``content_overrides.json`` is already applied by
-``apply_content_overrides.py`` immediately upstream.
+What is dropped, the field contract and the pick-equivalence guarantee:
+docs/pipeline.md ("Baked Quote Database").
 
 Example:
 
-    python3 bake_quote_database.py \\
-        assets/candidates-attributed.jsonl \\
-        --output assets/quote_database.jsonl \\
+    python3 bake_quote_database.py \
+        assets/candidates-attributed.jsonl \
+        --output assets/quote_database.jsonl \
         --min-quality 60
-
-Writes atomically via ``atomic_io.atomic_write_lines``.
 """
 from __future__ import annotations
 
@@ -66,32 +41,12 @@ BASE_DIR = Path(__file__).resolve().parent
 # baked in; minute/override are deferred to the runtime picker.
 _STATIC_SCORE_INDICES: tuple[int, ...] = (0, 1, 3, 4, 5, 6, 8, 9, 10, 11)
 
-# Schema version stamped on every baked row. Bump whenever
-# ``BAKED_SCORE_COMPONENTS`` changes (order, length, or semantics) so the
-# runtime picker can detect a mismatch between a freshly ``git pull``-ed
-# ``pick_quote.py`` and a stale ``assets/quote_database.jsonl`` that was baked
-# under an older schema, instead of silently scoring against a mis-aligned
-# tuple. The runtime picker in :mod:`pick_quote` compares against
-# ``pick_quote.BAKED_SCORE_SCHEMA_VERSION``; when they disagree it warns and
-# falls back to the raw corpus.
-BAKED_SCORE_SCHEMA_VERSION: int = 1
-
-# Human-readable labels for the baked_score tuple, in the order they appear.
-# The runtime picker uses this same order when it reconstructs the full 12-
-# component sort key; changing it breaks pick equivalence, so keep it in sync
-# with ``pick_quote.compose_baked_score_key``.
-BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
-    "fragment_penalty",
-    "cleanup_penalty",
-    "metadata_bonus",
-    "dialogue_penalty",
-    "opening_penalty",
-    "source_bonus",
-    "quality_component",
-    "length_exactness",
-    "source_rarity_penalty",
-    "length_tiebreak",
-)
+# The baked_score layout and its schema version are defined once, in
+# :mod:`pick_quote`, which reads them back at runtime; bound here for the
+# baker's own use and its callers. Bump ``pick_quote.BAKED_SCORE_SCHEMA_VERSION``
+# whenever ``BAKED_SCORE_COMPONENTS`` changes (order, length, or semantics).
+BAKED_SCORE_SCHEMA_VERSION: int = pick_quote.BAKED_SCORE_SCHEMA_VERSION
+BAKED_SCORE_COMPONENTS: tuple[str, ...] = pick_quote.BAKED_SCORE_COMPONENTS
 
 
 def parse_args() -> argparse.Namespace:

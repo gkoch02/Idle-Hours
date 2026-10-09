@@ -22,6 +22,7 @@ from idle_hours import (
     runtime_telemetry,
     runtime_theme,
 )
+from tests.conftest import make_args
 
 
 class TestCurrentBucket:
@@ -218,15 +219,6 @@ class TestPressLogger:
     operator uses to tell "the button never fired" from "the handler broke".
     """
 
-    def _button_args(self):
-        return argparse.Namespace(
-            buttons_off=False,
-            render_script="r", output="o", width=800, height=480,
-            display_script=None, mode="debug", theme="default",
-            history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="", shutdown_command="",
-        )
-
     def _capture_press_logger(self, monkeypatch):
         captured = {}
 
@@ -236,7 +228,7 @@ class TestPressLogger:
 
         from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", fake_start)
-        run_clock._maybe_start_buttons(self._button_args(), run_clock.RuntimeState("default"))
+        run_clock._maybe_start_buttons(make_args(buttons_off=False), run_clock.RuntimeState("default"))
         return captured.get("press_logger")
 
     def test_a_press_logger_is_wired_into_the_listener(self, monkeypatch):
@@ -951,16 +943,16 @@ class TestAutoTheme:
         assert runtime_theme.auto_theme_for("06:00") == "default"
 
     def test_auto_theme_honours_day_theme_override(self):
-        assert runtime_theme.auto_theme_for("10:00", day_theme="scholar", night_theme="nightvision") == "scholar"
+        assert runtime_theme.auto_theme_for("10:00", day_theme="roman", night_theme="nightvision") == "roman"
 
     def test_auto_theme_honours_night_theme_override(self):
-        assert runtime_theme.auto_theme_for("22:00", day_theme="scholar", night_theme="nightvision") == "nightvision"
+        assert runtime_theme.auto_theme_for("22:00", day_theme="roman", night_theme="nightvision") == "nightvision"
 
     def test_auto_theme_boundary_dusk_uses_night_override(self):
-        assert runtime_theme.auto_theme_for("18:00", day_theme="scholar", night_theme="nightvision") == "nightvision"
+        assert runtime_theme.auto_theme_for("18:00", day_theme="roman", night_theme="nightvision") == "nightvision"
 
     def test_auto_theme_boundary_dawn_uses_day_override(self):
-        assert runtime_theme.auto_theme_for("06:00", day_theme="scholar", night_theme="nightvision") == "scholar"
+        assert runtime_theme.auto_theme_for("06:00", day_theme="roman", night_theme="nightvision") == "roman"
 
 
 class TestResolveEffectiveTheme:
@@ -985,12 +977,12 @@ class TestResolveEffectiveTheme:
     def test_invalid_manual_override_ignored(self):
         assert runtime_theme.resolve_effective_theme("auto", "21:00", "garbage") == "dark"
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    @pytest.mark.parametrize("theme", ["roman", "newsprint", "nightvision"])
     def test_new_manual_themes_accepted_over_auto(self, theme):
         """Every theme registered in ``render_quote.THEMES`` must be honoured
         as a manual override, not silently stripped back to ``theme_arg``.
         Before the widening this was hardcoded to ('default', 'dark'), so a
-        manual flip to ``scholar`` would fall through to ``auto_theme_for``
+        manual flip to ``roman`` would fall through to ``auto_theme_for``
         and revert on every tick — exactly the symptom that surfaced in
         ``TestActionThemeCycle`` before ``resolve_effective_theme`` was
         fixed. Pinning every new theme here catches the regression before
@@ -998,23 +990,23 @@ class TestResolveEffectiveTheme:
         assert runtime_theme.resolve_effective_theme("auto", "21:00", theme) == theme
         assert runtime_theme.resolve_effective_theme("auto", "10:00", theme) == theme
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    @pytest.mark.parametrize("theme", ["roman", "newsprint", "nightvision"])
     def test_new_manual_themes_accepted_over_explicit_theme_arg(self, theme):
         """Same widening, but when ``--theme`` was explicit (not ``auto``)
         — the manual override must still win. A user running
-        ``--theme default`` who presses B until they reach ``scholar``
+        ``--theme default`` who presses B until they reach ``roman``
         would otherwise revert to ``default`` on every render."""
         assert runtime_theme.resolve_effective_theme("default", "10:00", theme) == theme
         assert runtime_theme.resolve_effective_theme("dark", "21:00", theme) == theme
 
     def test_auto_with_day_theme_kwarg_resolves_to_day_choice(self):
         assert runtime_theme.resolve_effective_theme(
-            "auto", "10:00", None, auto_day_theme="scholar", auto_night_theme="nightvision",
-        ) == "scholar"
+            "auto", "10:00", None, auto_day_theme="roman", auto_night_theme="nightvision",
+        ) == "roman"
 
     def test_auto_with_night_theme_kwarg_resolves_to_night_choice(self):
         assert runtime_theme.resolve_effective_theme(
-            "auto", "22:00", None, auto_day_theme="scholar", auto_night_theme="nightvision",
+            "auto", "22:00", None, auto_day_theme="roman", auto_night_theme="nightvision",
         ) == "nightvision"
 
     def test_manual_override_wins_over_new_auto_kwargs(self):
@@ -1023,34 +1015,32 @@ class TestResolveEffectiveTheme:
         who manually flipped to ``comic`` would revert to nightvision at the
         next 18:00 boundary."""
         assert runtime_theme.resolve_effective_theme(
-            "auto", "10:00", "comic", auto_day_theme="scholar", auto_night_theme="nightvision",
+            "auto", "10:00", "comic", auto_day_theme="roman", auto_night_theme="nightvision",
         ) == "comic"
         assert runtime_theme.resolve_effective_theme(
-            "auto", "22:00", "comic", auto_day_theme="scholar", auto_night_theme="nightvision",
+            "auto", "22:00", "comic", auto_day_theme="roman", auto_night_theme="nightvision",
         ) == "comic"
 
     def test_explicit_theme_arg_ignores_auto_kwargs(self):
-        """``--theme scholar`` is a hard pin, not a wall-clock-derived value;
+        """``--theme roman`` is a hard pin, not a wall-clock-derived value;
         the new auto kwargs must not affect explicit theme args."""
         assert runtime_theme.resolve_effective_theme(
-            "scholar", "22:00", None, auto_day_theme="default", auto_night_theme="dark",
-        ) == "scholar"
+            "roman", "22:00", None, auto_day_theme="default", auto_night_theme="dark",
+        ) == "roman"
 
 
 class TestAutoThemeKwargsHelper:
-    """``_auto_theme_kwargs`` reads the day/night picks off an argparse
-    Namespace. ``getattr`` defaults preserve the legacy contract for ad-hoc
-    Namespaces (typically test fixtures) that predate these flags."""
+    """``_auto_theme_kwargs`` reads the day/night picks off an argparse Namespace."""
 
     def test_reads_attrs_when_present(self):
-        ns = argparse.Namespace(auto_day_theme="scholar", auto_night_theme="nightvision")
+        ns = make_args(auto_day_theme="roman", auto_night_theme="nightvision")
         assert runtime_theme._auto_theme_kwargs(ns) == {
-            "auto_day_theme": "scholar",
+            "auto_day_theme": "roman",
             "auto_night_theme": "nightvision",
         }
 
-    def test_falls_back_to_legacy_defaults_when_absent(self):
-        ns = argparse.Namespace()
+    def test_parser_defaults_are_the_legacy_pair(self):
+        ns = make_args()
         assert runtime_theme._auto_theme_kwargs(ns) == {
             "auto_day_theme": "default",
             "auto_night_theme": "dark",
@@ -1228,7 +1218,7 @@ class TestRuntimeStatePersistence:
         through ``RuntimeState(persisted=...)``. Previously the validator
         hardcoded the pair ('default', 'dark'), which silently dropped any
         persisted theme that was added later — a user who hit button B to
-        land on ``scholar`` would boot tomorrow with ``manual_theme=None``."""
+        land on ``roman`` would boot tomorrow with ``manual_theme=None``."""
         from idle_hours import render_quote as rq
         for name in rq.THEMES:
             s = run_clock.RuntimeState("auto", persisted={"manual_theme": name, "manual_quiet": False})
@@ -1726,8 +1716,8 @@ class TestAutoThemeLoopIntegration:
     @pytest.mark.parametrize(
         "now,day_theme,night_theme,expected",
         [
-            ("10:00", "scholar", "nightvision", "scholar"),
-            ("22:00", "scholar", "nightvision", "nightvision"),
+            ("10:00", "roman", "nightvision", "roman"),
+            ("22:00", "roman", "nightvision", "nightvision"),
             ("06:00", "comic",   "bauhaus",     "comic"),
             ("18:00", "comic",   "bauhaus",     "bauhaus"),
         ],
@@ -1816,7 +1806,7 @@ class TestAutoThemeLoopIntegration:
 class TestMidnightThemeReset:
     def test_clears_manual_theme_at_day_boundary(self, tmp_path):
         state_path = tmp_path / "state.json"
-        args = argparse.Namespace(state_path=str(state_path))
+        args = make_args(tmp_path, state_path=str(state_path))
         state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
         # Pretend yesterday already happened.
         state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
@@ -1827,7 +1817,7 @@ class TestMidnightThemeReset:
         assert persisted["manual_theme"] is None
 
     def test_no_reset_when_theme_arg_is_explicit(self, tmp_path):
-        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("dark", persisted={"manual_theme": "default"})
         state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
         runtime_theme._maybe_reset_manual_theme_at_midnight(args, state)
@@ -1835,7 +1825,7 @@ class TestMidnightThemeReset:
         assert state.manual_theme == "default"
 
     def test_no_reset_within_same_day(self, tmp_path):
-        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
         state.last_seen_date = dt.date.today()
         runtime_theme._maybe_reset_manual_theme_at_midnight(args, state)
@@ -1850,7 +1840,7 @@ class TestMidnightThemeReset:
         replaced the hook.
         """
         state_path = tmp_path / "state.json"
-        args = argparse.Namespace(state_path=str(state_path))
+        args = make_args(tmp_path, state_path=str(state_path))
         state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
         state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
         calls = []
@@ -1878,27 +1868,8 @@ class TestMidnightThemeReset:
 class TestButtonHandlers:
     """Synchronous handler dispatch — verifies wiring without spinning the loop."""
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7,
-            telemetry_path="",
-            state_path=str(tmp_path / "state.json"),
-            quiet_image="",
-            shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def test_skip_handler_bans_current_quote_then_renders(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
@@ -1919,7 +1890,7 @@ class TestButtonHandlers:
         append must still happen, but the post-render append must be suppressed
         so the ledger doesn't carry a duplicate (which un-skip's single-entry
         removal would leave half-deleted, stranding the quote in the filter)."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-x", 9, "q", "mt")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-x", 9, "q", "mt")), \
@@ -1934,7 +1905,7 @@ class TestButtonHandlers:
         assert mock_append.call_args_list[0][0][1:] == ("src-x", 9)
 
     def test_toggle_theme_handler_flips_and_persists(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         with patch("idle_hours.runtime_render.render_now") as mock_render, \
@@ -1959,7 +1930,7 @@ class TestButtonHandlers:
         directly so re-ordering the rotation doesn't require touching
         this test."""
         from idle_hours import render_quote as rq
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "dark"
         expected_next = rq.THEME_ORDER[rq.THEME_ORDER.index("dark") + 1]
@@ -1976,7 +1947,7 @@ class TestButtonHandlers:
         ``THEME_ORDER`` so adding a theme to the tuple doesn't silently break
         the wrap test (it would still pass against the OLD last entry)."""
         from idle_hours import render_quote as rq
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = rq.THEME_ORDER[-1]
         with patch("idle_hours.runtime_render.render_now"), \
@@ -1992,7 +1963,7 @@ class TestButtonHandlers:
         a clock read at 03:03:00.001, then stamp that into state while the panel still
         shows the h3_exact frame, causing the next loop tick to wrongly skip the redraw.
         """
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.render_now"), \
              patch("idle_hours.runtime_render.current_bucket", side_effect=AssertionError("must not call current_bucket")), \
@@ -2001,7 +1972,7 @@ class TestButtonHandlers:
         assert state.last_bucket == "h3_exact"
 
     def test_source_card_handler_renders_in_card_mode(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         # Patch threading.Timer so the test doesn't leave a 5s timer running.
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
@@ -2024,7 +1995,7 @@ class TestButtonHandlers:
         """The restore callback at +5s must actually push a new render — relying on the
         next loop tick would leave the card up for up to --interval-seconds (60s default).
         """
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
              patch("idle_hours.runtime_render.render_now") as mock_render, \
@@ -2048,7 +2019,7 @@ class TestButtonHandlers:
         """If the restore render itself raises, the exception must be logged on stderr
         but not propagate out of the timer callback (that would silently kill the timer
         thread without any useful error message)."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
              patch("idle_hours.runtime_render.render_now", side_effect=[None, RuntimeError("restore boom")]), \
@@ -2066,7 +2037,7 @@ class TestButtonHandlers:
     # Issue #275: the card and its restore describe / put back the quote ON
     # THE PANEL. A peek is history-filtered and names the next-best row.
     def test_source_card_pins_the_displayed_quote_not_a_peek(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_bucket = "h10_exact"
         state.last_quote_id = ("shown", 7, "the quote on the panel", "ten o'clock")
@@ -2090,7 +2061,7 @@ class TestButtonHandlers:
         assert state.last_quote_id == ("shown", 7, "the quote on the panel", "ten o'clock")
 
     def test_source_card_falls_back_to_a_peek_when_nothing_is_displayed(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         assert state.last_quote_id is None
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")) as mock_peek, \
@@ -2109,7 +2080,7 @@ class TestButtonHandlers:
                  quiet_theme="inherit", auto_day_theme="default", auto_night_theme="dark")
 
     def test_source_card_is_refused_while_asleep(self, tmp_path):
-        args = self._args(tmp_path, **self.QUIET)
+        args = make_args(tmp_path, **self.QUIET)
         state = run_clock.RuntimeState("default")
         state.was_quiet = True
         state.last_bucket = "h9_fifty"
@@ -2123,7 +2094,7 @@ class TestButtonHandlers:
         mock_timer.assert_not_called()
 
     def test_source_card_works_after_a_mid_window_wake(self, tmp_path):
-        args = self._args(tmp_path, **self.QUIET)
+        args = make_args(tmp_path, **self.QUIET)
         state = run_clock.RuntimeState("default")
         state.manual_awake = True
         state.last_bucket = "h11_exact"
@@ -2136,7 +2107,7 @@ class TestButtonHandlers:
         assert mock_render.call_args[0][5] == "card"
 
     def test_restore_puts_back_the_sleep_frame_if_the_window_opened(self, tmp_path):
-        args = self._args(tmp_path, **self.QUIET)
+        args = make_args(tmp_path, **self.QUIET)
         state = run_clock.RuntimeState("default")
         state.last_bucket = "h10_five_to"
         state.last_quote_id = ("shown", 7, "q", "five to ten")
@@ -2155,7 +2126,7 @@ class TestButtonHandlers:
         assert state.was_quiet is True
 
     def test_restore_leaves_a_sleep_frame_the_loop_already_painted(self, tmp_path):
-        args = self._args(tmp_path, **self.QUIET)
+        args = make_args(tmp_path, **self.QUIET)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("shown", 7, "q", "five to ten")
         clock = {"t": "21:59"}
@@ -2173,7 +2144,7 @@ class TestButtonHandlers:
     def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")
-        args = self._args(tmp_path, quiet_image=str(quiet))
+        args = make_args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
         # action_quiet routes through runtime_quiet.render_quiet_frame, whose
@@ -2188,7 +2159,7 @@ class TestButtonHandlers:
         assert mock_display.called
 
     def test_quiet_toggle_handler_disable_triggers_wake_render(self, tmp_path):
-        args = self._args(tmp_path, quiet_image="")
+        args = make_args(tmp_path, quiet_image="")
         state = run_clock.RuntimeState("default")
         state.manual_quiet = True
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
@@ -2204,7 +2175,7 @@ class TestButtonHandlers:
         """Persist-before-display race: if the display push raises, manual_theme
         must NOT land in state.json. Swap/rollback semantics keep state.json in
         sync with what is actually on the panel."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         # state.json must not pre-exist — a pre-existing file would make "did we persist?"
@@ -2224,7 +2195,7 @@ class TestButtonHandlers:
         revert manual_quiet so the two signals stay in sync."""
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")
-        args = self._args(tmp_path, quiet_image=str(quiet))
+        args = make_args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
         assert not (tmp_path / "state.json").exists()
@@ -2238,7 +2209,7 @@ class TestButtonHandlers:
     def test_theme_toggle_persists_only_after_render_succeeds(self, tmp_path):
         """Happy path: persistence still happens — just AFTER the render succeeds,
         not before. The persisted file must exist and must match the flipped theme."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         with patch("idle_hours.runtime_render.render_now"), \
@@ -2254,7 +2225,7 @@ class TestButtonHandlers:
         roll back ``manual_theme``. The panel is already showing the new theme;
         reverting in-memory state would cause the next loop tick to counteract
         the user action."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         with patch("idle_hours.runtime_render.render_now"), \
@@ -2273,7 +2244,7 @@ class TestButtonHandlers:
         let the next main-loop tick immediately undo the user's toggle."""
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")
-        args = self._args(tmp_path, quiet_image=str(quiet))
+        args = make_args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
         with patch("idle_hours.runtime_quiet._display_quiet_image"), \
@@ -2287,20 +2258,14 @@ class TestButtonHandlers:
 
 class TestMaybeStartButtons:
     def test_buttons_off_returns_none(self, tmp_path):
-        args = argparse.Namespace(buttons_off=True)
+        args = make_args(tmp_path)
         assert run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default")) is None
 
     def test_import_failure_logs_and_returns_none(self, tmp_path, capsys, monkeypatch):
         # Force import of inky_buttons.start_listener to raise.
         from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no gpio")))
-        args = argparse.Namespace(
-            buttons_off=False,
-            render_script="r", output="o", width=800, height=480,
-            display_script=None, mode="debug", theme="default",
-            history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="", shutdown_command="",
-        )
+        args = make_args(tmp_path, buttons_off=False)
         result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
         assert result is None
         assert "button listener disabled" in capsys.readouterr().err
@@ -2315,13 +2280,7 @@ class TestMaybeStartButtons:
 
         from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", fake_start)
-        args = argparse.Namespace(
-            buttons_off=False,
-            render_script="r", output=str(tmp_path / "out.png"),
-            width=800, height=480, display_script=None, mode="debug",
-            theme="default", history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="", shutdown_command="",
-        )
+        args = make_args(tmp_path, buttons_off=False)
         result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
         assert result == ["stub"]
         assert set(captured["short"]) == {"A", "B", "C", "D"}
@@ -2332,13 +2291,7 @@ class TestMaybeStartButtons:
         """The liveness check relies on state.button_handles; make sure start wires it up."""
         from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: ["h1", "h2"])
-        args = argparse.Namespace(
-            buttons_off=False,
-            render_script="r", output=str(tmp_path / "out.png"),
-            width=800, height=480, display_script=None, mode="debug",
-            theme="default", history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="", shutdown_command="",
-        )
+        args = make_args(tmp_path, buttons_off=False)
         state = run_clock.RuntimeState("default")
         run_clock._maybe_start_buttons(args, state)
         assert state.button_handles == ["h1", "h2"]
@@ -2386,22 +2339,8 @@ class TestCheckButtonLiveness:
 class TestUnskipHandler:
     """Button A held 2s: remove the last-skipped ban from the ledger and re-render."""
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None,
-            mode="debug", theme="default",
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7, telemetry_path="",
-            state_path=str(tmp_path / "state.json"),
-            quiet_image="", shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def test_skip_records_last_skipped_in_state(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
@@ -2414,7 +2353,7 @@ class TestUnskipHandler:
         assert state.last_skipped == ("src-old", 5, "q-old", "mt-old")
 
     def test_unskip_removes_ledger_entry_and_rerenders(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = ("src-old", 5, "q-old", "mt-old")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
@@ -2436,7 +2375,7 @@ class TestUnskipHandler:
         assert mock_append.called
 
     def test_unskip_noop_when_no_last_skipped(self, tmp_path, capsys):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = None
         with patch("idle_hours.runtime_render.render_now") as mock_render, \
@@ -2452,17 +2391,7 @@ class TestShutdownHandler:
     """Button D held 2s: goodnight frame, then invoke shutdown command."""
 
     def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None,
-            mode="debug", theme="default",
-            history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="",
-            shutdown_command="sudo -n shutdown -h now",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
+        return make_args(tmp_path, **{"shutdown_command": "sudo -n shutdown -h now", **overrides})
 
     def test_shutdown_invokes_configured_command(self, tmp_path):
         args = self._args(tmp_path)
@@ -2682,7 +2611,7 @@ class TestStartupImage:
         argv = [
             "run_clock.py",
             "--startup-image", "auto",
-            "--theme", "scholar",
+            "--theme", "roman",
             "--output", str(tmp_path / "out.png"),
             "--buttons-off",
             "--history-path", "", "--telemetry-path", "",
@@ -2709,7 +2638,7 @@ class TestStartupImage:
         first = render_calls[0]
         # render_now signature: (render_script, output, width, height, display_script, mode, theme, ...)
         assert first["args"][5] == "goodnight"
-        assert first["args"][6] == "scholar"
+        assert first["args"][6] == "roman"
         # Static PNG copy path must NOT have run for "auto".
         assert display_calls == []
 
@@ -2720,7 +2649,7 @@ class TestStartupImage:
         argv = [
             "run_clock.py",
             "--startup-image", "auto",
-            "--theme", "scholar",
+            "--theme", "roman",
             "--output", str(tmp_path / "out.png"),
             "--buttons-off",
             "--history-path", "", "--telemetry-path", "",
@@ -2784,18 +2713,7 @@ class TestQuietGoodnightOnTheFly:
     """
 
     def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None,
-            mode="debug", theme="auto",
-            auto_day_theme="default", auto_night_theme="dark",
-            history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_start="22:00", quiet_end="06:00",
-            quiet_off=False, quiet_image="auto",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
+        return make_args(tmp_path, **{"theme": "auto", "quiet_off": False, **overrides})
 
     def test_quiet_image_auto_routes_through_render_now_goodnight(self, tmp_path):
         args = self._args(tmp_path)
@@ -2815,7 +2733,7 @@ class TestQuietGoodnightOnTheFly:
         """At 22:00 with --auto-night-theme nightvision, the goodnight render
         uses theme='nightvision' — proving the kwargs thread through to the
         sentinel branch."""
-        args = self._args(tmp_path, auto_day_theme="scholar", auto_night_theme="nightvision")
+        args = self._args(tmp_path, auto_day_theme="roman", auto_night_theme="nightvision")
         state = run_clock.RuntimeState("auto")
         with patch("idle_hours.runtime_render.render_now") as mock_render, \
              patch("idle_hours.runtime_telemetry.append_telemetry"):
@@ -2895,18 +2813,7 @@ class TestQuietRenderTime:
     """
 
     def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None,
-            mode="debug", theme="default",
-            auto_day_theme="default", auto_night_theme="dark",
-            history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_start="22:00", quiet_end="06:00",
-            quiet_off=False, quiet_image="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
+        return make_args(tmp_path, **{"quiet_off": False, **overrides})
 
     def _render_call(self, tmp_path, time_str, *, manual_only, **overrides):
         args = self._args(tmp_path, **overrides)
@@ -2993,20 +2900,8 @@ class TestButtonRenderGate:
     rest are logged and dropped.
     """
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None,
-            mode="debug", theme="default",
-            history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="", shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def test_skip_dropped_when_render_lock_busy(self, tmp_path, capsys):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.render_lock.acquire()  # Simulate an in-flight render.
         try:
@@ -3025,7 +2920,7 @@ class TestButtonRenderGate:
         """A dropped press must not mutate persisted state — otherwise tapping
         B during a render would silently flip manual_theme while the user sees
         no change, and the next tick would re-render with a surprise theme."""
-        args = self._args(tmp_path, state_path=str(tmp_path / "state.json"))
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.render_lock.acquire()
         try:
@@ -3041,7 +2936,7 @@ class TestButtonRenderGate:
 
     def test_release_is_released_even_if_handler_raises(self, tmp_path):
         """Gate must release the lock on handler exception so subsequent presses work."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.peek_quote_id", side_effect=RuntimeError("boom")), \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
@@ -3163,11 +3058,8 @@ class TestInstallSignalHandlers:
 class TestShutdown:
     """``_shutdown`` must tear resources down best-effort even when something raises."""
 
-    def _args(self, tmp_path):
-        return argparse.Namespace(state_path=str(tmp_path / "state.json"))
-
     def test_releases_buttons_and_saves_state(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.manual_theme = "dark"
 
@@ -3188,9 +3080,9 @@ class TestShutdown:
         """If render lock can't be acquired within the drain window, shutdown still proceeds.
 
         Swap in a stub lock whose ``acquire`` returns False immediately (simulating
-        a 30s drain timeout) so the test doesn't wait.
+        the drain timeout expiring) so the test doesn't wait.
         """
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
 
         class _StubLock:
@@ -3207,7 +3099,7 @@ class TestShutdown:
         assert "render still in flight" in err
 
     def test_missing_button_handles_is_fine(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         # No button handles set; shutdown should not blow up.
         run_clock._shutdown(args, state, web_handle=None)
@@ -3218,7 +3110,7 @@ class TestShutdown:
         can't grab it via ``_button_render_gate`` and start a fresh render
         during shutdown.
         """
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
 
         observations = []
@@ -3242,7 +3134,7 @@ class TestShutdown:
 
     def test_persist_failure_does_not_raise(self, tmp_path, monkeypatch):
         """A save-state failure during shutdown must be swallowed (best-effort)."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         monkeypatch.setattr(
             runtime_store, "save_runtime_state",
@@ -3256,7 +3148,7 @@ class TestMaybePruneTelemetry:
     """The main-loop wrapper must prune at most once per local-date rollover."""
 
     def _args(self, tmp_path, retain_days=30):
-        return argparse.Namespace(telemetry_retain_days=retain_days)
+        return make_args(tmp_path, telemetry_retain_days=retain_days)
 
     def test_skips_when_telemetry_disabled(self, tmp_path, monkeypatch):
         calls = []
@@ -3309,10 +3201,10 @@ class TestMaybeCompactHistory:
     """The main-loop wrapper must compact the ledger at most once per local-date rollover."""
 
     def _args(self, tmp_path, history_days=7, history_path=None):
-        return argparse.Namespace(
-            history_days=history_days,
-            history_path=history_path if history_path is not None else str(tmp_path / "history.jsonl"),
-        )
+        args = make_args(tmp_path, history_days=history_days)
+        if history_path is not None:
+            args.history_path = history_path
+        return args
 
     def test_runs_once_per_day(self, tmp_path, monkeypatch):
         calls = []
@@ -3378,25 +3270,6 @@ class TestActionExceptionBranches:
     and (c) no exception escapes to the caller.
     """
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7,
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            state_path=str(tmp_path / "state.json"),
-            quiet_image="",
-            shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def _read_telemetry(self, tmp_path) -> list[dict]:
         """Read every rotated telemetry sibling (date-suffixed). Tests may see
         zero or one file depending on whether ``append_telemetry`` ran."""
@@ -3408,7 +3281,7 @@ class TestActionExceptionBranches:
         return entries
 
     def test_skip_renders_failure_returns_error_dict(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
@@ -3428,7 +3301,7 @@ class TestActionExceptionBranches:
         )
 
     def test_unskip_remove_entry_failure_returns_error_dict(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = ("src-banned", 42)
         with patch("idle_hours.run_clock.pick_quote_module.remove_history_entries",
@@ -3444,7 +3317,7 @@ class TestActionExceptionBranches:
         )
 
     def test_theme_render_failure_returns_error_dict(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         with patch("idle_hours.runtime_render._render_unlocked", side_effect=RuntimeError("pillow boom")), \
@@ -3461,7 +3334,7 @@ class TestActionExceptionBranches:
         assert result.get("rolled_back") is True
 
     def test_quiet_render_failure_returns_error_dict(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.manual_quiet = True  # toggling will flip to False and try to wake-render
         with patch("idle_hours.runtime_render._render_unlocked", side_effect=RuntimeError("no corpus")), \
@@ -3474,7 +3347,7 @@ class TestActionExceptionBranches:
 
     # Issue #275: re-render is a repaint of the displayed quote, not a re-pick.
     def test_rerender_repaints_the_displayed_quote_and_appends_nothing(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_bucket = "h10_exact"
         state.last_quote_id = ("shown", 7, "on the panel", "ten o'clock")
@@ -3491,7 +3364,7 @@ class TestActionExceptionBranches:
         mock_append.assert_not_called()
 
     def test_rerender_picks_and_records_when_nothing_is_displayed(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
              patch("idle_hours.runtime_render._render_unlocked") as mock_render, \
@@ -3504,7 +3377,7 @@ class TestActionExceptionBranches:
         mock_append.assert_called_once()
 
     def test_rerender_failure_returns_error_dict(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
              patch("idle_hours.runtime_render._render_unlocked", side_effect=RuntimeError("pick failed")), \
@@ -3522,7 +3395,7 @@ class TestActionExceptionBranches:
     def test_all_actions_return_busy_when_render_lock_held(self, tmp_path):
         """Non-blocking acquire must return {'ok': False, 'error': 'busy'}
         for every action when another thread holds render_lock."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         # Simulate an in-flight render by holding render_lock in this test.
         state.render_lock.acquire()
@@ -3539,7 +3412,7 @@ class TestActionExceptionBranches:
 
     def test_unskip_noop_when_no_last_skipped_returns_ok(self, tmp_path):
         """Un-skip with an empty ``state.last_skipped`` is a no-op, not an error."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = None
         result = runtime_actions.action_unskip(args, state, label="web")
@@ -3554,25 +3427,6 @@ class TestActionSuccessTelemetry:
     so there is exactly one operator-visible marker per press.
     """
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7,
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            state_path=str(tmp_path / "state.json"),
-            quiet_image="",
-            shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def _read_telemetry(self, tmp_path) -> list[dict]:
         entries = []
         for path in tmp_path.glob("telemetry-*.jsonl"):
@@ -3582,7 +3436,7 @@ class TestActionSuccessTelemetry:
         return entries
 
     def test_skip_success_emits_action_entry(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
              patch("idle_hours.runtime_render._render_unlocked"), \
@@ -3597,7 +3451,7 @@ class TestActionSuccessTelemetry:
         assert "error" not in matching[0]
 
     def test_theme_success_emits_action_entry(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         with patch("idle_hours.runtime_render._render_unlocked"), \
@@ -3611,7 +3465,7 @@ class TestActionSuccessTelemetry:
         assert matching[0]["ok"] is True
 
     def test_quiet_success_emits_action_entry(self, tmp_path):
-        args = self._args(tmp_path, quiet_image="")
+        args = make_args(tmp_path, quiet_image="")
         state = run_clock.RuntimeState("default")
         state.manual_quiet = True
         with patch("idle_hours.runtime_render._render_unlocked"), \
@@ -3625,7 +3479,7 @@ class TestActionSuccessTelemetry:
         assert matching[0]["label"] == "button D"
 
     def test_rerender_success_emits_action_entry(self, tmp_path):
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render._render_unlocked"), \
              patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
@@ -3639,7 +3493,7 @@ class TestActionSuccessTelemetry:
     def test_unskip_noop_still_emits_action_entry(self, tmp_path):
         """An un-skip with nothing to restore is a successful no-op — still
         emits ``mode="action"`` so the summary counts the operator press."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = None
         runtime_actions.action_unskip(args, state, label="button A")
@@ -3656,25 +3510,6 @@ class TestActionThemeCycle:
     target is rejected without mutating state.
     """
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7,
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            state_path=str(tmp_path / "state.json"),
-            quiet_image="",
-            shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def test_cycle_walks_theme_order_end_to_end(self, tmp_path):
         """N presses from the cycle head visit every cycled theme exactly once
         and wrap back to the head. Covers the full cycle plus the wrap edge
@@ -3684,7 +3519,7 @@ class TestActionThemeCycle:
         button-B / web dropdown) don't fail the wrap assertion."""
         from idle_hours.theme_names import theme_cycle
         cycle = theme_cycle()
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = cycle[0]
         with patch("idle_hours.runtime_render._render_unlocked"), \
@@ -3704,7 +3539,7 @@ class TestActionThemeCycle:
     def test_explicit_target_jumps_directly(self, tmp_path):
         """Web dropdown sends ``target="nightvision"`` and lands there in one
         POST without intermediate cycling."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
         with patch("idle_hours.runtime_render._render_unlocked"), \
@@ -3717,17 +3552,17 @@ class TestActionThemeCycle:
         """A typo must not flip ``manual_theme`` — the POST returns
         ``unknown_theme`` and ``state.manual_theme`` is left exactly where
         it was so the operator sees no change."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.manual_theme = "scholar"
-        state.last_effective_theme = "scholar"
+        state.manual_theme = "roman"
+        state.last_effective_theme = "roman"
         with patch("idle_hours.runtime_render._render_unlocked") as mock_render, \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
             result = runtime_actions.action_theme(args, state, label="web", target="chartreuse")
         assert result["ok"] is False
         assert result["error"] == "unknown_theme"
         assert result["target"] == "chartreuse"
-        assert state.manual_theme == "scholar"
+        assert state.manual_theme == "roman"
         assert not mock_render.called
 
     def test_stale_manual_theme_outside_cycle_restarts_at_head(self, tmp_path):
@@ -3735,7 +3570,7 @@ class TestActionThemeCycle:
         removed, the cycle restarts at ``THEME_ORDER[0]`` rather than
         stranding the user on an unrecognised value."""
         from idle_hours import render_quote as rq
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "retired_theme"
         with patch("idle_hours.runtime_render._render_unlocked"), \
@@ -3748,17 +3583,17 @@ class TestActionThemeCycle:
         theme must not burn a 10–20 s Spectra 6 refresh. The UI pre-selects
         the active theme so this is the common case when the operator
         wanted to adjust something else (e.g. verify the current pick)."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.manual_theme = "scholar"
-        state.last_effective_theme = "scholar"
+        state.manual_theme = "roman"
+        state.last_effective_theme = "roman"
         with patch("idle_hours.runtime_render._render_unlocked") as mock_render, \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
-            result = runtime_actions.action_theme(args, state, label="web", target="scholar")
+            result = runtime_actions.action_theme(args, state, label="web", target="roman")
         assert result["ok"] is True
         assert result["noop"] is True
-        assert result["theme"] == "scholar"
-        assert state.manual_theme == "scholar"  # unchanged
+        assert result["theme"] == "roman"
+        assert state.manual_theme == "roman"  # unchanged
         assert not mock_render.called
 
     def test_target_equal_to_auto_resolved_preserves_auto_mode(self, tmp_path):
@@ -3768,7 +3603,7 @@ class TestActionThemeCycle:
         to that value. Doing so would silently end auto mode until the
         next midnight rollover. Instead, no-op and leave ``manual_theme``
         ``None`` so auto continues to track the wall clock."""
-        args = self._args(tmp_path, theme="auto")
+        args = make_args(tmp_path, theme="auto")
         state = run_clock.RuntimeState("auto")
         state.manual_theme = None
         state.last_effective_theme = "default"  # auto-resolved daytime value
@@ -3786,7 +3621,7 @@ class TestActionThemeCycle:
         attempt to advance. Defends against a refactor that extends the
         guard to the ``target is None`` branch and silently wedges button
         B when the cycle length is 1."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.manual_theme = "default"
         state.last_effective_theme = "default"
@@ -3797,29 +3632,13 @@ class TestActionThemeCycle:
         assert result.get("noop") is not True
         assert mock_render.called
 
-    def test_cli_theme_choices_match_theme_order(self):
-        """``run_clock.py --theme`` choices are duplicated from
-        render_quote.THEME_ORDER with 'auto' appended. Pin the invariant so
-        a new theme added to THEME_ORDER without updating run_clock argparse
-        fails loudly here instead of silently rejecting the new value on
-        systemd startup.
-        """
-        from idle_hours import render_quote as rq
-        for name in list(rq.THEME_ORDER) + ["auto"]:
-            with patch("sys.argv", ["run_clock.py", "--theme", name, "--once"]):
-                try:
-                    ns = run_clock.parse_args()
-                except SystemExit:
-                    raise AssertionError(f"--theme {name} was rejected by argparse") from None
-                assert ns.theme == name
-
     def test_theme_help_carries_no_per_theme_prose(self):
         """#200: the --theme help used to carry ~90 lines of hand-written
         prose describing a subset of the themes. Nothing pinned it, so it
         drifted: it described lcars with a "STARDATE callout" the design no
         longer has, and firmament with "~80 stars in three magnitude tiers"
         when the design has ~150 in four. argparse already prints the full
-        choices list (guarded by the sync test above); the designs are
+        choices list (read from theme_names.THEME_ORDER); the designs are
         documented next to rendered previews instead.
 
         This pins the *shape*, not the wording: a short help string that
@@ -3867,8 +3686,7 @@ class TestActionThemeCycle:
         registered theme name and reject ``auto``. ``auto`` is rejected
         because the kwargs ARE the broadening hook for ``--theme auto`` —
         nesting auto-into-auto would be a config typo, not a useful
-        recursion. Same drift hazard as the parent test: a new theme in
-        ``THEME_ORDER`` must reach these flags too.
+        recursion.
         """
         from idle_hours import render_quote as rq
         for name in rq.THEME_ORDER:
@@ -3902,12 +3720,12 @@ class TestRandomThemeMode:
 
     def test_resolve_random_uses_current_random_theme(self):
         """When ``current_random_theme`` is set, ``resolve_effective_theme`` returns it."""
-        result = runtime_theme.resolve_effective_theme("random", "10:00", None, current_random_theme="scholar")
-        assert result == "scholar"
+        result = runtime_theme.resolve_effective_theme("random", "10:00", None, current_random_theme="roman")
+        assert result == "roman"
 
     def test_resolve_random_manual_override_wins(self):
         """``manual_theme`` takes priority over the stored random theme."""
-        result = runtime_theme.resolve_effective_theme("random", "10:00", "dark", current_random_theme="scholar")
+        result = runtime_theme.resolve_effective_theme("random", "10:00", "dark", current_random_theme="roman")
         assert result == "dark"
 
     def test_resolve_random_fallback_when_none(self):
@@ -3942,7 +3760,7 @@ class TestRandomThemeMode:
             "--skip-preflight",
         ]
         with patch("sys.argv", argv), \
-             patch("idle_hours.runtime_theme.pick_random_theme", return_value="scholar") as mock_pick, \
+             patch("idle_hours.runtime_theme.pick_random_theme", return_value="roman") as mock_pick, \
              patch("idle_hours.runtime_render.render_now") as mock_render, \
              patch("idle_hours.runtime_render.peek_quote_id", return_value=None), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h12_exact"), \
@@ -3955,7 +3773,7 @@ class TestRandomThemeMode:
         # theme is the 7th positional arg (index 6) or a keyword arg.
         ca = mock_render.call_args
         called_theme = ca.kwargs.get("theme") if ca.kwargs.get("theme") else ca.args[6] if len(ca.args) > 6 else ca.kwargs.get("theme")
-        assert called_theme == "scholar"
+        assert called_theme == "roman"
 
     def test_random_mode_picks_new_theme_on_quote_change(self):
         """``_maybe_pick_random_theme`` updates ``state.current_random_theme``
@@ -3964,13 +3782,13 @@ class TestRandomThemeMode:
         state.last_quote_id = ("111", 10, "old quote", "old match")
         state.current_random_theme = "default"
         # Pre-stuff the bag so the pop is deterministic without patching.
-        state.random_theme_bag = ["scholar"]
+        state.random_theme_bag = ["roman"]
 
         new_quote_id = ("222", 20, "new quote", "new match")
         result = runtime_render._maybe_pick_random_theme(state, new_quote_id)
 
-        assert result == "scholar"
-        assert state.current_random_theme == "scholar"
+        assert result == "roman"
+        assert state.current_random_theme == "roman"
         assert state.random_theme_bag == []
 
     def test_random_mode_stable_on_same_quote(self):
@@ -4104,22 +3922,43 @@ class TestRandomThemeMode:
             pick = runtime_render._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
         assert pick != just_played, "back-to-back repeat at reshuffle boundary"
 
-    def test_random_mode_no_near_boundary_repeat(self):
+    @pytest.mark.parametrize(
+        ("pool_size", "expected"),
+        [(0, 1), (1, 1), (2, 1), (3, 1), (4, 2), (5, 2), (40, 20), (41, 20)],
+    )
+    def test_recent_window_size_is_half_the_pool_floored_at_one(self, pool_size, expected):
+        """Pin the window with literals (issue #392): half the pool maximises
+        the guaranteed gap, and the floor of one keeps the just-played theme
+        out of the next bag's draw-front even for a tiny pool. A test that
+        reads its threshold back from this function cannot catch it breaking.
+        """
+        from idle_hours.runtime_theme import recent_window_size
+        assert recent_window_size(pool_size) == expected
+
+    @pytest.mark.parametrize("seed", [0, 1, 392, 2026])
+    def test_random_mode_no_near_boundary_repeat(self, seed):
         """A theme shown at the tail of one pass must not reappear within a
         few picks at the head of the next — the gap-2 regression that the
         single-theme swap missed. Drive several full passes and assert the
         guaranteed minimum spacing holds.
+
+        The bound is written out (half the pool), not read from
+        ``recent_window_size``, and the shuffle is seeded, so a broken window
+        fails deterministically rather than weakening the assertion with it.
         """
-        from idle_hours.runtime_theme import random_theme_pool, recent_window_size
+        import random
+
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
-        window = recent_window_size(len(themes))
+        window = len(themes) // 2
         state = run_clock.RuntimeState("random")
         seq: list[str] = []
-        for i in range(len(themes) * 4):
-            new_quote_id = ("src", i, "q", "m")
-            pick = runtime_render._maybe_pick_random_theme(state, new_quote_id)
-            seq.append(pick)
-            state.last_quote_id = new_quote_id
+        with patch("idle_hours.runtime_theme.random", random.Random(seed)):
+            for i in range(len(themes) * 4):
+                new_quote_id = ("src", i, "q", "m")
+                pick = runtime_render._maybe_pick_random_theme(state, new_quote_id)
+                seq.append(pick)
+                state.last_quote_id = new_quote_id
         last_seen: dict[str, int] = {}
         min_gap = len(seq)
         for i, theme in enumerate(seq):
@@ -4153,10 +3992,7 @@ class TestRandomThemeMode:
         state.manual_theme = "nightvision"
         state.last_seen_date = dt.date(2026, 1, 1)
 
-        args = argparse.Namespace(
-            theme="random", state_path=str(tmp_path / "state.json"),
-            auto_day_theme="default", auto_night_theme="dark",
-        )
+        args = make_args(tmp_path, theme="random")
         with patch("idle_hours.runtime_store.save_runtime_state"), \
              patch("datetime.date") as mock_date:
             mock_date.today.return_value = dt.date(2026, 1, 2)
@@ -4172,20 +4008,14 @@ class TestRandomThemeMode:
         state.last_effective_theme = "default"
         new_quote_id = ("222", 20, "new", "new match")
 
-        args = argparse.Namespace(
-            theme="random", history_path="", history_days=7, mode="debug",
-            render_script="render_quote.py", output="output/current.png",
-            width=800, height=480, display_script=None, telemetry_path="",
-            state_path=str(tmp_path / "state.json"),
-            auto_day_theme="default", auto_night_theme="dark",
-        )
-        state.random_theme_bag = ["scholar"]
+        args = make_args(tmp_path, theme="random")
+        state.random_theme_bag = ["roman"]
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=new_quote_id), \
              patch("idle_hours.runtime_render._render_unlocked"), \
              patch("idle_hours.runtime_render._append_history_after_render"):
             runtime_actions.action_skip(args, state, label="button A")
 
-        assert state.current_random_theme == "scholar"
+        assert state.current_random_theme == "roman"
 
     def test_action_unskip_picks_new_random_theme(self, tmp_path):
         """``action_unskip`` updates ``state.current_random_theme`` when in random mode."""
@@ -4196,13 +4026,7 @@ class TestRandomThemeMode:
         state.last_effective_theme = "comic"
         new_quote_id = ("333", 30, "restored", "restored match")
 
-        args = argparse.Namespace(
-            theme="random", history_path="", history_days=7, mode="debug",
-            render_script="render_quote.py", output="output/current.png",
-            width=800, height=480, display_script=None, telemetry_path="",
-            state_path=str(tmp_path / "state.json"),
-            auto_day_theme="default", auto_night_theme="dark",
-        )
+        args = make_args(tmp_path, theme="random")
         state.random_theme_bag = ["nightvision"]
         with patch("idle_hours.runtime_render.peek_quote_id", return_value=new_quote_id), \
              patch("idle_hours.runtime_render._render_unlocked"), \
@@ -4220,25 +4044,6 @@ class TestPressDroppedTelemetry:
     press, never paired with an action entry.
     """
 
-    def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7,
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            state_path=str(tmp_path / "state.json"),
-            quiet_image="",
-            shutdown_command="",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
-
     def _read_telemetry(self, tmp_path) -> list[dict]:
         entries = []
         for path in tmp_path.glob("telemetry-*.jsonl"):
@@ -4250,7 +4055,7 @@ class TestPressDroppedTelemetry:
     def test_busy_skip_emits_press_dropped_not_action(self, tmp_path):
         """Acceptance criterion from issue #55: a press during an in-flight
         render shows up as ``press_dropped``, and NOT as an ``action`` entry."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.render_lock.acquire()
         try:
@@ -4271,7 +4076,7 @@ class TestPressDroppedTelemetry:
         """Acceptance criterion from issue #55: 10 presses during a slow
         render ⇒ 1 success + 9 dropped. We simulate this by holding the
         render lock for 9 of the 10 presses, then releasing for the 10th."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render._render_unlocked"), \
              patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "mt")), \
@@ -4300,20 +4105,7 @@ class TestQuietHoursTelemetry:
 
     def test_enter_quiet_emits_telemetry(self, tmp_path):
         from idle_hours import runtime_quiet
-        args = argparse.Namespace(
-            history_path="",
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            quiet_start="22:00",
-            quiet_end="06:00",
-            quiet_image="",
-            output=str(tmp_path / "out.png"),
-            display_script=None,
-            render_script="render_quote.py",
-            width=800,
-            height=480,
-            mode="debug",
-            history_days=7,
-        )
+        args = make_args(tmp_path, quiet_off=False)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.render_now"), \
              patch("idle_hours.runtime_quiet._display_quiet_image"):
@@ -4329,20 +4121,7 @@ class TestQuietHoursTelemetry:
 
     def test_manual_quiet_enter_records_manual_true(self, tmp_path):
         from idle_hours import runtime_quiet
-        args = argparse.Namespace(
-            history_path="",
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            quiet_start="22:00",
-            quiet_end="06:00",
-            quiet_image="",
-            output=str(tmp_path / "out.png"),
-            display_script=None,
-            render_script="render_quote.py",
-            width=800,
-            height=480,
-            mode="debug",
-            history_days=7,
-        )
+        args = make_args(tmp_path, quiet_off=False)
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_render.render_now"), \
              patch("idle_hours.runtime_quiet._display_quiet_image"):
@@ -4526,22 +4305,9 @@ class TestParseArgsBasic:
 class TestMaybeStartWebServer:
     """The web server is optional; startup failures must not abort the loop."""
 
-    def _args(self, web_bind=None):
-        return argparse.Namespace(
-            web_bind=web_bind,
-            web_token="",
-            web_token_file=None,
-            output="out.png",
-            history_path="",
-            telemetry_path="",
-            overrides="assets/selection_overrides.json",
-            mode="debug",
-        )
-
     def test_disabled_when_bind_empty(self):
         state = run_clock.RuntimeState("default")
-        assert run_clock._maybe_start_web_server(self._args(None), state) is None
-        assert run_clock._maybe_start_web_server(self._args(""), state) is None
+        assert run_clock._maybe_start_web_server(make_args(web_bind=""), state) is None
 
     def test_start_failure_logs_and_returns_none(self, monkeypatch, capsys):
         """If web_server.start_web_server raises, we log and return None —
@@ -4550,7 +4316,7 @@ class TestMaybeStartWebServer:
         from idle_hours import web_server
         monkeypatch.setattr(web_server, "start_web_server",
                             lambda *a, **kw: (_ for _ in ()).throw(ValueError("bad bind")))
-        result = run_clock._maybe_start_web_server(self._args("0.0.0.0:8080"), state)
+        result = run_clock._maybe_start_web_server(make_args(web_bind="0.0.0.0:8080"), state)
         assert result is None
         err = capsys.readouterr().err
         assert "web UI failed to start" in err and "bad bind" in err
@@ -4574,7 +4340,7 @@ class TestMaybeStartWebServer:
             return real_import(name, globals, locals, fromlist, level)
 
         monkeypatch.setattr(builtins, "__import__", _boom)
-        assert run_clock._maybe_start_web_server(self._args("127.0.0.1:0"), state) is None
+        assert run_clock._maybe_start_web_server(make_args(web_bind="127.0.0.1:0"), state) is None
         assert "web UI disabled" in capsys.readouterr().err
 
     def test_success_returns_handle_and_logs_the_bound_address(self, monkeypatch, capsys):
@@ -4585,7 +4351,7 @@ class TestMaybeStartWebServer:
         token/no-token wording untested.
         """
         state = run_clock.RuntimeState("default")
-        args = self._args("127.0.0.1:0")
+        args = make_args(web_bind="127.0.0.1:0")
         handle = run_clock._maybe_start_web_server(args, state)
         assert handle is not None
         try:
@@ -4606,7 +4372,7 @@ class TestMaybeStartWebServer:
         to trust without re-checking.
         """
         state = run_clock.RuntimeState("default")
-        args = self._args("127.0.0.1:0")
+        args = make_args(web_bind="127.0.0.1:0")
         args.web_token = "s3cret"
         handle = run_clock._maybe_start_web_server(args, state)
         assert handle is not None
@@ -4617,30 +4383,27 @@ class TestMaybeStartWebServer:
 
 
 class TestResolveWebToken:
-    def _args(self, **kw):
-        return argparse.Namespace(web_token=kw.get("web_token", ""), web_token_file=kw.get("web_token_file"))
-
     def test_empty_when_unset(self):
-        assert run_clock._resolve_web_token(self._args()) == ""
+        assert run_clock._resolve_web_token(make_args()) == ""
 
     def test_reads_from_token_file(self, tmp_path):
         token_file = tmp_path / "token"
         token_file.write_text("s3cret\n", encoding="utf-8")
-        assert run_clock._resolve_web_token(self._args(web_token_file=str(token_file))) == "s3cret"
+        assert run_clock._resolve_web_token(make_args(web_token_file=str(token_file))) == "s3cret"
 
     def test_token_file_wins_over_inline(self, tmp_path):
         token_file = tmp_path / "token"
         token_file.write_text("from-file\n", encoding="utf-8")
-        args = self._args(web_token="from-flag", web_token_file=str(token_file))
+        args = make_args(web_token="from-flag", web_token_file=str(token_file))
         assert run_clock._resolve_web_token(args) == "from-file"
 
     def test_missing_token_file_falls_back_to_inline(self, tmp_path, capsys):
-        args = self._args(web_token="fallback", web_token_file=str(tmp_path / "nonexistent"))
+        args = make_args(web_token="fallback", web_token_file=str(tmp_path / "nonexistent"))
         assert run_clock._resolve_web_token(args) == "fallback"
         assert "unreadable" in capsys.readouterr().err
 
     def test_missing_file_and_no_inline_returns_empty(self, tmp_path):
-        args = self._args(web_token_file=str(tmp_path / "nope"))
+        args = make_args(web_token_file=str(tmp_path / "nope"))
         assert run_clock._resolve_web_token(args) == ""
 
 
@@ -4662,32 +4425,7 @@ class TestStopWebServer:
     def test_real_server_is_stopped(self, tmp_path):
         """stop_web_server calls server.shutdown() + server_close() and joins the thread."""
         from idle_hours import web_server
-        args = argparse.Namespace(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            once=False,
-            interval_seconds=60,
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            buttons_off=True,
-            shutdown_command="",
-            startup_image=None,
-            state_path=str(tmp_path / "state.json"),
-            telemetry_path=str(tmp_path / "telemetry.jsonl"),
-            quiet_start="22:00",
-            quiet_end="06:00",
-            quiet_image="assets/goodnight.png",
-            quiet_off=True,
-            history_path=str(tmp_path / "history.jsonl"),
-            history_days=7,
-            web_bind="127.0.0.1:0",
-            web_token="",
-            web_token_file="",
-            overrides=str(tmp_path / "selection_overrides.json"),
-        )
+        args = make_args(tmp_path, web_bind="127.0.0.1:0", overrides=str(tmp_path / "selection_overrides.json"))
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state)
         assert thread.is_alive()
@@ -5001,9 +4739,7 @@ class TestPhotoPathPlumbing:
     def test_a_typoed_path_fails_pre_flight(self, tmp_path, monkeypatch):
         """The systemd-unit-typo class, caught at startup like every other
         operator-supplied path rather than at first render."""
-        args = argparse.Namespace(render_script="render_quote.py", display_script=None,
-                                  quiet_image=None, startup_image=None,
-                                  photo_path=str(tmp_path / "absent"))
+        args = make_args(tmp_path, photo_path=str(tmp_path / "absent"))
         errors = run_clock._preflight_paths(args)
         assert any("photo-path" in e for e in errors), errors
 
@@ -5151,11 +4887,6 @@ class TestWatchdogPingsOutsideTheHeartbeat:
 class TestSourceCardTimerCancellation:
     """The 5s source-card restore Timer must not fire after _shutdown."""
 
-    def _args(self, tmp_path):
-        return argparse.Namespace(
-            state_path=str(tmp_path / "state.json"),
-        )
-
     def test_shutdown_cancels_registered_timers(self, tmp_path):
         import threading
         state = run_clock.RuntimeState("default")
@@ -5165,7 +4896,7 @@ class TestSourceCardTimerCancellation:
         state.pending_timers.append(timer)
         timer.start()
 
-        run_clock._shutdown(self._args(tmp_path), state, web_handle=None)
+        run_clock._shutdown(make_args(tmp_path), state, web_handle=None)
         # Timer was cancelled before it could fire.
         assert fired == []
         # Shutdown drained pending_timers so a repeat teardown doesn't double-cancel.
@@ -5179,7 +4910,7 @@ class TestSourceCardTimerCancellation:
         timer = threading.Timer(0.0, lambda: None)
         state.pending_timers.append(timer)
         # No raise; pending_timers drained.
-        run_clock._shutdown(self._args(tmp_path), state, web_handle=None)
+        run_clock._shutdown(make_args(tmp_path), state, web_handle=None)
         assert state.pending_timers == []
 
 
@@ -5404,15 +5135,12 @@ class TestFormerBundledRendererPath:
         assert TestRenderCommand()._argv(old, tmp_path)[:4] == self.MODULE_COMMAND
 
     def test_preflight_accepts_it(self, install):
-        args = argparse.Namespace(
-            render_script=str(install / "render_quote.py"),
-            display_script=None, quiet_image=None, startup_image=None,
-        )
+        args = make_args(render_script=str(install / "render_quote.py"))
         assert not any("render-script" in e for e in run_clock._preflight_paths(args))
 
     def test_it_logs_the_migration_note(self, install, capsys):
         old = str(install / "render_quote.py")
-        run_clock._warn_legacy_render_script(argparse.Namespace(render_script=old))
+        run_clock._warn_legacy_render_script(make_args(render_script=old))
         err = capsys.readouterr().err
         assert old in err and 'render_script = "auto"' in err
 
@@ -5421,7 +5149,7 @@ class TestFormerBundledRendererPath:
         file: it keeps failing preflight with the hint instead of rendering."""
         elsewhere = str(tmp_path / "moved" / "idle_hours" / "render_quote.py")
         assert not runtime_render._uses_bundled_renderer(elsewhere)
-        args = argparse.Namespace(render_script=elsewhere, display_script=None, quiet_image=None, startup_image=None)
+        args = make_args(tmp_path, render_script=elsewhere)
         errors = run_clock._preflight_paths(args)
         assert any('render_script = "auto"' in e for e in errors)
 
@@ -5441,7 +5169,7 @@ class TestLegacyRenderScriptNote:
     """A config naming ``render_quote.py`` works, and says once that it should say ``auto``."""
 
     def _note(self, value, capsys):
-        run_clock._warn_legacy_render_script(argparse.Namespace(render_script=value))
+        run_clock._warn_legacy_render_script(make_args(render_script=value))
         return capsys.readouterr().err
 
     def test_legacy_literal_logs_a_note(self, tmp_path, monkeypatch, capsys):
@@ -5483,20 +5211,7 @@ class TestPreflightPaths:
     fast in the journal instead of silently on first use."""
 
     def _args(self, **kw):
-        """Build a Namespace with only the preflight-relevant fields."""
-        defaults = dict(
-            render_script=runtime_render.BUNDLED_RENDER_SCRIPT,
-            display_script=None,
-            quiet_image=None,
-            startup_image=None,
-            skip_preflight=False,
-            # Corpus locations. ``None`` means "use the bundled package asset",
-            # which is what the argparse defaults resolve to in production.
-            baked_db=None,
-            raw_corpus=None,
-        )
-        defaults.update(kw)
-        return argparse.Namespace(**defaults)
+        return make_args(**{"skip_preflight": False, **kw})
 
     def test_missing_display_script_surfaces(self, tmp_path):
         errors = run_clock._preflight_paths(
@@ -5701,7 +5416,7 @@ class TestStateRoundtripPersistsRenderIdentity:
         redraw on restart.
         """
         state_path = tmp_path / "state.json"
-        args = argparse.Namespace(state_path=str(state_path))
+        args = make_args(tmp_path, state_path=str(state_path))
         state = run_clock.RuntimeState("default")
         state.commit_render_result("h4_five_past", "dark", ("s", 1, "q", "mt"))
         runtime_render._persist_state_after_render(args, state)
@@ -5711,7 +5426,7 @@ class TestStateRoundtripPersistsRenderIdentity:
         assert loaded["last_quote_id"] == ["s", 1, "q", "mt"]
 
     def test_persist_after_render_is_noop_without_state_path(self, tmp_path):
-        args = argparse.Namespace(state_path="")
+        args = make_args(tmp_path, state_path="")
         state = run_clock.RuntimeState("default")
         # Must not raise.
         runtime_render._persist_state_after_render(args, state)
@@ -5721,7 +5436,7 @@ class TestStateRoundtripPersistsRenderIdentity:
         """A disk error during post-render persist must NOT bubble into the
         render path — that would incorrectly trigger outer-loop backoff.
         """
-        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         monkeypatch.setattr(
             runtime_store, "save_runtime_state",
@@ -5741,26 +5456,11 @@ class TestTransientRenderDoesNotUpdateIdentity:
     bucket match ``last_bucket`` and skip the redraw.
     """
 
-    def _args(self, tmp_path):
-        return argparse.Namespace(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800,
-            height=480,
-            display_script=None,
-            mode="debug",
-            theme="default",
-            history_path="",
-            history_days=7,
-            telemetry_path="",
-            state_path=str(tmp_path / "state.json"),
-        )
-
     def test_card_mode_does_not_commit_render_identity(self, tmp_path):
         """After a ``mode="card"`` render, ``state.last_bucket`` /
         ``last_quote_id`` / ``last_effective_theme`` must remain whatever
         they were before the card (i.e. the underlying frame's identity)."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         # Seed pre-card identity (the frame the restore timer will rebuild).
         state.commit_render_result("h3_half_past", "default", ("src", 10, "q", "mt"))
@@ -5782,7 +5482,7 @@ class TestTransientRenderDoesNotUpdateIdentity:
         """The post-render persist hook must also be skipped in card mode, or
         an SSD flush + power cut in the 5s window would leave the card's
         identity on disk (with the underlying frame still on the panel)."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         persisted_payloads = []
         with patch("idle_hours.runtime_render.render_now"), \
@@ -5804,7 +5504,7 @@ class TestTransientRenderDoesNotUpdateIdentity:
         streak of transient failures doesn't trigger a skip window after we've
         just demonstrably talked to the panel."""
         import time as _time
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         # Prime with a pending backoff; a transient render must clear it.
         state.consecutive_render_failures = 2
@@ -5824,7 +5524,7 @@ class TestTransientRenderDoesNotUpdateIdentity:
     def test_normal_mode_still_commits_and_persists(self, tmp_path):
         """Baseline: a normal ``mode="debug"`` render (the default) still
         updates identity AND persists."""
-        args = self._args(tmp_path)
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")
         persisted_payloads = []
         with patch("idle_hours.runtime_render.render_now"), \
@@ -5911,33 +5611,17 @@ class TestCorpusPathPlumbing:
     ``web_server.WebContext`` all have to agree.
     """
 
-    def _args(self, **kw):
-        defaults = dict(
-            overrides=None,
-            content_overrides=None,
-            raw_corpus=None,
-            baked_db=None,
-        )
-        defaults.update(kw)
-        return argparse.Namespace(**defaults)
-
     def test_defaults_fall_back_to_bundled_assets(self):
         """Unset flags keep the pre-#179 behaviour: the bundled package copies."""
-        kwargs = runtime_render._corpus_kwargs(self._args())
+        kwargs = runtime_render._corpus_kwargs(make_args())
         assert kwargs == {
             "database_path": run_clock.pick_quote_module.DEFAULT_DATABASE_PATH,
             "input_path": run_clock.pick_quote_module.DEFAULT_INPUT_PATH,
             "overrides_path": run_clock.pick_quote_module.DEFAULT_OVERRIDES_PATH,
         }
 
-    def test_missing_attributes_fall_back(self):
-        """A Namespace predating these flags (or built ad-hoc in a test) must
-        not raise — the getattr defaults preserve the bundled contract."""
-        kwargs = runtime_render._corpus_kwargs(argparse.Namespace())
-        assert kwargs["database_path"] == run_clock.pick_quote_module.DEFAULT_DATABASE_PATH
-
     def test_relocated_paths_are_threaded(self, tmp_path):
-        kwargs = runtime_render._corpus_kwargs(self._args(
+        kwargs = runtime_render._corpus_kwargs(make_args(
             baked_db=str(tmp_path / "db.jsonl"),
             raw_corpus=str(tmp_path / "raw.jsonl"),
             overrides=str(tmp_path / "sel.json"),
@@ -6043,17 +5727,9 @@ class TestSeedWritableCorpusPaths:
     committed bans / content fixes across (the "migrate without loss" criterion).
     """
 
-    def _args(self, **kw):
-        defaults = dict(
-            overrides=None, content_overrides=None,
-            raw_corpus=None, baked_db=None,
-        )
-        defaults.update(kw)
-        return argparse.Namespace(**defaults)
-
     def test_seeds_missing_relocated_file_from_bundle(self, tmp_path):
         dest = tmp_path / "state" / "selection_overrides.json"
-        errors = run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
+        errors = run_clock._seed_writable_corpus_paths(make_args(overrides=str(dest)))
         assert errors == []
         assert dest.exists(), "relocated sidecar should have been seeded"
         # Content must match the bundled copy — this is the migration path, so
@@ -6066,15 +5742,15 @@ class TestSeedWritableCorpusPaths:
         """Idempotent across restarts: operator edits must survive a reboot."""
         dest = tmp_path / "selection_overrides.json"
         dest.write_text('{"ban_source_ids": ["operator-edit"]}', encoding="utf-8")
-        run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
+        run_clock._seed_writable_corpus_paths(make_args(overrides=str(dest)))
         assert "operator-edit" in dest.read_text(encoding="utf-8")
 
     def test_default_paths_are_not_copied_onto_themselves(self):
         """Unset flags must be a no-op — never write into the package dir."""
-        assert run_clock._seed_writable_corpus_paths(self._args()) == []
+        assert run_clock._seed_writable_corpus_paths(make_args()) == []
 
     def test_seeds_all_four_files(self, tmp_path):
-        args = self._args(
+        args = make_args(
             overrides=str(tmp_path / "sel.json"),
             content_overrides=str(tmp_path / "content.json"),
             raw_corpus=str(tmp_path / "raw.jsonl"),
@@ -6096,7 +5772,7 @@ class TestSeedWritableCorpusPaths:
         dest = tmp_path / "raw.jsonl"
         with patch.object(run_clock.atomic_io, "atomic_write_bytes",
                           side_effect=OSError("No space left on device")):
-            errors = run_clock._seed_writable_corpus_paths(self._args(raw_corpus=str(dest)))
+            errors = run_clock._seed_writable_corpus_paths(make_args(raw_corpus=str(dest)))
         assert len(errors) == 1
         assert not dest.exists(), (
             "a failed seed left a destination behind; the next boot would "
@@ -6107,7 +5783,7 @@ class TestSeedWritableCorpusPaths:
         """Atomicity must not come at the cost of fidelity — the migrated
         corpus has to match the bundled copy exactly."""
         dest = tmp_path / "db.jsonl"
-        run_clock._seed_writable_corpus_paths(self._args(baked_db=str(dest)))
+        run_clock._seed_writable_corpus_paths(make_args(baked_db=str(dest)))
         bundled = Path(run_clock.pick_quote_module.DEFAULT_DATABASE_PATH)
         assert dest.read_bytes() == bundled.read_bytes()
 
@@ -6117,19 +5793,16 @@ class TestSeedWritableCorpusPaths:
         dest = tmp_path / "sel.json"
         with patch.object(run_clock.atomic_io, "atomic_write_bytes",
                           side_effect=OSError("read-only fs")):
-            errors = run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
+            errors = run_clock._seed_writable_corpus_paths(make_args(overrides=str(dest)))
         assert len(errors) == 1
         assert "could not be seeded" in errors[0]
 
     def test_preflight_seeds_before_validating(self, tmp_path):
         """A relocated corpus is legitimately absent on first boot; seeding is
         what makes it present, so it must run before the existence checks."""
-        args = argparse.Namespace(
-            render_script="render_quote.py", display_script=None,
-            quiet_image=None, startup_image=None, skip_preflight=False,
-            overrides=None, content_overrides=None,
-            raw_corpus=str(tmp_path / "raw.jsonl"),
-            baked_db=str(tmp_path / "db.jsonl"),
+        args = make_args(
+            tmp_path, skip_preflight=False,
+            raw_corpus=str(tmp_path / "raw.jsonl"), baked_db=str(tmp_path / "db.jsonl"),
         )
         # Must NOT raise: the corpus guard sees the freshly-seeded files.
         run_clock._run_preflight(args)
@@ -6143,17 +5816,7 @@ class TestShutdownFailureRollback:
     silences the clock across every subsequent restart."""
 
     def _args(self, tmp_path, **overrides):
-        defaults = dict(
-            render_script="render_quote.py",
-            output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None,
-            mode="debug", theme="default",
-            history_path="", history_days=7, telemetry_path="",
-            state_path=str(tmp_path / "state.json"), quiet_image="",
-            shutdown_command="sudo -n shutdown -h now",
-        )
-        defaults.update(overrides)
-        return argparse.Namespace(**defaults)
+        return make_args(tmp_path, **{"shutdown_command": "sudo -n shutdown -h now", **overrides})
 
     def test_failed_command_rolls_back_quiet_and_persist(self, tmp_path):
         args = self._args(tmp_path)
@@ -6431,12 +6094,7 @@ class TestQuietEntryRetry:
 
     def test_enter_quiet_reports_success_and_resets_backoff(self, tmp_path):
         from idle_hours import runtime_quiet
-        args = argparse.Namespace(
-            quiet_image="auto", quiet_theme="inherit", quiet_start="22:00", quiet_end="06:00",
-            output=str(tmp_path / "o.png"), display_script=None, render_script="r.py",
-            width=800, height=480, theme="default", telemetry_path="", history_path="", history_days=7,
-            auto_day_theme="default", auto_night_theme="dark",
-        )
+        args = make_args(tmp_path, quiet_off=False)
         state = run_clock.RuntimeState("default")
         state.consecutive_render_failures = 2
         state.backoff_skip_until = 10.0
@@ -6460,15 +6118,7 @@ class TestQuietEntryRetry:
 
 
 def _quiet_args(tmp_path, **overrides) -> argparse.Namespace:
-    defaults = dict(
-        render_script="render_quote.py", output=str(tmp_path / "current.png"), width=800, height=480,
-        display_script=None, mode="production", theme="default", history_path=str(tmp_path / "history.jsonl"),
-        history_days=7, telemetry_path="", state_path=str(tmp_path / "state.json"),
-        quiet_start="22:00", quiet_end="06:00", quiet_off=False, quiet_image="auto", quiet_theme="inherit",
-        auto_day_theme="default", auto_night_theme="dark", shutdown_command="",
-    )
-    defaults.update(overrides)
-    return argparse.Namespace(**defaults)
+    return make_args(tmp_path, **{"mode": "production", "quiet_off": False, **overrides})
 
 
 class TestComputeQuietManualAwake:

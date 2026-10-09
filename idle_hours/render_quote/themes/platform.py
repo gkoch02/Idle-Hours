@@ -1,6 +1,6 @@
-"""The ``platform`` theme's frame and the code only it uses.
+"""The ``platform`` theme: a railway departure board after dark.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § platform
 """
 
 from __future__ import annotations
@@ -13,30 +13,6 @@ from ..palette import SPECTRA6, SPECTRA6_PALETTE, gray_pixel_access, snap_image_
 from ..primitives import paint_neon_mask
 from ..spec import FrameSpec
 from ._shared import _gantry_dot, _gantry_glyph, _gantry_tokens
-
-# ---------------------------------------------------------------------------
-# platform — a railway departure board, hung from a station canopy at night.
-#
-# The board is the classic amber dot-matrix platform indicator: the next
-# train's time and destination across the top ("via" its author underneath),
-# the quote as the "Calling at:" message, and the station clock at the foot.
-#
-# **Weight is dot size.** Lumen's Round instances differ only in how big each
-# dot is, so the body is set in Round Medium (airy dots, 66% of the cell) and
-# the matched phrase in Round Bold (86%): the time phrase stands out the way
-# a heavier weight does on a real board, with no change of colour.
-#
-# The dots are placed from the face's own grid (the Lumen reader shared with
-# ``gantry``) and drawn at the diameters measured from those two instances,
-# because drawing the outlines straight onto the panel put each dot's centre
-# between pixels and rendered the same dot two different sizes. Unlike
-# ``gantry``'s single lattice, every element here picks its own pitch, so the
-# clock and destination run bigger than the message, and an unlit dot is not
-# drawn at all: a dot-matrix board in a dark station is black where it is off.
-#
-# **A departure board is a clock,** so this is one of the themes that prints
-# HH:MM: the departure time of the 1st train and the station clock under it.
-# ---------------------------------------------------------------------------
 
 _PLATFORM_BOARD = (14, 30, 786, 472)
 _PLATFORM_WINDOW = (30, 46, 770, 456)
@@ -312,7 +288,7 @@ def _platform_finish(image: Image.Image, width: int, height: int) -> Image.Image
 
 
 def render_platform_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A railway departure board (see the section comment).
+    """A railway departure board (see docs/themes.md).
 
     Composed at the canonical 800x480 and NEAREST-downsampled for other
     sizes (``metro`` convention).

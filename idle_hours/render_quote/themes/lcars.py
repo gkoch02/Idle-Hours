@@ -1,6 +1,7 @@
-"""The ``lcars`` theme's border painter and the code only it uses (issue #335).
+"""The ``lcars`` theme's border painter, a Star Trek LCARS console: tangerine chrome
+bars and elbows with a rail of stippled and solid blocks.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § lcars
 """
 
 from __future__ import annotations
@@ -74,35 +75,10 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     canvas corner, with a stack of coloured rail blocks and an "LCARS"
     wordmark.
 
-    * **Bars and elbows.** ``T`` (44 px at 800×480) is both the bar
-      thickness and the rail width. The top bar (y = 0..T-1) is split into
-      a tangerine segment and a lavender one with a small black gap; the
-      bottom bar is one tangerine ribbon. Each corner is an annular
-      quarter-circle elbow: outer radius ``R_out``, inner radius
-      ``R_in = R_out - T``, common centre ``(R_out, R_out)`` (mirrored at
-      the bottom), so the chrome has uniform thickness T.
-    * **Tangerine.** Spectra 6 has no orange. The chrome is painted in
-      ``ornament_dark`` (red) and ~3/8 of it flipped to yellow on
-      ``BAYER_4x4`` (cells < 6), as ``draw_deco_border`` does; a 50/50 mix
-      reads as washed-out amber. Bbox-scoped, so the body is untouched.
-    * **Seven rail blocks** between the elbows, plain rectangles within the
-      rail column, separated by black gaps: lavender, yellow, coral, lilac,
-      red, coral, blue, with uneven heights. Lavender / lilac are 3-ink
-      R+B+W stipples and coral is R+W 1:1 (sentinel + bbox post-pass, see
-      ``spectra6_color_recipes.md``).
-    * **Block labels**: short fixed numeric codes in black, right-aligned
-      in each block.
-    * **"LCARS" wordmark** right-aligned in the top bar's lavender
-      segment, and a **"STARDATE" callout** in the bottom bar, both black
-      in the ornament face (Antonio Bold).
-
-    The top bar spans the y = 14..29 ``DEBUG MODE`` band, so in debug mode
-    the yellow label sits on the chrome (reduced contrast, still legible;
-    production has no label). ``lcars`` has no ``_DEBUG_LABEL_RIGHT_INSET``
-    entry.
-
-    The rail column is x = 0..T-1 (0..43); the widest body (``dense``,
-    ``max_width`` 680) starts at x = 60, so rail and text never meet.
+    The top bar spans the y = 14..29 ``DEBUG MODE`` band on purpose (the
+    label sits on the chrome in debug mode). The rail column is x = 0..T-1
+    (0..43); the widest body (``dense``, ``max_width`` 680) starts at x = 60,
+    so rail and text never meet. Design notes: docs/themes.md § lcars.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size

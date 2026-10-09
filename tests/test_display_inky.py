@@ -127,7 +127,7 @@ class TestThemeSaturation:
         0.5 and anything else 0.7, except the themes that carry a comment
         saying why. A new exception needs a comment there and a name here."""
         from idle_hours import render_quote as rq
-        exceptions = {"marker", "risograph", "semiotic", "vitrail"}
+        exceptions = {"marker", "semiotic", "vitrail"}
 
         def light(rgb):
             r, g, b = rgb[:3]

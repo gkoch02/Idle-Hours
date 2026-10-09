@@ -1,6 +1,8 @@
-"""The ``cartograph`` theme's border painter and the code only it uses (issue #335).
+"""The ``cartograph`` theme's border painter, an antique cartographer's chart:
+graticule, rhumb lines, sepia coastlines and islands, a compass rose, and a
+cream cartouche knocked out for the quote.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § cartograph
 """
 
 from __future__ import annotations
@@ -541,40 +543,13 @@ def draw_cartograph_border(
 ) -> None:
     """Paint a hand-drawn antique cartographer's chart frame.
 
-    Eleven layers, painted in Z-order:
-
-    * **Layer 0 — cream Y+W Bayer wash.** Sparse 1-in-16 yellow
-      stipple over every ``page_bg`` pixel, warming the flat white to
-      vellum.
-    * **Layer 1 — sepia graticule.** Dotted R/G meridians and parallels
-      every 80 px (period-3 density) plus 3-px degree ticks at the
-      frame; the strongest "this is a chart" cue.
-    * **Layer 2 — sepia rhumb lines.** Eight rays at 45° from the
-      compass-rose centre, at period-2 density so they read as a focal
-      feature over the graticule.
-    * **Layer 3 — sepia foxing.** ~120 seeded single-pixel dots, R or G
-      by parity, which the eye averages to rust-brown.
-    * **Layer 4 — two corner coastlines** (TL, BR) in R+G sepia via the
-      sentinel-then-bbox-post-pass pattern. Seeded so the same chart
-      recurs at every render.
-    * **Layer 5 — three islands** (:data:`_CARTOGRAPH_ISLANDS`), same
-      recipe.
-    * **Layer 6 — compass rose** (bottom-left) in R+Y 5/8:3/8 tangerine,
-      painted after the rhumb lines so it sits on top of them.
-    * **Layer 7 — sea-serpent doodle** in solid black, as period margin
-      doodles were inked.
-    * **Layer 8 — three Latin place names** in IM Fell italic, R+G
-      sepia (:data:`_CARTOGRAPH_PLACE_NAMES`); falls back through
-      ``META_FONT_CANDIDATES``.
-    * **Layer 9 — cartouche knockout.** With ``clear_rect``: a rounded
-      white card, a fresh cream wash, a thin red outer rule and a thin
-      black inner rule, erasing the map under the body text.
-    * **Layer 10 — registration crosses** at the four inner-rule
-      corners.
-
-    When ``clear_rect`` is None (direct calls, ``render_static_message``,
-    ``render_source_card``) Layers 9 and 10 are skipped; the map layers
-    still paint.
+    Eleven layers in Z-order (numbered in the comments below): cream wash,
+    graticule, rhumb lines, foxing, coastlines, islands, compass rose, sea
+    serpent, place names, then the cartouche knockout and its registration
+    crosses. When ``clear_rect`` is None (direct calls,
+    ``render_static_message``, ``render_source_card``) the last two are
+    skipped; the map layers still paint. Design notes: docs/themes.md §
+    cartograph.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -590,9 +565,9 @@ def draw_cartograph_border(
 
     # ------------------------------------------------------------------
     # Layer 0 — cream Y+W Bayer wash on page_bg pixels. Threshold < 1
-    # = ~6.25% yellow, half the density ``illuminated`` / ``dispatch``
-    # use, because the foxing layer (Layer 3) adds more warmth on top and
-    # a denser ground would compete with the body text.
+    # = ~6.25% yellow, half the density ``dispatch`` uses, because the
+    # foxing layer (Layer 3) adds more warmth on top and a denser ground
+    # would compete with the body text.
     if page_bg is not None:
         for y in range(height):
             row = BAYER_4x4[y & 3]

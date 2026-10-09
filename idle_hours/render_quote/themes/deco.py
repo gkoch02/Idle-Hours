@@ -1,6 +1,7 @@
-"""The ``deco`` theme's border painter and the code only it uses (issue #335).
+"""The ``deco`` theme's border painter, a 1930s art-deco poster: doubled hairline
+rules, stepped corners, chevrons and a rising sun in synthesised tangerine.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § deco
 """
 
 from __future__ import annotations
@@ -15,30 +16,15 @@ from ..spec import BorderSpec
 
 def draw_deco_border(image: Image.Image, colors: dict) -> None:
     """Paint an art-deco poster frame: doubled hairline rule + stepped
-    skyscraper-step corner ornaments + a top-centre rising-sun fan.
+    skyscraper-step corner ornaments + a top-centre rising-sun fan, then
+    synthesise tangerine from the red accent.
 
-    * **Doubled hairline frame**: rectangles at insets 14 and 22, 1 px
-      stroke in ``colors["text"]``.
-    * **Stepped corner ornaments**: three concentric L-shapes per corner
-      in ``colors["accent"]``, vertex at the inner-frame corner, arms
-      12 / 18 / 24 px, 1 px stroke.
-    * **Centred rising-sun fan**: a small accent dot on the inner frame's
-      top edge with five short rays fanning upward through the band
-      between the two rules, ending at y = outer_inset + 1. Centred, so
-      it never reaches the right-aligned ``DEBUG MODE`` banner.
-
-    ``deco`` is deliberately **absent** from ``_DEBUG_LABEL_RIGHT_INSET``
-    (like ``atomic`` and ``dispatch``): the top-right steps end at
-    x ≤ width-14, ≥6 px clear of the default label edge
-    (``SIDE_MARGIN = 20``).
-
-    **Final pass: red→orange Bayer dither.** Spectra 6 has no orange, so
-    ~3/8 of the ``accent`` pixels flip to yellow on ``BAYER_4x4``
-    (cells < 6). Red-biased because a 50/50 mix reads as washed-out amber
-    (yellow is far more luminous). Threshold and phase match
-    ``draw_text_dithered``'s ``light_density=0.375`` branch so border and
-    matched phrase share one orange. Runs only when ``accent`` is
-    Spectra-6 red; custom-palette direct calls keep a solid accent.
+    The final pass flips ~3/8 of the red ``accent`` pixels to yellow on
+    ``BAYER_4x4`` (cells < 6), matching ``draw_text_dithered``'s
+    ``light_density=0.375`` threshold and phase so border and matched phrase
+    share one orange. It runs only when ``accent`` is Spectra-6 red;
+    custom-palette direct calls keep a solid accent. Design notes:
+    docs/themes.md § deco.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size

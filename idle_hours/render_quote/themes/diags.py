@@ -1,6 +1,6 @@
-"""The ``diags`` theme's frame and the code only it uses (issue #335).
+"""The ``diags`` theme: a diagnostic status panel (clock, picker metrics, ink and stipple swatches).
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § diags
 """
 
 from __future__ import annotations

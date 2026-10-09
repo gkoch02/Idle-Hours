@@ -1,6 +1,6 @@
-"""The ``hal`` theme's frame and the code only it uses (issue #335).
+"""The ``hal`` theme: the Discovery One's monitors and HAL 9000, from *2001: A Space Odyssey*.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § hal
 """
 
 from __future__ import annotations
@@ -19,26 +19,6 @@ from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 from ._shared import _crt_paint_scanlines
 
-# ---------------------------------------------------------------------------
-# hal — *2001: A Space Odyssey* (1968): the Discovery One's monitors, HAL 9000
-# ---------------------------------------------------------------------------
-# The Discovery's monitors are flat fields of one saturated colour captioned
-# with a three-letter subsystem mnemonic — solid flats, which six inks render
-# exactly. Full design notes: docs/themes.md (``hal``).
-#
-# Layout: the main monitor (blue field, the active mnemonic in Michroma,
-# seeded readout bars, the quote in white Jost with the matched phrase Bold in
-# yellow, a tracked byline); the twelve subsystem tiles along the foot; and the
-# right column — nameplate, HAL's lens, the VEH wireframe and the HIB monitor's
-# two life traces.
-#
-# The hour is which subsystem is up: the hour's tile is white and its mnemonic
-# heads the main monitor. The order is fixed, so the frame is byte-identical
-# across the minutes of an hour; nothing reads the wall clock. Every colour is
-# a solid ink; the only stipples are the ``paint_neon_mask`` blooms, each with
-# ``ground`` pinned so it cannot eat the bezel. Composed at 800x480 and
-# NEAREST-downsampled otherwise (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _HAL_SEED = 0x48414C39                # HAL9
 _HAL_MNEMONICS = ("COM", "NAV", "VEH", "ATM", "HIB", "GDE", "LIF", "MEM", "DMG", "FLX", "CNT", "NUC")
 _HAL_TILE_INKS = ("red", "yellow", "green", "blue")
@@ -241,7 +221,7 @@ def _hal_paint_traces(image: Image.Image, quote_row: dict) -> None:
 
 def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Discovery's main monitor with the hour's subsystem up, HAL's eye
-    beside it (see the section comment above)."""
+    beside it (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = Image.new("RGB", (800, 480), SPECTRA6["black"])
     _hal_paint_monitor(image, hour, quote_row)

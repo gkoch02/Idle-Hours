@@ -1,6 +1,7 @@
-"""The ``codex`` theme's frame and the code only it uses (issue #335).
+"""The ``codex`` theme's frame: a botanical entry from Luigi Serafini's *Codex
+Seraphinianus* (1981), with the quote as the page's one deciphered passage.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § codex
 """
 
 from __future__ import annotations
@@ -18,30 +19,6 @@ from ..primitives import _white_noise
 from ..spec import FrameSpec
 from ._shared import _codex_script, _vitrail_fill_polygon, _vitrail_pane_ink
 
-# ---------------------------------------------------------------------------
-# codex — a page of the Codex Seraphinianus
-# ---------------------------------------------------------------------------
-# Luigi Serafini's imaginary encyclopedia (1981), laid out as a botanical
-# entry: a chimerical plant plate on the left, columns of asemic script on the
-# right, and the quote as the one *deciphered* passage, set in a pen hand
-# between lines of untranslated script.
-#
-# **The script is generated, not typeset** (it is deliberately not an
-# alphabet). ``_codex_script`` drives a pen along a prolate trochoid, which
-# loops whenever the backward swing outruns the forward advance, like a cursive
-# hand. Per-letter swing, height and direction come from an RNG seeded from
-# ``_row_digest`` (never ``hash()``), so each quote gets its own byte-identical
-# page.
-#
-# **The time is the page number**, written as the minute of the day in base 21
-# (Serafini's own numeral base; three digits cover 0-1439) using twenty-one
-# invented glyphs built from the bits of each value, so the same digit always
-# looks the same. The readable time stays with the matched phrase.
-#
-# **Vibrancy is carried by the plate, not the ground.** The page stays a calm
-# cream so the script reads; the plant uses every native ink plus two-ink
-# recipes (tangerine R+Y, violet R+B, teal G+B, mint G+W, rose R+W, sepia R+G).
-# Colour choices are seeded from the row, so each entry is a different specimen.
 _CODEX_PLATE = (20, 40, 324, 452)            # the illustration's clear field
 _CODEX_STEM_BASE = (128, 404)
 _CODEX_STEM_TOP = (140, 118)

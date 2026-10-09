@@ -1,58 +1,132 @@
-"""PIL-free shim exposing the registered theme names + cycle order.
+"""The theme roster: every registered theme name and the rotation order, stdlib only.
 
-Three runtime modules (:mod:`runtime_state`, :mod:`runtime_theme`,
-:mod:`runtime_actions`) need theme-name lists to validate persisted state,
-gate manual-theme overrides, and drive the button-B / web cycle. They each
-previously inlined a near-duplicate ``try: from render_quote import …`` lazy
-import with a hand-coded ``("default", "dark")`` fallback — and the fallback
-types had drifted (``frozenset`` vs ``tuple``) across copies. Consolidating
-into one module kills the drift class-by-construction.
-
-The lazy import is preserved (rather than an unconditional one at the top)
-so importing these helpers does not pull Pillow into the main-loop import
-graph at module load — ``render_quote.THEMES`` triggers ``from PIL import``,
-and we want :mod:`run_clock`, :mod:`runtime_state`, etc. to stay PIL-free
-on import for the test harness and for any future no-render mode.
-
-Failure mode: if ``render_quote`` cannot be imported (e.g. a stripped-down
-test fixture, or a Pillow install that's broken on the appliance), we fall
-back to the legacy ``("default", "dark")`` pair so state-file load /
-persisted-theme validation can still proceed. The appliance won't render in
-that state, but it also shouldn't wedge state-machine code.
+``THEME_ORDER`` lives here rather than in ``render_quote`` because importing
+anything from the renderer package pulls in Pillow, and :mod:`run_clock`,
+:mod:`runtime_state`, :mod:`runtime_theme`, :mod:`runtime_actions` and
+:mod:`web_server` need the names without it: for ``--theme`` choices, to
+validate persisted manual themes, and to drive the button-B / web cycle.
+``render_quote.theme_tables`` re-exports both constants, so ``rq.THEME_ORDER``
+reads are unchanged.
 """
 from __future__ import annotations
 
-_FALLBACK: tuple[str, ...] = ("default", "dark")
+# Every registered theme, in button-B / web-dropdown cycle order. This is the
+# one literal list of theme names: ``run_clock``'s ``--theme`` choices and the
+# renderer (``render_quote.THEME_ORDER``, re-exported by ``theme_tables``) both
+# read it from here. Every name must also be a key in ``render_quote.THEMES``
+# (enforced in tests).
+THEME_ORDER: tuple[str, ...] = (
+    "default",
+    "dark",
+    "newsprint",
+    "nightvision",
+    "gothic",
+    "bauhaus",
+    "comic",
+    "dispatch",
+    "atomic",
+    "marker",
+    "saloon",
+    "roman",
+    "alchemy",
+    "deco",
+    "chalkboard",
+    "placard",
+    "chanbara",
+    "lcars",
+    "fillmore",
+    "firmament",
+    "astrarium",
+    "kanagawa",
+    "marquee",
+    "tarot",
+    "vitrail",
+    "cartograph",
+    "questline",
+    "chrono",
+    "outrun",
+    "circuit",
+    "letter",
+    "sampler",
+    "anna_atkins",
+    "lieder",
+    "izakaya",
+    "abyssal",
+    "pride",
+    "pulp",
+    "synoptic",
+    "vhs",
+    "bakelite",
+    "cardcatalog",
+    "metro",
+    "nocturne",
+    "plaque",
+    "daguerreotype",
+    "autochrome",
+    "photo",
+    "betweenus",
+    "betweenus_dark",
+    "carcosa",
+    "control",
+    "observation",
+    "trisolaris",
+    "biomech",
+    "codex",
+    "culture",
+    "orbital",
+    "furies",
+    "bosch",
+    "semiotic",
+    "atropos",
+    "saros",
+    "expedition",
+    "witcher",
+    "hades",
+    "expanse",
+    "beksinski",
+    "goya",
+    "hal",
+    "lumon",
+    "dsky",
+    "oblivion",
+    "yorha",
+    "hitchhiker",
+    "escritoire",
+    "lasvegas",
+    "bladerunner",
+    "traumateam",
+    "redacted",
+    "gantry",
+    "platform",
+    "splitflap",
+    "imprimatur",
+    "diags",
+)
+# Themes registered in THEMES but excluded from every rotation (button B, web
+# dropdown, auto, random); reachable only via explicit `--theme NAME`.
+# RANDOM_EXCLUDED_THEMES filters only --theme random. Use this for themes worth
+# keeping as opt-in but not ready for unattended rotation.
+CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset()
 
 
 def known_theme_names() -> frozenset[str]:
-    """Set of theme names registered in ``render_quote.THEMES``.
+    """Every registered theme name.
 
     Used to validate persisted manual-theme values and gate
     ``resolve_effective_theme`` overrides. Membership-style lookups; order
     does not matter (use :func:`theme_cycle` when you need the curated
-    button-B / web-dropdown ordering).
+    button-B / web-dropdown ordering). Equal to ``render_quote.THEMES``'s
+    keys; ``set(THEME_ORDER) == set(THEMES)`` is fenced in tests.
     """
-    try:
-        from idle_hours.render_quote import THEMES
-    except Exception:
-        return frozenset(_FALLBACK)
-    return frozenset(THEMES.keys())
+    return frozenset(THEME_ORDER)
 
 
 def theme_cycle() -> tuple[str, ...]:
     """Curated order for button-B / web-dropdown theme advancement.
 
-    Pulled from ``render_quote.THEME_ORDER`` (an explicit tuple, distinct from
-    ``THEMES.keys()`` — the registered names without an ordering guarantee),
-    minus ``render_quote.CYCLE_EXCLUDED_THEMES`` so a theme can stay registered
-    (and reachable via explicit ``--theme NAME``) while being skipped by every
-    rotation path. The registration invariant ``set(THEME_ORDER) ==
-    set(THEMES.keys())`` is preserved by keeping excluded themes in the tuple
-    and filtering here.
+    ``THEME_ORDER`` minus ``CYCLE_EXCLUDED_THEMES``, so a theme can stay
+    registered (and reachable via explicit ``--theme NAME``) while being
+    skipped by every rotation path. Excluded themes stay in the tuple and are
+    filtered here, which keeps ``set(THEME_ORDER) == set(THEMES)`` true.
     """
-    try:
-        from idle_hours.render_quote import CYCLE_EXCLUDED_THEMES, THEME_ORDER
-    except Exception:
-        return _FALLBACK
     return tuple(name for name in THEME_ORDER if name not in CYCLE_EXCLUDED_THEMES)

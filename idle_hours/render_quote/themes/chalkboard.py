@@ -1,6 +1,7 @@
-"""The ``chalkboard`` theme's border painter and the code only it uses (issue #335).
+"""The ``chalkboard`` theme's border painter, a classroom slate: a doubled wooden frame,
+chalk dust, a tick and gold star, eraser smudges and a practice rule.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § chalkboard
 """
 
 from __future__ import annotations

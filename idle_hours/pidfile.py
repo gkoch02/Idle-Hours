@@ -1,32 +1,14 @@
 """Single-instance pidfile lock for the long-running clock loop.
 
-A second ``run_clock.py`` starting while the first is still running would race
-the first on every appliance file — ``state.json``, ``history.jsonl``, and the
-date-rotated telemetry sibling. :mod:`atomic_io`'s tmp-rename pattern is
-crash-safe but NOT concurrent-writer-safe: two processes interleaving
-read-modify-write can each think they won and clobber the other. An advisory
-``fcntl.flock`` on a pidfile is the standard Unix answer.
-
-Semantics:
-
-* ``acquire_pidfile(path)`` opens ``path`` (creating the parent dir as needed),
-  takes a non-blocking exclusive ``flock``, writes the current pid, and returns
-  a handle whose ``release()`` method unlocks + removes the file.
-* If the lock is already held by a live process, raises
-  :class:`PidfileLockedError` with the existing pid. The caller is expected to
-  log loudly and exit 1.
-* A **stale** pidfile (locked by nothing, or containing a dead pid) is
-  reclaimed: the pid contents are rewritten and the lock is acquired. This
-  handles the ``SIGKILL`` / power-loss cases where the OS released the
-  ``flock`` but the pidfile bytes stayed on disk.
-* Best-effort cleanup on ``release()``: a failure to unlink the file is logged
-  but not raised, because by the time we're tearing down there is nothing the
-  caller can usefully do with the error.
-
-Platform note: ``fcntl.flock`` is a Unix-only API. On Windows this module
-gracefully no-ops (``acquire_pidfile`` returns a handle whose ``release()`` is
-idle) — the appliance only runs on Linux (Raspberry Pi), but the module stays
-importable on a dev host so the test suite doesn't fork on OS.
+Two ``run_clock`` processes would race on ``state.json``, the history ledger
+and telemetry: ``atomic_io`` is crash-safe, not concurrent-writer-safe. An
+advisory, non-blocking ``fcntl.flock`` on a pidfile is the standard answer.
+``acquire_pidfile`` raises :class:`PidfileLockedError` (with the holder's pid)
+when a live process holds the lock and reclaims a stale file; ``release()``
+unlocks and removes it, logging rather than raising on cleanup failure. On
+platforms without ``fcntl`` (Windows) it no-ops, so the module stays
+importable on a dev host. Operator-facing behaviour: docs/runtime.md
+("Single-instance pidfile").
 """
 from __future__ import annotations
 

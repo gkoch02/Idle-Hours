@@ -6,7 +6,6 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from .fonts import load_font
-from .layout import _bold_stroke_for_theme
 from .palette import SPECTRA6, BAYER_4x4, gray_pixel_access, pixel_access
 from .theme_tables import _THEMES_WITHOUT_ORNAMENT_MARKS
 
@@ -139,9 +138,8 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     ``snap_image_to_palette`` as a hot fringe. ≥128 reproduces the silhouette
     plain ``draw.text`` + palette snap produces, so small text doesn't thicken.
 
-    ``stroke_width`` is forwarded to the mask draw as a faux bold (``glacier``
-    uses 1 px, since Iceland has no Bold); the bbox is padded by it so the
-    thickened rim never clips.
+    ``stroke_width`` is forwarded to the mask draw as a faux bold, for a face
+    with no Bold; the bbox is padded by it so the thickened rim never clips.
     """
     draw = ImageDraw.Draw(image)
     bbox = draw.textbbox(xy, text, font=font, stroke_width=stroke_width)
@@ -271,18 +269,12 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
 
     * ``nightvision`` — green body → G+W 1:1 mint; yellow phrase → Y+G
       5/8:3/8 lime.
-    * ``grimoire`` — red phrase → B+W sky blue (matches its quote marks).
     * ``gothic`` — red phrase → R+Y 1:1 amber; ``betweenus_dark`` — yellow
       phrase → the same amber.
-    * ``deco`` / ``grimdark`` — red phrase → R+Y 5/8:3/8 tangerine (deco's
-      matches ``draw_deco_border``'s post-pass threshold).
-    * ``blueprint`` / ``scholar`` — red phrase → R+K maroon; ``mucha`` /
-      ``fillmore`` — red body → R+K maroon.
-    * ``illuminated`` / ``risograph`` — blue phrase → R+B violet.
+    * ``deco`` — red phrase → R+Y 5/8:3/8 tangerine (matches
+      ``draw_deco_border``'s post-pass threshold).
+    * ``fillmore`` — red body → R+K maroon.
     * ``bauhaus`` — blue phrase → B+K navy.
-    * ``glacier`` — green phrase → G+B 5/8:3/8 teal plus a faux-bold stroke.
-    * ``herbarium`` — green phrase → G+K forest green; ``mucha`` — green
-      phrase → G+B cyan.
     * ``firmament`` — yellow phrase → Y+W cream; ``anna_atkins`` — yellow
       phrase → B+W sky blue, and every glyph gets a black halo first.
 
@@ -295,14 +287,6 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         draw.text(xy, text, font=font, fill=SPECTRA6["black"], stroke_width=2, stroke_fill=SPECTRA6["black"])
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
-    elif theme == "grimoire" and fill == SPECTRA6["red"]:
-        # Sky blue (B+W 1:1), the recipe this theme's quote marks use, so the
-        # phrase and ornaments share one moon-silver register. The red
-        # ``accent`` is a sentinel and is never painted — hence ``dark=blue``
-        # rather than ``dark=fill`` — which keeps the phrase clear of the
-        # border's red pentagrams and sigils. (Solid white left it
-        # undifferentiated from the body; a 3/4-red mix read dim.)
-        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["blue"], light=SPECTRA6["white"])
     elif theme == "gothic" and fill == SPECTRA6["red"]:
         # Amber (R+Y 1:1): warm candle-flame on black, clear of the red
         # border ornaments.
@@ -312,25 +296,6 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # ``draw_deco_border``'s post-pass threshold so phrase and border
         # share one tangerine.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
-    elif theme in ("blueprint", "scholar") and fill == SPECTRA6["red"]:
-        # Maroon (R+K 1:1): blueprint's red pencil pressed hard, scholar's
-        # aged red-lead annotation. Border marks stay solid red.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
-    elif theme == "illuminated" and fill == SPECTRA6["blue"]:
-        # Violet (R+B 1:1) — Tyrian purple, in the same register as the
-        # border's R+B+K plum cabochons. The red body never hits this branch.
-        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=SPECTRA6["blue"])
-    elif theme == "glacier" and fill == SPECTRA6["green"]:
-        # Teal (G+B 5/8:3/8, Bayer threshold 6/16). 50/50 cyan read too close
-        # to the blue body and solid green read muddy; the green bias pulls
-        # the phrase off the body while staying cool. Plus a
-        # ``stroke_width=1`` faux bold, since Iceland ships only Regular and
-        # hue alone doesn't carry the differentiation.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"], light_density=0.375, stroke_width=_bold_stroke_for_theme(theme))
-    elif theme == "risograph" and fill == SPECTRA6["blue"]:
-        # Violet (R+B 1:1) — the riso red-over-blue overprint. Keeps the
-        # theme's no-black invariant by construction.
-        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=fill)
     elif theme == "bauhaus" and fill == SPECTRA6["blue"]:
         # Navy (B+K 1:1), a deeper variant of the border's solid blue square
         # so all three primaries still show solid in the border.
@@ -339,35 +304,18 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # Lime (Y+G 5/8:3/8, density 0.375): yellow-biased because a 50/50
         # Y+G reads washed-out olive — the HUD readout glow.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["green"], light_density=0.375)
-    elif theme == "herbarium" and fill == SPECTRA6["green"]:
-        # Forest green (G+K 1:1, the recipes doc's dark green): pressed plant
-        # material against the cream ground, distinct from the border's Y+G
-        # olive leaf.
+    elif theme == "fillmore" and fill == SPECTRA6["red"]:
+        # Maroon (R+K 1:1). Keeps the red sentinel in ``text`` so every body
+        # path hits this seam, and tames the fatiguing red-on-yellow body, as
+        # red ink darkened on yellow stock. The blue phrase and blob primaries
+        # stay solid, so all six inks still appear.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
-    elif theme in ("mucha", "fillmore") and fill == SPECTRA6["red"]:
-        # Maroon (R+K 1:1). Both themes keep the red sentinel in ``text`` so
-        # every body path hits this seam:
-        #
-        # * ``mucha`` — a synthesised body colour, the oxblood of period
-        #   poster lettering; its green phrase lands on cyan below.
-        # * ``fillmore`` — tames the fatiguing red-on-yellow body, as red ink
-        #   darkened on yellow stock. The blue phrase and blob primaries stay
-        #   solid, so all six inks still appear.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
-    elif theme == "mucha" and fill == SPECTRA6["green"]:
-        # Cyan (G+B 1:1): a cool accent against the warm maroon body.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
     elif theme == "firmament" and fill == SPECTRA6["yellow"]:
         # Cream (Y+W 1:1): gilt constellation labels on the navy ground.
         # The white body falls through to the ``else`` branch.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
-    elif theme == "grimdark" and fill == SPECTRA6["red"]:
-        # Forge amber (R+Y 5/8:3/8 on BAYER_4x4, as ``deco``): molten metal on
-        # the bulkhead, tied to the gold trim. 50/50 would read washed-out
-        # because yellow out-luminates red.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
     elif theme == "anna_atkins" and fill == SPECTRA6["yellow"]:
-        # Yellow sentinel → B+W sky blue (the ``glacier`` recipe): a ghostly
+        # Yellow sentinel → B+W sky blue (the recipes doc's sky blue): a ghostly
         # cyanotype element distinct from the crisp white body. The yellow
         # shows literally only in the debug banner, outside this seam.
         draw_text_dithered(image, xy, text, font, dark=SPECTRA6["blue"], light=SPECTRA6["white"])

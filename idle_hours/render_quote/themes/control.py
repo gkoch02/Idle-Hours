@@ -1,6 +1,7 @@
-"""The ``control`` theme's frame and the code only it uses (issue #335).
+"""The ``control`` theme's frame: the Astral Plane of Remedy's *Control* (2019)
+as a title card.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § control
 """
 
 from __future__ import annotations
@@ -33,34 +34,8 @@ _CONCRETE_PALETTE = _GUNMETAL_PALETTE
 
 
 
-# ---------------------------------------------------------------------------
-# control — the Astral Plane, after Remedy's *Control* (2019)
-# ---------------------------------------------------------------------------
-# The quote as one of the game's title cards, in three stacked registers: the
-# Astral Plane (white void, floating stone blocks, the Board's inverted black
-# pyramid), the Oldest House (a concrete plinth carrying a black wayfinding
-# sign), and the Hiss (the matched phrase in red with a stippled halo).
-#
-# **Blocks are flat geometry**: three polygons each (white top, lit side,
-# shadow side) with plain unjittered 8x8 K+W stipples — a jitter would only
-# add noise to machined smoothness.
-#
-# **The plinth is jittered** (or the committed concrete plate): an ordered tile
-# alone reads as a screen door, a hash alone as sandpaper. Formwork seams and
-# tie-holes make it read as brutalist concrete.
-#
-# **The Hiss is a red bloom on white**, reading as a spreading stain rather
-# than light. ``ground`` is pinned to white so the halo cannot eat the prose.
-#
-# **The Board speaks in pairs**: the sign reads ``AUTHOR/ORIGIN`` and
-# ``WORK/VESSEL`` over the row's own author and title.
-#
-# **No time surface beyond the matched phrase**; pinned byte-identical across
-# every time by ``TestControlFrame``.
-#
-# Composed at the canonical 800x480 and NEAREST-downsampled for other sizes
-# (``metro`` convention): everything is absolute panel coordinates.
-# ---------------------------------------------------------------------------
+# Everything is absolute panel coordinates: composed at 800x480 and
+# NEAREST-downsampled for other sizes (the ``metro`` convention).
 _CONTROL_QUOTE_RECT = (130, 100, 670, 372)
 _CONTROL_PLINTH_Y = 392
 _CONTROL_SIGN_RECT = (40, 418, 760, 462)

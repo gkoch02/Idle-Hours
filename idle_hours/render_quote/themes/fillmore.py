@@ -1,6 +1,7 @@
-"""The ``fillmore`` theme's border painter and the code only it uses (issue #335).
+"""The ``fillmore`` theme's border painter, a 1960s Fillmore concert poster: a sun-faded
+yellow wash and two free-form corner blobs, no frame.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § fillmore
 """
 
 from __future__ import annotations

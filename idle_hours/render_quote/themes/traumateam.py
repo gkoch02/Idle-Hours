@@ -1,6 +1,6 @@
-"""The ``traumateam`` theme's frame and the code only it uses (issue #335).
+"""The ``traumateam`` theme: a Trauma Team International dispatch screen (*Cyberpunk*'s armoured ambulance service).
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § traumateam
 """
 
 from __future__ import annotations
@@ -18,25 +18,6 @@ from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._shared import _lumon_hover_boxes
 
-# ---------------------------------------------------------------------------
-# traumateam — *Cyberpunk*: a Trauma Team International dispatch screen
-# ---------------------------------------------------------------------------
-# The armoured ambulance service of Night City, on a black screen: the
-# wordmark in white block capitals either side of the six-armed mark, a red
-# dispatch band beneath it, the quote as the call, and a vitals trace along
-# the foot. Full design notes: docs/themes.md (``traumateam``).
-#
-# The wordmark is drawn, not set: no open face has the brand's stencilled
-# block capitals, so each letter is a handful of polygons on a 3 x 9 stroke
-# grid (``_TRAUMATEAM_GLYPHS``), inspired by the logo rather than traced from it.
-#
-# The hour is the responding unit, ``AV-01`` to ``AV-12``, byte-identical
-# across the minutes of an hour; the matched phrase carries the minute, set
-# Bold in white on a red block, the band's red. Red ink on black reads
-# nearly black on the panel, so red is only ever a ground under white.
-# Composed at 800x480 and NEAREST-downsampled otherwise (the ``metro``
-# convention).
-# ---------------------------------------------------------------------------
 _TRAUMATEAM_SEED = 0x54524D41             # TRMA
 _TRAUMATEAM_UNIT = 6                      # px per stroke-grid unit; caps are 9 units tall
 _TRAUMATEAM_LOCKUP_Y = 30                 # top of the capitals
@@ -229,8 +210,7 @@ def _traumateam_paint_vitals(draw: ImageDraw.ImageDraw, quote_row: dict) -> None
 
 
 def render_traumateam_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The Trauma Team dispatch screen with the hour's responding unit (see
-    the section comment above)."""
+    """The Trauma Team dispatch screen with the hour's responding unit (see docs/themes.md)."""
     hour = _clock_hour12(time_str)
     image = Image.new("RGB", _TRAUMATEAM_FRAME_SIZE, SPECTRA6["black"])
     draw = ImageDraw.Draw(image)
