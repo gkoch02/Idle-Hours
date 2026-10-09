@@ -238,18 +238,21 @@ def _cardcatalog_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw,
         draw.text((_CARDCATALOG_COL_X, y), author, font=main, fill=black)
         y += 30
     # The title wraps onto a second typed line (room above the rule), cut on a
-    # word only when it overflows both.
+    # word only when it overflows both. A single word wider than the column is
+    # clipped by character so it never runs through the column rule.
     words = title.split()
-    for _ in range(2):
+    for row in range(2):
         if not words:
             break
         line = words.pop(0)
         while words and draw.textlength(f"{line} {words[0]}", font=sub) <= column:
             line = f"{line} {words.pop(0)}"
-        if words and _ == 1:
+        if words and row == 1:
             while " " in line and draw.textlength(line + "…", font=sub) > column:
                 line = line.rsplit(" ", 1)[0]
             line += "…"
+        while len(line) > 1 and draw.textlength(line, font=sub) > column:
+            line = line[:-2] + "…"
         draw.text((_CARDCATALOG_COL_X, y), line, font=sub, fill=black)
         y += 20
     # Rule under the main entry, and the column rule holding the stamps off the

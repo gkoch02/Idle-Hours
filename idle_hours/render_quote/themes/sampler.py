@@ -272,10 +272,14 @@ def _sampler_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
         stitch_centred(author, y, blue)
         y += _SAMPLER_LINE_ROWS * size + 2
     if title:
-        # Wrap the title onto at most two stitched lines at word boundaries;
-        # only a title too long for both is cut, and then on a word.
+        # A title that fits keeps its dashes on one line; a longer one wraps
+        # onto at most two stitched lines at word boundaries, cut on a word
+        # only when it overflows both. (stitch_centred clips a lone word wider
+        # than the body by character.)
         lines: list[str] = []
-        words = title.split()
+        words = [] if int(round(draw.textlength(f"- {title} -", font=font))) <= max_cols else title.split()
+        if not words:
+            lines.append(f"- {title} -")
         while words and len(lines) < 2:
             line = words.pop(0)
             while words and int(round(draw.textlength(f"{line} {words[0]}", font=font))) <= max_cols:
