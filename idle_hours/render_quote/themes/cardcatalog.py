@@ -232,13 +232,26 @@ def _cardcatalog_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw,
     main = load_font([SPECIALELITE_REGULAR, *META_FONT_BOLD_CANDIDATES], size=19)
     sub = load_font([SPECIALELITE_REGULAR, *META_FONT_CANDIDATES], size=16)
     y = _CARDCATALOG_HEADER_TOP
-    for text, font in ((author, main), (title, sub)):
-        if not text:
-            continue
-        while len(text) > 1 and draw.textlength(text, font=font) > column:
-            text = text[:-2] + "…"
-        draw.text((_CARDCATALOG_COL_X, y), text, font=font, fill=black)
+    if author:
+        while len(author) > 1 and draw.textlength(author, font=main) > column:
+            author = author[:-2] + "…"
+        draw.text((_CARDCATALOG_COL_X, y), author, font=main, fill=black)
         y += 30
+    # The title wraps onto a second typed line (room above the rule), cut on a
+    # word only when it overflows both.
+    words = title.split()
+    for _ in range(2):
+        if not words:
+            break
+        line = words.pop(0)
+        while words and draw.textlength(f"{line} {words[0]}", font=sub) <= column:
+            line = f"{line} {words.pop(0)}"
+        if words and _ == 1:
+            while " " in line and draw.textlength(line + "…", font=sub) > column:
+                line = line.rsplit(" ", 1)[0]
+            line += "…"
+        draw.text((_CARDCATALOG_COL_X, y), line, font=sub, fill=black)
+        y += 20
     # Rule under the main entry, and the column rule holding the stamps off the
     # annotation — both are ruled on real card stock, not decoration.
     draw.line((_CARDCATALOG_COL_X, _CARDCATALOG_HEADER_RULE,
