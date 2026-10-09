@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The bundled Playfair Display Medium, SemiBold and Bold files now carry
+  their own font names and style bits instead of all claiming to be
+  Playfair Display Regular, so software that registers fonts by name sees
+  four distinct faces. Rendering is unchanged.
 - New theme `imprimatur`: the opening page of a 17th-century book from the
   Fell press at Oxford, set in IM Fell English SC (newly bundled) with its
   companion roman. A red-ruled page, a fleuron headpiece, a criblé woodcut
