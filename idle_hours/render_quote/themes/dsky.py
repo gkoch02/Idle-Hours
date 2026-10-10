@@ -32,9 +32,14 @@ _DSKY_LAMP_GAP = (5, 5)
 _DSKY_LAMPS = (("UPLINK", "TEMP"), ("NO ATT", "GIMBAL"), ("STBY", "PROG"), ("KEY REL", "RESTART"),
                ("OPR ERR", "TRACKER"), ("", "ALT"), ("", "VEL"))
 _DSKY_DISPLAY_RECT = (642, 40, 770, 230)
-_DSKY_KEYPAD_ORIGIN = (497, 252)
-_DSKY_KEY = 36
+# Seven 34 px columns on a 39 px pitch, in a tray 7 px out, span 490-772: inside the
+# plate's rim (inner edge 776) and square under the windows. VERB/NOUN and ENTR/RSET
+# stand half a row down, centred on the three rows between them, as on the real unit.
+_DSKY_KEYPAD_ORIGIN = (497, 253)
+_DSKY_KEY = 34
 _DSKY_KEY_GAP = 5
+_DSKY_KEY_ROW_GAP = 7
+_DSKY_TRAY_PAD = 7
 _DSKY_KEYS = (("VERB", "+", "7", "8", "9", "CLR", "ENTR"),
               ("NOUN", "-", "4", "5", "6", "PRO", "RSET"),
               ("", "0", "1", "2", "3", "KEY\nREL", ""))
@@ -113,11 +118,13 @@ def _dsky_label_font(size: int):
 def _dsky_key_rects() -> list:
     rects = []
     ox, oy = _DSKY_KEYPAD_ORIGIN
-    k, g = _DSKY_KEY, _DSKY_KEY_GAP
+    k, g, rg = _DSKY_KEY, _DSKY_KEY_GAP, _DSKY_KEY_ROW_GAP
+    last = len(_DSKY_KEYS[0]) - 1
     for r, row in enumerate(_DSKY_KEYS):
         for c, label in enumerate(row):
             if label:
-                x, y = ox + c * (k + g), oy + r * (k + g)
+                drop = (k + rg) // 2 if c in (0, last) else 0
+                x, y = ox + c * (k + g), oy + r * (k + rg) + drop
                 rects.append((x, y, x + k, y + k, label))
     return rects
 
@@ -181,10 +188,11 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
     # domes with a lit upper-left edge and a core shadow, so each key reads
     # as a dark square on the lighter tray.
     rects = _dsky_key_rects()
-    tx0 = min(r[0] for r in rects) - 8
-    ty0 = min(r[1] for r in rects) - 8
-    tx1 = max(r[2] for r in rects) + 8
-    ty1 = max(r[3] for r in rects) + 8
+    pad = _DSKY_TRAY_PAD
+    tx0 = min(r[0] for r in rects) - pad
+    ty0 = min(r[1] for r in rects) - pad
+    tx1 = max(r[2] for r in rects) + pad
+    ty1 = max(r[3] for r in rects) + pad
     draw.rounded_rectangle((tx0, ty0, tx1, ty1), radius=6, fill=_dsky_tone(0.62))
     draw.rectangle((tx0, ty0, tx1, ty0 + 2), fill=_dsky_tone(0.80))
     keys = Image.new("L", size, 0)

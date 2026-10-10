@@ -1236,6 +1236,8 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 
     **The console is painted in continuous tone and dithered** (`_dither_calibrated`, white and black): the Apollo grey with a horizontal brushed grain, and on it the unit *modelled* rather than drawn — a raised rim shaded under the upper-left light (`_shade_silhouette`), recessed dark-glass windows with a diagonal reflection across the display, the keycaps as near-black domes with a lit edge on a recessed grey tray, screws at the corners, a soft shadow on the panel. Legends, segments and the lit COMP ACTY lamp, solid green, go on crisp after.
 
+    **The keypad fits the plate.** Seven columns of 36 px keys on a 41 px pitch, with the tray 8 px out, ran to x 787: past the rim's inner edge (776) and the unit's own (786). The keys are 34 px on a 39 px pitch and the tray 7 px out (`_DSKY_TRAY_PAD`), so it spans 490–772, square under the windows. VERB/NOUN and ENTR/RSET drop half a row (`_dsky_key_rects`), centred on the three rows between them as on the real unit; `TestDskyFrame::test_keypad_sits_inside_the_plate` holds both.
+
     **The flight plan is paper:** a cream card (white with a yellow quarter) clipped to the console with a bulldog clip, its own shadow beneath it in the scene, the quote typed on it in Special Elite — the typewriter the flight plans were cut on — in black with the matched phrase in red the way the pen-and-ink updates were.
 
     **The hour is the program:** the AGC's major modes were numbered programs and the PROG register shows the one running, here the hour 01–12; VERB 06 NOUN 62 stays up and the registers carry telemetry seeded from the quote.
