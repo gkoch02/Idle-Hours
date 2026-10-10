@@ -59,9 +59,12 @@ idle-hours merge output/run1.jsonl output/run2.jsonl
 # → candidates-merged.jsonl + candidates-merged-summary.json
 
 # One-shot "mine + pipeline + merge into live corpus" driver for a curated list
-# of clock-precise Gutenberg IDs (gutenberg_dawn_expansion_ids.txt).
+# of Gutenberg IDs. Defaults to gutenberg_dawn_expansion_ids.txt (nineteenth-
+# century, struck-hour prose); pass gutenberg_golden_age_ids.txt for the
+# 1895-1930 detective / interwar batch that feeds the off-minute buckets.
 # Safe to re-run — downloads cache in data/gutenberg/, merge_candidates dedupes.
 bash scripts/run_dawn_expansion.sh
+bash scripts/run_dawn_expansion.sh scripts/gutenberg_golden_age_ids.txt
 
 # Analyze which time buckets have few/no quotes. Counts DISPLAYABLE rows
 # (quality ≥ 60, highlightable, not banned — the baker's and picker's own gates); raw

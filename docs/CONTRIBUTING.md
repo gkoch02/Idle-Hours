@@ -182,13 +182,23 @@ invisible to the appliance.
 There's a one-shot driver:
 
 ```bash
-# Add the ID to scripts/gutenberg_dawn_expansion_ids.txt, then:
-bash scripts/run_dawn_expansion.sh
+# Add the ID to the batch it belongs to, then run the driver on that list:
+bash scripts/run_dawn_expansion.sh                                         # scripts/gutenberg_dawn_expansion_ids.txt
+bash scripts/run_dawn_expansion.sh scripts/gutenberg_golden_age_ids.txt    # 1895-1930 detective / Edwardian batch
 ```
 
-That drives the full pipeline and commits the updated
+That drives the full pipeline and leaves the updated
 `candidates-attributed.jsonl`, `quote_database.jsonl`, and coverage snapshot
-together. Safe to re-run (downloads cache, merge dedupes).
+ready to commit together, along with the new `data/gutenberg/pg<id>.txt`
+texts (the cache is tracked so `enrich_metadata` can read the headers on any
+checkout). Safe to re-run (downloads cache, merge dedupes).
+
+Pick the list by what the batch is for. The dawn list is nineteenth-century
+prose with struck-hour vocabulary and fills the `:00` buckets; the Golden Age
+list is detective fiction and interwar prose that states the minute, and is
+the one to grow when the off-minute buckets (`five_past` … `five_to`) are
+thin in `bucket-coverage.md`. Keep a few books per author so one voice does
+not own a bucket.
 
 ### Pipeline stages
 

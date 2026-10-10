@@ -1,0 +1,149 @@
+# Golden Age detective fiction and Edwardian / interwar prose, 1895-1930:
+# the era of wristwatches, railway timetables and alibis, where prose
+# states the minute ("It wanted some five minutes to eleven") instead of the
+# hour. A seven-book Christie trial mined 21 off-minute rows per 100k words
+# against 3 for the Dickens-era batch, so this list targets the minute-state
+# buckets (five_past ... five_to) rather than the already-full :00 ones.
+# Capped at a few books per author so no single voice dominates a bucket.
+# Every ID is on www.gutenberg.org, hence US public domain.
+# Run via: bash scripts/run_dawn_expansion.sh scripts/gutenberg_golden_age_ids.txt
+#
+# Agatha Christie
+863
+1155
+58866
+61168
+61262
+65238
+69087
+70114
+72824
+75288
+# Freeman Wills Crofts (timetable mysteries)
+2013
+59854
+65553
+71073
+72235
+72771
+# Dorothy L. Sayers
+58820
+70008
+70432
+72855
+73295
+# R. Austin Freeman (Dr. Thorndyke)
+10476
+11128
+12187
+13882
+24201
+59478
+# E. C. Bentley
+2568
+# Ernest Bramah (Max Carrados)
+12932
+34732
+# S. S. Van Dine
+70634
+70788
+72719
+# Dashiell Hammett
+77600
+# Anthony Berkeley
+72883
+75476
+# Ronald Knox
+72585
+# A. A. Milne
+1872
+# J. S. Fletcher
+5308
+9902
+10373
+# Baroness Orczy
+10556
+# Jacques Futrelle
+57669
+# Arthur Morrison (Martin Hewitt)
+11252
+37820
+# A. E. W. Mason
+4745
+38663
+# Edgar Wallace
+2688
+20912
+24933
+# E. Phillips Oppenheim
+5815
+# Gaston Leroux
+1685
+# Maurice Leblanc (Arsene Lupin; "The Eight Strokes of the Clock")
+4014
+7896
+# Melville Davisson Post
+2861
+# Mary Roberts Rinehart ("The Man in Lower Ten" is a railway mystery)
+1869
+2019
+2358
+# E. W. Hornung (Raffles)
+706
+# G. K. Chesterton
+223
+1695
+# John Buchan
+559
+560
+# Marie Belloc Lowndes
+2014
+# Victor L. Whitechurch
+75669
+# P. G. Wodehouse
+2607
+6753
+8164
+10554
+59254
+# Erskine Childers
+2360
+# Angela Brazil (school story)
+33389
+# Jerome K. Jerome
+308
+# E. Nesbit
+1874
+# Ford Madox Ford
+2775
+# F. Scott Fitzgerald
+805
+# Virginia Woolf
+5670
+63107
+# Sinclair Lewis ("Babbitt" opens on an alarm clock)
+543
+1156
+# Edith Wharton
+284
+541
+# Theodore Dreiser
+233
+# Ernest Hemingway
+67138
+# Booth Tarkington
+8867
+# E. M. Forster
+2891
+# Saki
+1477
+# John Galsworthy
+2559
+# H. G. Wells
+524
+718
+1264
+# Arnold Bennett
+2813
+5247
+10911

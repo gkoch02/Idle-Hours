@@ -7,9 +7,13 @@
 # (the CI sandbox blocks it). Safe to re-run: gutenberg_time_miner
 # caches downloads in data/gutenberg/ and merge_candidates dedupes.
 #
-# Usage:  bash scripts/run_dawn_expansion.sh
-#         (from the repo root — pipeline output and the data cache resolve
-#         against CWD by design)
+# Usage:  bash scripts/run_dawn_expansion.sh [IDS_FILE]
+#         IDS_FILE defaults to scripts/gutenberg_dawn_expansion_ids.txt; pass
+#         another curated list (scripts/gutenberg_golden_age_ids.txt) to run
+#         the same pipeline over a different batch. Intermediate files in
+#         output/ are named after the list's basename so two batches can sit
+#         side by side. (Run from the repo root — pipeline output and the
+#         data cache resolve against CWD by design.)
 set -euo pipefail
 
 # Resolve repo root from this script's location so the IDs file (sibling
@@ -18,16 +22,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-IDS_FILE="$SCRIPT_DIR/gutenberg_dawn_expansion_ids.txt"
+IDS_FILE="${1:-$SCRIPT_DIR/gutenberg_dawn_expansion_ids.txt}"
+if [[ ! -f "$IDS_FILE" ]]; then
+  echo "ERROR: IDs file $IDS_FILE not found." >&2
+  exit 1
+fi
+# "gutenberg_dawn_expansion_ids.txt" -> "dawn-expansion"; names the output/ intermediates.
+TAG="$(basename "$IDS_FILE" .txt)"
+TAG="${TAG#gutenberg_}"; TAG="${TAG%_ids}"; TAG="${TAG//_/-}"
 EXISTING="idle_hours/assets/candidates-attributed.jsonl"
 BAKED_DB="idle_hours/assets/quote_database.jsonl"
 COVERAGE_JSON="idle_hours/assets/bucket-coverage.json"
 COVERAGE_MD="idle_hours/assets/bucket-coverage.md"
-RAW_OUT="output/raw-candidates-dawn-expansion.jsonl"
-DAWN_MERGED="output/dawn-merged.jsonl"
-DAWN_CLEANED="output/dawn-cleaned.jsonl"
-DAWN_QUALITY="output/dawn-quality.jsonl"
-DAWN_ATTRIBUTED="output/dawn-attributed.jsonl"
+RAW_OUT="output/raw-candidates-$TAG.jsonl"
+BATCH_MERGED="output/$TAG-merged.jsonl"
+BATCH_CLEANED="output/$TAG-cleaned.jsonl"
+BATCH_QUALITY="output/$TAG-quality.jsonl"
+BATCH_ATTRIBUTED="output/$TAG-attributed.jsonl"
 
 if [[ ! -f "$EXISTING" ]]; then
   echo "ERROR: $EXISTING missing — refusing to run." >&2
@@ -47,22 +58,22 @@ while IFS= read -r line; do
 done < "$IDS_FILE"
 
 mkdir -p output
-echo ">>> Harvesting $(( ${#ID_ARGS[@]} / 2 )) Gutenberg IDs..."
+echo ">>> Harvesting $(( ${#ID_ARGS[@]} / 2 )) Gutenberg IDs from $IDS_FILE..."
 python3 -m idle_hours.gutenberg_time_miner "${ID_ARGS[@]}" \
   --strict --skip-fetch-errors \
   --output "$RAW_OUT"
 
-echo ">>> Running dawn harvest through the pipeline (standalone)..."
-python3 -m idle_hours.merge_candidates "$RAW_OUT" --output "$DAWN_MERGED"
-python3 -m idle_hours.clean_display_quotes "$DAWN_MERGED" --output "$DAWN_CLEANED"
-python3 -m idle_hours.quality_filter "$DAWN_CLEANED" --output "$DAWN_QUALITY"
-python3 -m idle_hours.fix_substring_time_matches "$DAWN_QUALITY"
-python3 -m idle_hours.enrich_metadata "$DAWN_QUALITY" --output "$DAWN_ATTRIBUTED"
+echo ">>> Running $TAG harvest through the pipeline (standalone)..."
+python3 -m idle_hours.merge_candidates "$RAW_OUT" --output "$BATCH_MERGED"
+python3 -m idle_hours.clean_display_quotes "$BATCH_MERGED" --output "$BATCH_CLEANED"
+python3 -m idle_hours.quality_filter "$BATCH_CLEANED" --output "$BATCH_QUALITY"
+python3 -m idle_hours.fix_substring_time_matches "$BATCH_QUALITY"
+python3 -m idle_hours.enrich_metadata "$BATCH_QUALITY" --output "$BATCH_ATTRIBUTED"
 
-echo ">>> Merging attributed dawn rows into existing corpus..."
+echo ">>> Merging attributed $TAG rows into existing corpus..."
 # Write to a tmp file first so we never read and write the same file simultaneously.
 TMP_OUT=$(mktemp output/candidates-attributed.XXXXXX.jsonl)
-python3 -m idle_hours.merge_candidates "$EXISTING" "$DAWN_ATTRIBUTED" --output "$TMP_OUT"
+python3 -m idle_hours.merge_candidates "$EXISTING" "$BATCH_ATTRIBUTED" --output "$TMP_OUT"
 # Check the merged file BEFORE it replaces the live corpus, so a bad merge is
 # discarded rather than installed and then complained about (issue #295).
 final_rows=$(wc -l < "$TMP_OUT" | tr -d ' ')
