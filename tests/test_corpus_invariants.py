@@ -424,6 +424,20 @@ class TestDisplayHygiene:
         ]
         assert not offenders, offenders[:10]
 
+    def test_no_unpaired_square_bracket(self, displayable_baked_rows):
+        # "Looks at his watch] It's about time…": the tail of a stage direction,
+        # an illustration or a footnote the excerpt cut into.
+        def paired(text):
+            depth = 0
+            for ch in text:
+                depth += (ch == "[") - (ch == "]")
+                if depth < 0:
+                    return False
+            return depth == 0
+
+        offenders = [_key(r) for r in displayable_baked_rows if not paired(r["display_quote"])]
+        assert not offenders, offenders[:10]
+
     def test_no_bare_roman_numeral_sentence(self, displayable_baked_rows):
         # "XXXIV. Next morning…" or a trailing "…with you.” II." — a numeral
         # of two or more letters standing alone as a sentence.

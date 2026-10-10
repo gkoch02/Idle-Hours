@@ -149,6 +149,13 @@ LEADING_CAPS_HEADING = re.compile(
 # are the typographic stand-ins every book face carries.
 GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''"})
 
+# The tail of a bracketed aside the miner's window cut into: a stage direction
+# ("Looks at his watch] It's about time…"), an "Illustration]" or "Footnote: …]"
+# marker, a section number ("10 ] The superior…"). A closing bracket with no
+# opening one before it can only be that, so the text up to it goes. Bounded,
+# so a stray bracket deep in a long excerpt is not taken as the end of one.
+LEADING_BRACKET_TAIL = re.compile(r"^[^\[\]]{0,120}\]\s*(?=\S)")
+
 # An opening ellipsis ("… But I have to go…", "... You are right") is the
 # source's own elision mark, which reads as a fragment on the panel. Applied
 # by ``clean_edges`` to the whole excerpt only.
@@ -307,7 +314,7 @@ def clean_edges(text: str) -> str:
             text = text[:-1].rstrip()
         if text == before:
             break
-    text = strip_heading_prefix(drop_stray_underscores(text))
+    text = strip_heading_prefix(drop_stray_underscores(LEADING_BRACKET_TAIL.sub("", text)))
     # Only the excerpt's own opening ellipsis is dropped — one inside the
     # text is the author's, and ``strip_heading_prefix`` (which also runs per
     # interior sentence) must leave it alone.

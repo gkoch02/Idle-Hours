@@ -658,6 +658,32 @@ class TestCorpusHygiene:
     def test_short_caps_prose_survives(self, text):
         assert cdq.clean_edges(text) == text
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # Shipped rows that opened with the tail of a bracketed aside.
+            ("Looks at his watch] It’s about time, I think. At half-past twelve.", "It’s about time, I think. At half-past twelve."),
+            ("Illustration] At five o’clock the two ladies retired to dress.", "At five o’clock the two ladies retired to dress."),
+            ("Footnote: See _The Tell-tale Film_.] Before four o'clock, he left.", "Before four o'clock, he left."),
+            ("10 ] The superior reset his watch at three o’clock.", "The superior reset his watch at three o’clock."),
+            ("_Exit Peto._] Jack, meet me tomorrow At two o’clock.", "Jack, meet me tomorrow At two o’clock."),
+            # A whole aside opening the excerpt goes too: the edge strip takes its "[" first.
+            ("[Enter Hamlet] It is past two o’clock.", "It is past two o’clock."),
+        ],
+    )
+    def test_leading_bracket_tail_is_stripped(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "ANDREY. [Looks at his watch] A quarter past eight.",  # a whole aside is kept
+            "It was ten o’clock" + " and long past" * 12 + "] when he came.",  # a bracket far in is left
+        ],
+    )
+    def test_balanced_or_distant_brackets_survive(self, text):
+        assert cdq.clean_edges(text) == text
+
     @pytest.mark.parametrize("word", ["MIX", "DI", "LIV", "CC", "MD", "DC", "CD", "MC", "MM", "CM", "DIV"])
     def test_numeral_shaped_words_are_not_headings(self, word):
         text = f"{word}. It was ten o’clock."
