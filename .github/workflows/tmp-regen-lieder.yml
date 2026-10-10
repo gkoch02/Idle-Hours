@@ -1,0 +1,29 @@
+# Temporary: regenerates the lieder golden fixtures and README preview on the CI
+# runner image, for download. Removed before merge.
+name: tmp-regen-lieder
+on:
+  push:
+    branches: [fix/lieder-beams-clear-lyrics]
+permissions:
+  contents: read
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - run: UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py -k lieder || true
+      - run: python scripts/generate_theme_previews.py --theme lieder
+      - run: pytest tests/test_render_golden.py -k lieder
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lieder-renders
+          path: |
+            tests/golden/renderer/*lieder*.png
+            idle_hours/assets/previews/lieder.png
