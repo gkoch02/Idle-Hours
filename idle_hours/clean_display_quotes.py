@@ -113,10 +113,13 @@ HEADING_PREFIX = re.compile(
 #   Oliver reached…") and an initial ("BY H. HARRIS, AGENT") both still run
 #   into the sentence unpunctuated.
 #
-# Three words is the floor either way, so a single shouted word or a
-# two-word label survives, and the sentence that follows must open with a
+# A signalled run needs three words and an unsignalled one two, so a single
+# shouted word survives, and the sentence that follows must open with a
 # capital and a lowercase letter (or a lone "A" / "I" word) so a heading is
-# only ever cut at a sentence start.
+# only ever cut at a sentence start. Two words is enough unsignalled: titles
+# such as "THE INQUEST" and "LORAINE'S ADVENTURES" reached the panel under a
+# three-word floor, and across the shipped corpus no two-word run of caps that
+# runs unpunctuated into a sentence is anything but a heading.
 _CAPS_WORD = r"[A-Z0-9][A-Z0-9’'.,\-—]*"
 _CAPS_WORD_UNSTOPPED = r"[A-Z0-9](?:[A-Z0-9’',\-—]*[A-Z0-9’',\-—])?"
 _HEADING_SIGNAL = (
@@ -135,7 +138,7 @@ LEADING_CAPS_HEADING = re.compile(
     # Unsignalled: the last word does not end a sentence, and the run is
     # not initials alone.
     r"(?!(?:[A-Z]\.?\s+)+" + _SENTENCE_START + r")"
-    r"(?:" + _CAPS_WORD + r"\s+){2,}" + _CAPS_WORD_UNSTOPPED + r"\s+"
+    r"(?:" + _CAPS_WORD + r"\s+){1,}" + _CAPS_WORD_UNSTOPPED + r"\s+"
     r")" + _SENTENCE_START
 )
 

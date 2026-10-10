@@ -631,6 +631,33 @@ class TestCorpusHygiene:
         assert cdq.clean_edges("A NEW CLIENT It was ten o’clock.") == "It was ten o’clock."
         assert cdq.clean_edges("BY H. HARRIS, AGENT About seven o’clock we left.") == "About seven o’clock we left."
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # Shipped rows that carried one past the three-word floor.
+            ("LORAINE'S ADVENTURES Loraine Wade sat up in bed. It was ten minutes to one.",
+             "Loraine Wade sat up in bed. It was ten minutes to one."),
+            ("THE INQUEST Shortly before two o'clock I was back.", "Shortly before two o'clock I was back."),
+            ("STEERFORTH’S HOME When the chambermaid tapped at eight o’clock.", "When the chambermaid tapped at eight o’clock."),
+            ("THE THUMB-PRINT It was ten o'clock in the morning.", "It was ten o'clock in the morning."),
+            ("CHAPTER EIGHT About half-past nine Jacob left the house.", "About half-past nine Jacob left the house."),
+            ("—JEAN VALJEAN That same day, towards four o’clock, he sat alone.", "That same day, towards four o’clock, he sat alone."),
+        ],
+    )
+    def test_two_word_title_without_signal_is_stripped(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "STOP It was ten o’clock.",  # a single shouted word
+            "GOOD HEAVENS! It was ten o’clock.",  # a shout ends its caps run in punctuation
+            "J. R. Tolkien was born at ten o’clock.",
+        ],
+    )
+    def test_short_caps_prose_survives(self, text):
+        assert cdq.clean_edges(text) == text
+
     @pytest.mark.parametrize("word", ["MIX", "DI", "LIV", "CC", "MD", "DC", "CD", "MC", "MM", "CM", "DIV"])
     def test_numeral_shaped_words_are_not_headings(self, word):
         text = f"{word}. It was ten o’clock."
