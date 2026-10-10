@@ -318,9 +318,26 @@ class TestDottedTimeMatchType:
         "He paid the 2.5 without a murmur.",           # one minute digit: a price
         "See chapter 8.13 for the rest of the argument.",
         "It is written in verse 8.13 of the epistle.",
+        "A sofad is about 1.17 Earth inches wide, he said.",   # a measure the unit list cannot name
+        "The field yielded about 2.30 to the acre, which pleased him.",
     ])
     def test_numbers_prices_and_references_are_not_times(self, text):
         assert _first_candidate(text, "dotted_time") is None
+
+    def test_a_dotted_time_needs_a_clock_word_nearby(self):
+        """The unit guard is a cheap pre-filter; the real test is positive
+        clock context, another dotted time included ("say arrive 12.40")."""
+        assert _first_candidate("Domlio reached his home about 2.10, say arrive 12.40.", "dotted_time").normalized_time == "02:10"
+        assert _first_candidate("He went to town each morning by the 8.57 and returned at 6.50 each evening.", "dotted_time") is not None
+        assert _first_candidate("The figure he worked out was about 2.10, which seemed low.", "dotted_time") is None
+
+    def test_a_twenty_four_hour_dotted_number_needs_no_context(self):
+        assert _first_candidate("We shall be there till 17.45, I expect.", "dotted_time").normalized_time == "17:45"
+        assert _first_candidate("The figure came to 00.50 in the end.", "dotted_time") is None   # no prefix word
+
+    def test_a_wrapped_prose_line_starting_with_the_article_is_not_a_heading(self):
+        text = "He caught\nthe 10.30 London train and was in\ntown by noon."
+        assert _first_candidate(text, "dotted_time").normalized_time == "10:30"
 
     def test_strict_keeps_dotted_time(self):
         """Unlike ``digital``, the dotted form survives --strict: it is how
@@ -345,6 +362,10 @@ class TestAmericanMinutesOfAfter:
     def test_minutes_of_one_wraps_to_twelve(self):
         c = _first_candidate("It wanted ten minutes of one.", "minutes_past_to")
         assert c.normalized_time == "12:50"
+
+    def test_the_possessive_is_not_a_time(self):
+        assert _first_candidate("He gave five minutes of one's time to it.", "minutes_past_to") is None
+        assert _first_candidate("It took ten minutes of one’s attention.", "minutes_past_to") is None
 
 
 class TestBarePastToMatchType:
@@ -372,6 +393,16 @@ class TestBarePastToMatchType:
         assert _first_candidate("It is five to seven that he fails the exam.", "bare_past_to") is None
         assert _first_candidate("Ten to twelve men were lost in the storm.", "bare_past_to") is None
 
+    @pytest.mark.parametrize("text", [
+        "At intervals of some five to ten minutes the bell rang.",        # a duration, with a clock word nearby
+        "He had been dead five to ten minutes, said the doctor, looking at his watch.",
+        "I got a good two hours' sleep from five to seven, by the clock.",  # a span of hours
+        "They play from five to seven every evening.",
+        "The train is late by five to ten minutes most mornings.",
+    ])
+    def test_a_range_or_a_duration_is_not_a_time(self, text):
+        assert _first_candidate(text, "bare_past_to") is None
+
     def test_bare_to_one_is_never_a_time(self):
         """"Ten to one" is betting odds far more often than 12:50, even next to a clock."""
         assert _first_candidate("Ten to one he's lying; it was ten to one by the clock.", "bare_past_to") is None
@@ -382,15 +413,19 @@ class TestBarePastToMatchType:
 
 
 class TestGoneHourMatchType:
-    def test_gone_four_is_just_after_four(self):
-        c = _first_candidate("It had gone four when he woke.", "gone_hour")
+    @pytest.mark.parametrize("text", [
+        "It had gone four by the kitchen clock when he woke.",
+        "It had gone four when he woke.",   # "woke" is enough of a cue
+    ])
+    def test_gone_four_is_just_after_four(self, text):
+        c = _first_candidate(text, "gone_hour")
         assert (c.hour, c.minute, c.normalized_time) == (4, 3, "04:03")
 
     @pytest.mark.parametrize("text, time", [
-        ("It was getting on for ten.", "09:57"),
-        ("It was going on for six when they stopped.", "05:57"),
-        ("The night was hard upon twelve.", "11:57"),
-        ("It was getting on for one.", "12:57"),
+        ("It was getting on for ten, by his watch.", "09:57"),
+        ("It was going on for six in the evening when they stopped.", "05:57"),
+        ("The night was hard upon twelve, and the bells were silent.", "11:57"),
+        ("It was getting on for one; time for lunch.", "12:57"),
     ])
     def test_getting_on_for_is_just_short(self, text, time):
         assert _first_candidate(text, "gone_hour").normalized_time == time
@@ -399,8 +434,12 @@ class TestGoneHourMatchType:
         "He had gone four days without sleep.",
         "She had gone three miles before dark.",
         "They had gone two or three times already.",
+        "The poor helpless chickens had gone one by one to their doom at night.",   # the verb, with a clock word nearby
+        "He had gone two steps when the clock struck.",
+        "They pressed hard on one another in the morning crush.",
+        "He had gone four without a word to anyone.",   # no clock word at all: the verb reading is as likely
     ])
-    def test_a_quantity_is_not_an_hour(self, text):
+    def test_the_verb_is_not_an_hour(self, text):
         assert _first_candidate(text, "gone_hour") is None
 
 

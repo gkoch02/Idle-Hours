@@ -746,10 +746,20 @@ def load_recent_sources(history_path: str | None, days: int, window: int = RECEN
     """The ``source_id`` of each of the last ``window`` ledger entries within
     ``days``: the sources shown most recently, for the voice guard in
     :func:`pick_best`. Empty whenever :func:`load_recent_history` would be."""
+    return _recent_sources(_recent_history_entries(history_path, days), window)
+
+
+def _recent_sources(entries: list[tuple], window: int = RECENT_SOURCE_WINDOW) -> set[str]:
     if window <= 0:
         return set()
-    entries = _recent_history_entries(history_path, days)
     return {source_id for source_id, _line in entries[-window:]}
+
+
+def load_history_views(history_path: str | None, days: int) -> tuple[set[tuple], set[str]]:
+    """Both ledger views the picker needs from one read of the file: the set
+    of recently shown rows and the sources of the last few renders."""
+    entries = _recent_history_entries(history_path, days)
+    return set(entries), _recent_sources(entries)
 
 
 def _recent_history_entries(history_path: str | None, days: int) -> list[tuple]:
@@ -1049,18 +1059,16 @@ def pick_best(
     # frozen panel and a backoff window, so a single malformed row must
     # degrade the way it always did: silently ignored.
     rows_by_bucket: dict[str, list[dict]] = defaultdict(list)
+    recent_voices: set[str] = set()
     for row in rows:
         bucket_name = row.get("fuzzy_bucket")
         if isinstance(bucket_name, str):
             rows_by_bucket[bucket_name].append(row)
+        if recent_sources and row.get("source_id") is not None and str(row.get("source_id")) in recent_sources:
+            recent_voices.add(_voice_key(row))
 
     recent = recent_history or set()
     banned_texts, recent_texts = _twin_texts(rows, ban_quote_keys(overrides), recent)
-    recent_voices: set[str] = set()
-    if recent_sources:
-        for row in rows:
-            if row.get("source_id") is not None and str(row.get("source_id")) in recent_sources:
-                recent_voices.add(_voice_key(row))
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
             row for row in rows_by_bucket.get(candidate_bucket, ())
@@ -1169,8 +1177,7 @@ def select_candidates(
         raise ValueError("select_candidates requires time_str or bucket")
     rows = load_rows(resolve_path(input_path))
     overrides = load_overrides(resolve_path(overrides_path))
-    recent = load_recent_history(history_path, history_days)
-    recent_sources = load_recent_sources(history_path, history_days)
+    recent, recent_sources = load_history_views(history_path, history_days)
     chosen, resolved_bucket, ranked = pick_best(
         rows, target_bucket, seed, min_quality, overrides, time_str, recent, return_ranked=True,
         recent_sources=recent_sources,
@@ -1413,8 +1420,7 @@ def select_quote(
             "(missing, banned, or matched-text mismatch); picking normally",
             file=sys.stderr,
         )
-    recent = load_recent_history(history_path, history_days)
-    recent_sources = load_recent_sources(history_path, history_days)
+    recent, recent_sources = load_history_views(history_path, history_days)
     best, resolved_bucket = pick_best(
         rows, target_bucket, seed, min_quality, overrides, time_str, recent, recent_sources=recent_sources,
     )

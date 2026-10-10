@@ -665,3 +665,10 @@ class TestSentenceWindowAbbreviations:
         assert self._quote(text, "at 5.20") == "The shoals of small fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there."
         text = "It had taken place at 6.30 p. m. With that assumption he went on."
         assert self._quote(text, "at 6.30") == "It had taken place at 6.30 p. m."
+
+    def test_a_closing_quote_after_pm_still_ends_the_speech(self):
+        """The window has always stopped at the full stop (the cleaner handles
+        the edge quotation mark); what matters is that it does not run on
+        into the next sentence."""
+        text = '"We leave at 3 p.m." He nodded. Then it rained.'
+        assert self._quote(text, "at 3") == '"We leave at 3 p.m.'

@@ -31,7 +31,7 @@ flowchart LR
 1. **Mine.** Regexes find time phrases ("ten minutes to midnight", "the clock struck three") in Gutenberg books; overlapping matches resolve longest-first so "nearly one o'clock" is not also filed at 01:00.
 2. **Clean and score.** Each hit becomes a displayable excerpt, gets a 0–100 quality score with named penalty flags, and picks up title and author. Hand fixes live in a sidecar, [`content_overrides.json`](idle_hours/assets/content_overrides.json), applied on top.
 3. **Bake.** Ten of the twelve score components do not depend on the requested time. The baker computes them once and stores them on each row, so the runtime only adds the other two.
-4. **Pick.** The runtime maps the time to one of 144 fuzzy buckets, ranks candidates, skips anything shown in the last week, and falls back to the nearest neighbouring bucket when one is empty.
+4. **Pick.** The runtime maps the time to one of 144 fuzzy buckets, ranks candidates, skips anything shown in the last two months and the author shown a moment ago, and falls back to the nearest neighbouring bucket when one is empty.
 5. **Render and display.** Pillow lays out the quote, snaps it to the panel's six inks, and pushes it to the Inky Impression. The loop repaints only when the bucket changes.
 
 ## Engineering highlights
