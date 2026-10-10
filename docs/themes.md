@@ -40,6 +40,7 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `grenze-gotisch/` | OFL.txt | `biomech`, `bosch` | — |
 | `hammersmith-one/` | OFL.txt | `hades` | — |
 | `ibm-plex-mono/` | OFL.txt | `observation` | — |
+| `idle-hours-fraktur/` | OFL.txt | `gothic` | — |
 | `im-fell-double-pica/` | OFL.txt | `expedition` | — |
 | `im-fell-english/` | OFL.txt | `alchemy`, `cartograph`, `imprimatur` | `lieder`, `carcosa`, `codex`, `bosch`, `expedition` |
 | `im-fell-english-sc/` | OFL.txt | `imprimatur` | — |
@@ -78,7 +79,7 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `spectral-sc/` | OFL.txt | `hades` | — |
 | `titillium-web/` | OFL.txt | `trisolaris` | — |
 | `uncial-antiqua/` | OFL.txt | `vitrail` | — |
-| `unifraktur/` | OFL.txt | `gothic` | `alchemy`, `vitrail`, `biomech`, `bosch` |
+| `unifraktur/` | OFL.txt | — | `alchemy`, `vitrail`, `biomech`, `bosch` |
 | `yuji-boku/` | OFL.txt | `kanagawa`, `izakaya`, `trisolaris` | — |
 <!-- FONT_TABLE:END -->
 
@@ -112,7 +113,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
     **HUD frame.** `draw_nightvision_border` draws four L-shaped green corner brackets with NO continuous outer frame between them — the bracket-only composition is the signature camera-viewfinder / weapons-HUD motif — plus a bottom-margin **bearing-scale ruler** (graduated green ticks with a taller mark every fourth division and a yellow centre-index caret, the heading/distance tape of a real readout) and three-rung **rangefinder ladder notches** stepping inward along each bottom corner bracket's vertical arm. The brackets stay solid green (decorative silhouettes would fragment under stippling), but the faint scanlines get a sage post-pass — bbox-flipping ~25% of the painted green to white per Bayer threshold 4 — so they read as ambient W+G 1:3 ground glow rather than crisp bright-green CRT lines.
 
     **Debug band.** All the added HUD furniture is bottom-weighted so the y=14-29 debug-banner band stays clear, which is why `nightvision` stays absent from `_DEBUG_LABEL_RIGHT_INSET`.
-  - `gothic` (black-ground/white-body/red-accent, UnifrakturMaguntia) — the blackletter sets *both* the matched-phrase bold and the oversized quote marks.
+  - `gothic` (black-ground/white-body/red-accent, Idle Hours Fraktur) — the blackletter sets *both* the matched-phrase bold and the oversized quote marks.
 
     **Matched phrase.** Short matched phrases like "half past two" render in dramatic blackletter, sitting in the body like a chapter heading. The red is rerouted in `_draw_text_body` to a 50/50 R+Y **amber** stipple — the recipe the `diags` synth band labels "amber" — so the phrase reads as warm candle-flame against the black cathedral ground and lifts clear of the red border ornaments instead of sharing their ink. On the plate the phrase runs 54% red / 46% yellow, the checkerboard against glyph shapes.
 
@@ -1444,7 +1445,8 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
   - `default` and `dark` share the Playfair Display chain (transitional / high-contrast serif; repo-local `idle_hours/fonts/`, then common Pi/Linux paths, with DejaVu Serif / Liberation Serif / Noto Serif as system fallbacks).
   - `newsprint` uses **Old Standard TT** (vintage broadsheet / scientific-journal Didone revival — Regular body + Bold accent).
   - `nightvision` uses **Space Mono** (retro-terminal monospace — Regular + Bold; DejaVu Sans Mono is the system-font fallback).
-  - `gothic` reuses the same EB Garamond body but promotes **UnifrakturMaguntia** into *both* the `quote_bold` and `ornament` slots, so the matched time phrase joins the oversized quote marks in dramatic red blackletter — the font defines the theme rather than appearing as a guest accessory, while the body stays in legible Renaissance serif so a 200-character dense layout still reads cleanly.
+  - `gothic` reuses the same EB Garamond body but promotes **Idle Hours Fraktur** into *both* the `quote_bold` and `ornament` slots, so the matched time phrase joins the oversized quote marks in dramatic red blackletter — the font defines the theme rather than appearing as a guest accessory, while the body stays in legible Renaissance serif so a 200-character dense layout still reads cleanly.
+    **Idle Hours Fraktur** is UnifrakturMaguntia (j. 'mach' wust after Peter Wiegel, OFL) with one letter replaced. Unifraktur's lowercase `k` is the historical Fraktur form, whose arm closes into a loop that reads as an `f` or `t` to anyone not fluent in blackletter, so every "o'clock" read as "o'clocf". `scripts/build_idle_hours_fraktur.py` grafts in the open `k` of **Manufacturing Consent** (OFL), scaled so its stem matches Unifraktur's and its arm and ascender land on Unifraktur's x-height and `l`/`h` top, and drops every ligature built on `k` (`c_k`, `longs_k`, …), which would otherwise keep drawing the old letter. The Reserved Font Name forbids calling the result UnifrakturMaguntia. The untouched Unifraktur stays bundled for the other themes' fallback chains.
   - `bauhaus` uses **Jost** (Futura-adjacent geometric-constructed sans; variable font, Regular / Bold pinned via `set_variation_by_name`).
   - `comic` uses **Bangers** (all-caps comic-book display hand — the only display / hand-lettered face in the rotation; only one weight ships so the matched-phrase role re-uses the same file and gains differentiation purely through the accent colour; the body shouting slightly is the point).
   - `dispatch` uses **Special Elite** — a slab-mono typewriter face whose deliberately uneven inking is the whole point.

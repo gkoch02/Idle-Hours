@@ -91,6 +91,8 @@ ARCHIVONARROW_VARIABLE = str(BASE_DIR / "fonts/archivo-narrow/ArchivoNarrow[wght
 EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
 EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
 UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
+# UnifrakturMaguntia with Manufacturing Consent's open lowercase k (scripts/build_idle_hours_fraktur.py).
+IDLE_HOURS_FRAKTUR_BOOK = str(BASE_DIR / "fonts/idle-hours-fraktur/IdleHoursFraktur-Book.ttf")
 JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
 BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
