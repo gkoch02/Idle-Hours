@@ -39,7 +39,7 @@ For an end-to-end "harvest a curated set of Gutenberg IDs and merge into the liv
 bash run_dawn_expansion.sh
 ```
 
-It runs the full pipeline (mine → merge → clean → quality → fix-substring → enrich → bake) against `gutenberg_dawn_expansion_ids.txt`, regenerates the coverage snapshot, and re-bakes `idle_hours/assets/quote_database.jsonl`. Safe to re-run; downloads are cached and `merge_candidates` dedupes.
+It runs the full pipeline (mine → merge → clean → quality → fix-substring → enrich → bake) against `gutenberg_dawn_expansion_ids.txt` (or the IDs file passed as its one argument, such as `gutenberg_golden_age_ids.txt`), regenerates the coverage snapshot, and re-bakes `idle_hours/assets/quote_database.jsonl`. Safe to re-run; downloads are cached and `merge_candidates` dedupes.
 
 If you want to drive individual stages manually — e.g. iterating on a single transform — the order the driver script uses is:
 

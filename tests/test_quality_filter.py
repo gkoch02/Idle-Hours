@@ -155,15 +155,27 @@ class TestBadPatterns:
             _s, flags = score(text)
             assert "contains_work_schedule" not in flags, text
 
-    def test_am_pm_deducts_45(self):
+    def test_bare_am_pm_after_a_number_deducts_45(self):
         for text in (
             "She departed at 3 pm after the long meeting ended at last, exhausted.",
-            "The train left at 10:30 a.m. and did not stop until it reached the coast.",
             "We shall meet at 7 AM sharp tomorrow, and you had better not be late.",
-            "The office opens at nine a.m. on weekdays and closes at five p.m. daily.",
         ):
             s, flags = score(text)
             assert "contains_modern_am_pm" in flags, text
+            assert "contains_dotted_am_pm" not in flags, text
+
+    def test_dotted_am_pm_is_period_and_only_mildly_penalised(self):
+        """"The 7.47 p.m. boat train" is period prose, not a modern timestamp:
+        it ranks below a clean alternative but stays above the bake floor."""
+        for text in (
+            "The train left at 10.30 a.m. and did not stop until it reached the coast.",
+            "The office opens at nine a.m. on weekdays and closes at five p.m. daily.",
+            "It was taken charge of and placed in the van of the 7.47 p.m. boat train.",
+        ):
+            s, flags = score(text)
+            assert "contains_dotted_am_pm" in flags, text
+            assert "contains_modern_am_pm" not in flags, text
+            assert s >= 60, (text, s, flags)
 
     def test_the_verb_am_is_not_a_clock_suffix(self):
         """Issue #296: every am/pm flag in the shipped corpus was "I am"."""

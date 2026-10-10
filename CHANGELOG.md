@@ -12,6 +12,23 @@ these entries under the new dated version heading.
 - The `lieder` theme no longer lets a beam run into the lyrics. A beamed group
   that mixed high and low notes hung its beam into the words below the staff;
   the stems now shorten to keep it clear.
+- The corpus roughly triples, and every one of the 144 clock buckets now has
+  a quote: a Golden Age batch (1895–1930 detective fiction and interwar
+  prose), a breadth batch of more detective voices, and four new time
+  phrasings the miner reads — the railway-age "the 8.13" / "at 11.21", the
+  minutes-less "ten past seven", "gone four" / "getting on for ten" and "on
+  the stroke of nine" — plus the American "twenty minutes after four" / "ten
+  minutes of nine". The dotted "a.m." / "p.m." now carries a mild penalty
+  instead of the 45-point modern-timestamp one.
+- The anti-repeat ledger keeps a quote off the panel for 60 days instead of
+  7 (`history_days`; both `config.toml.*` updated). A bucket comes round
+  twice a day, so the old window cycled the same fourteen rows for ever;
+  the ledger grows accordingly and compaction keeps twice the window.
+- The picker keeps the author of the last few renders off the panel for one
+  more render when the bucket has another voice, so a Dickens line is not
+  followed by another Dickens line.
+- `scripts/run_dawn_expansion.sh` takes an IDs file, so a batch other than
+  the dawn list runs through the same pipeline.
 - The `escritoire` signature and book title now end where the handwriting
   does, instead of hanging out past a short or ragged quote toward the
   sheet's edge.

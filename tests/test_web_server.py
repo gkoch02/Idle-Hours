@@ -893,17 +893,36 @@ class TestReadEndpoints:
         bad = [e for e in entries if e["line_number"] == ["nope"]][0]
         assert "display_quote" not in bad
 
-    def test_api_coverage_does_not_disclose_filesystem_paths(self, live_server):
+    def test_api_coverage_does_not_disclose_filesystem_paths(self, tmp_path):
         """GETs are unauthenticated on every bind. Telemetry counts and bucket
         counts are not sensitive; an absolute install path (which leaks the OS
         username and state-dir layout) is a different category, and nothing in
-        the UI consumes it -- ``live`` carries the useful signal."""
-        server, _, _ = live_server
-        status, body = _get(server, "/api/coverage")
+        the UI consumes it -- ``live`` carries the useful signal.
+
+        Served from a three-row corpus: ``/api/coverage`` walks the whole raw
+        corpus with the baker's gates, and over the shipped corpus under
+        coverage tracing on a contended CI runner that crossed the 3 s
+        ``_client`` timeout. The assertion is about the payload's shape, not
+        the corpus."""
+        corpus = tmp_path / "corpus.jsonl"
+        rows = [
+            {"source_id": "1", "line_number": n, "match_type": "oclock_word", "matched_text": "three o'clock",
+             "display_quote": f"It was three o'clock, and the house was quiet ({n}).", "normalized_time": "03:00",
+             "hour": 3, "minute": 0, "fuzzy_bucket": "h3_exact", "quality_score": 90, "quality_flags": [],
+             "display_fragment": False, "cleanup_status": "complete_sentence", "author": "A", "title": "T"}
+            for n in (1, 2, 3)
+        ]
+        corpus.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        server, thread, _state, _args = _start(tmp_path, args=_make_args(tmp_path, raw_corpus=str(corpus)))
+        try:
+            status, body = _get(server, "/api/coverage")
+        finally:
+            run_clock.stop_web_server((server, thread))
         assert status == 200
         data = _json_body(body)
         assert "source" not in data
-        assert "live" in data
+        assert data["live"] is True
+        assert data["bucket_counts"]["h3_exact"] == 3
 
     def test_api_history_rejects_bad_limit(self, live_server):
         server, _, _ = live_server

@@ -633,3 +633,42 @@ class TestMainCLI:
         assert gtm.main() == 0
         body = out.read_text()
         assert "normalized_time" in body.splitlines()[0]
+
+
+class TestSentenceWindowAbbreviations:
+    """A dotted clock time's own dot, and the dots of "a.m." / "p.m.", are not
+    sentence ends; the second dot of "p.m." is one only when a sentence follows."""
+
+    def _quote(self, text, phrase):
+        start = text.index(phrase)
+        quote, _, _ = gtm.sentence_window(text, start, start + len(phrase), context_chars=200)
+        return quote
+
+    def test_pm_mid_sentence_runs_on(self):
+        text = "It stated that they had booked passages by the Enoch, which left Liverpool at 3.00 p.m. that afternoon; further, the agent had seen them. The next day was wet."
+        assert self._quote(text, "at 3.00") == "It stated that they had booked passages by the Enoch, which left Liverpool at 3.00 p.m. that afternoon; further, the agent had seen them."
+
+    def test_pm_at_a_sentence_end_still_ends_it(self):
+        text = "The boat left at 3 p.m. The next day was wet."
+        assert self._quote(text, "at 3") == "The boat left at 3 p.m."
+
+    def test_an_earlier_dotted_time_does_not_cut_the_start(self):
+        text = "Nothing happened. He took the 8.13 and the 9.15 trains in turn. Nothing happened after."
+        assert self._quote(text, "the 9.15") == "He took the 8.13 and the 9.15 trains in turn."
+
+    def test_a_capitalised_word_after_am_is_a_new_sentence(self):
+        text = "We left at 6.35 a.m. Turin was still asleep."
+        assert self._quote(text, "at 6.35") == "We left at 6.35 a.m."
+
+    def test_the_spaced_p_m_some_editions_print(self):
+        text = "The shoals of small fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there. Then it rained."
+        assert self._quote(text, "at 5.20") == "The shoals of small fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there."
+        text = "It had taken place at 6.30 p. m. With that assumption he went on."
+        assert self._quote(text, "at 6.30") == "It had taken place at 6.30 p. m."
+
+    def test_a_closing_quote_after_pm_still_ends_the_speech(self):
+        """The window has always stopped at the full stop (the cleaner handles
+        the edge quotation mark); what matters is that it does not run on
+        into the next sentence."""
+        text = '"We leave at 3 p.m." He nodded. Then it rained.'
+        assert self._quote(text, "at 3") == '"We leave at 3 p.m.'

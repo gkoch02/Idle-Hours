@@ -88,6 +88,23 @@ TIME_PATTERNS = [
         ),
     ),
     (
+        # The British dotted clock time of the railway age: "the 8.13", "at
+        # 11.21", "by the 7.47 p.m. boat train". A preceding article or
+        # preposition is required (a bare "3.14" is a number), two minute
+        # digits are required ("2.5" is a price), and a following unit word
+        # rejects the rest of the prices and measures. Kept under --strict,
+        # unlike ``digital``: Golden Age detective fiction states most of its
+        # off-minute times this way.
+        "dotted_time",
+        re.compile(
+            r"\b(?P<prefix>the|at|by|till|until|about|before|after|past|from|catch|caught|take|took|miss|missed)"
+            r"\s+(?P<hour>[01]?\d|2[0-3])\.(?P<minute>[0-5]\d)(?!\d)(?!\.\d)"
+            r"(?!\s*(?:per|%|feet|foot|inches|inch|miles?|pounds?|francs?|dollars?|cents?|shillings?|marks?|lire|"
+            r"a\s+share|million|thousand|hundred|metres?|meters?|yards?|tons?|years?|kilo|degrees?|seconds?))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "oclock_word",
         re.compile(
             r"\b(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+o['’]?clock\b",
@@ -111,7 +128,24 @@ TIME_PATTERNS = [
     (
         "minutes_past_to",
         re.compile(
-            r"\b(?P<minuteword>(?:one|two|three|four|five|six|seven|eight|nine)[-\s]+and[-\s]+(?:twenty|thirty|forty|fifty)|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\b(?P<minuteword>(?:one|two|three|four|five|six|seven|eight|nine)[-\s]+and[-\s]+(?:twenty|thirty|forty|fifty)|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to|of|after)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?!['’]s)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        # The minutes-less forms, "ten past seven" / "twenty-five to nine",
+        # restricted to the clock-face minute words so "three to four days"
+        # never matches. A "to" form also needs a clock word nearby, is never
+        # a range ("from five to seven", "five to ten minutes") and is never
+        # "to one": "ten to one" is betting odds far more often than 12:50
+        # (see ``_has_clock_context`` and ``_is_a_range``).
+        "bare_past_to",
+        re.compile(
+            r"\b(?P<minuteword>five[-\s]+and[-\s]+twenty|twenty[-\s]+five|twenty|ten|five)"
+            r"\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"
+            r"(?!['’]s)(?!\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?|feet|foot|inches|inch|miles?|yards?|"
+            r"pounds?|shillings?|pence|francs?|dollars?|cents?|per|times|hundred|thousand|million|dozen|men|women|people|"
+            r"persons|o['’]?clock))",
             re.IGNORECASE,
         ),
     ),
@@ -119,6 +153,32 @@ TIME_PATTERNS = [
         "just_after_before",
         re.compile(
             r"\b(?P<prefix>just after|a little after|shortly after|just before|a little before|almost|nearly|close on|towards)\s+(?:(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+o['’]?clock|(?P<daypart>dawn|daybreak|sunrise|morning|noon|midday|afternoon|dusk|sunset|evening|night|midnight))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        # "gone four" is just past four; "getting on for ten", "going on for
+        # ten" and "hard upon twelve" are just short of the hour. No o'clock
+        # needed, so a following quantity word ("gone four days") rejects,
+        # and a clock word must stand nearby ("gone one by one", "gone two
+        # steps" are the verb; see ``_has_clock_context``).
+        "gone_hour",
+        re.compile(
+            r"\b(?P<prefix>gone|getting\s+on\s+for|going\s+on\s+for|hard\s+upon)"
+            r"\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"
+            r"(?!\s+(?:years?|days?|months?|weeks?|hours?|minutes?|seconds?|miles?|yards?|feet|inches|pounds?|"
+            r"shillings?|pence|francs?|dollars?|hundred|thousand|million|dozen|times|men|women|people|persons|"
+            r"steps?|paces?|better|road|way|another|by\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b|"
+            r"of|or|and|to|per|more|less|a\.m|p\.m))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        # "on the stroke of nine": the hour exactly, like ``clock_struck``, but
+        # the phrase itself is the striker so no context check is needed.
+        "stroke_of",
+        re.compile(
+            r"\b(?:on|at|upon)\s+the\s+stroke\s+of\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|midnight|noon)\b",
             re.IGNORECASE,
         ),
     ),
@@ -306,14 +366,56 @@ def hour_word_to_int(word: str) -> int | None:
     return value
 
 
+_SENTENCE_CONTINUES_RE = re.compile(r"[\"”’\)\]]?\s+[A-Z\"“‘']")
+_AM_PM_TAIL_RE = re.compile(r" ?m\.", re.IGNORECASE)              # after the "a." of "a.m." / "a. m."
+_AM_PM_HEAD_RE = re.compile(r"(?<![A-Za-z])[ap]\. ?$", re.IGNORECASE)  # before the "m." of "a.m." / "a. m."
+
+
+def _is_sentence_period(text: str, i: int) -> bool:
+    """Whether the full stop at ``text[i]`` ends a sentence.
+
+    Not the dot of a dotted clock time ("the 8.13"), not the first dot of
+    "a.m." / "p.m.", and the second dot of "a.m." / "p.m." only when a new
+    sentence follows (whitespace, then a capital or an opening quote): "at
+    3.00 p.m. that afternoon" runs on, "at 3 p.m. The next day" stops. Before
+    this every one of those dots cut the quote, and the panel showed "which
+    left Liverpool at 3.00 p." as a complete sentence.
+    """
+    before = text[i - 1] if i > 0 else ""
+    after = text[i + 1] if i + 1 < len(text) else ""
+    if before.isdigit() and after.isdigit():
+        return False
+    # "a.m." and the spaced "a. m." some editions print.
+    if before.lower() in ("a", "p") and _AM_PM_TAIL_RE.match(text, i + 1) and (i < 2 or not text[i - 2].isalpha()):
+        return False
+    if before.lower() == "m" and _AM_PM_HEAD_RE.search(text, max(0, i - 4), i - 1) and not _SENTENCE_CONTINUES_RE.match(text, i + 1):
+        return False
+    return True
+
+
+def _sentence_boundary_before(text: str, start: int) -> int:
+    for i in range(start - 1, -1, -1):
+        ch = text[i]
+        if ch in "\n!?" or (ch == "." and _is_sentence_period(text, i)):
+            return i
+    return -1
+
+
+def _sentence_boundary_after(text: str, end: int) -> int:
+    for i in range(end, len(text)):
+        ch = text[i]
+        if ch in "\n!?" or (ch == "." and _is_sentence_period(text, i)):
+            return i
+    return len(text)
+
+
 def sentence_window(text: str, start: int, end: int, context_chars: int) -> tuple[str, str, int]:
     left = max(0, start - context_chars)
     right = min(len(text), end + context_chars)
     context = text[left:right].strip()
 
-    sentence_start = max(text.rfind(".", 0, start), text.rfind("\n", 0, start), text.rfind("!", 0, start), text.rfind("?", 0, start))
-    sentence_end_candidates = [text.find(tok, end) for tok in (".", "\n", "!", "?") if text.find(tok, end) != -1]
-    sentence_end = min(sentence_end_candidates) if sentence_end_candidates else len(text)
+    sentence_start = _sentence_boundary_before(text, start)
+    sentence_end = _sentence_boundary_after(text, end)
     quote = text[sentence_start + 1 : sentence_end + 1].strip() if sentence_end > sentence_start else context
     line_number = text.count("\n", 0, start) + 1
     return quote, context, line_number
@@ -404,6 +506,54 @@ def _struck_has_clock_context(text: str, match: re.Match[str], hourword: str) ->
     return bool(_STRIKER_RE.search(before) or _STRIKER_RE.search(after))
 
 
+_CLOCK_CONTEXT_CHARS = 120
+# Words that say a number nearby is a clock time. Deliberately no durations
+# ("minutes", "hours"): "five to ten minutes" is the range the guard exists
+# to reject. Another dotted time nearby counts too ("from 8.30 to 12.30").
+_CLOCK_CONTEXT_RE = re.compile(
+    r"\b(?:clocks?|watch|o['’]clock|struck|strikes?|striking|chimed?|chimes|bells?|time|trains?|express|station|"
+    r"boat|steamer|ship|tram|bus|'bus|arrive[ds]?|arriving|depart(?:s|ed|ure)?|leaves?|left|reach(?:ed|es)?|"
+    r"sail(?:ed|s)?|started?|called|came|went|returned?|woke|rose|met|dined|home|back|till|until|before|after|"
+    r"morning|afternoon|evening|night|noon|midnight|to-?night|to-?day|yesterday|to-?morrow|punctual(?:ly)?|sharp|"
+    r"precisely|exactly|late|early|dinner|breakfast|luncheon|lunch|tea|appointment|past|half|"
+    r"[ap]\.\s?m\.|\d{1,2}\.[0-5]\d)(?![A-Za-z])",
+    re.IGNORECASE,
+)
+
+
+def _has_clock_context(text: str, match: re.Match[str]) -> bool:
+    """Whether a clock word stands within ``_CLOCK_CONTEXT_CHARS`` on either
+    side of ``match``. The bare forms need it: a minutes-less "five to
+    seven" is otherwise a range or a ratio ("five to seven days", "ten to
+    twelve men"), "gone four" is otherwise the verb ("gone four steps",
+    "gone one by one"), and a dotted "about 1.17" is otherwise a measure."""
+    before = text[max(0, match.start() - _CLOCK_CONTEXT_CHARS) : match.start()]
+    after = text[match.end() : match.end() + _CLOCK_CONTEXT_CHARS]
+    return bool(_CLOCK_CONTEXT_RE.search(before) or _CLOCK_CONTEXT_RE.search(after))
+
+
+_FROM_BEFORE_RE = re.compile(r"\bfrom\s+$", re.IGNORECASE)
+
+
+def _is_a_range(text: str, match: re.Match[str]) -> bool:
+    """"from five to seven" is a span of hours, not 6:55."""
+    return bool(_FROM_BEFORE_RE.search(text, max(0, match.start() - 8), match.start()))
+
+
+def _numeric_time_is_a_reference(text: str, match: re.Match[str]) -> bool:
+    """True when a numeric time ("14:30", "the 8.13") is really a scripture or
+    section reference, or sits in a heading line."""
+    context_probe = text[max(0, match.start() - 24) : min(len(text), match.end() + 24)]
+    if re.search(r"\b(?:chapter|psalm|verse|book|epistle|section|canto|hymn)\b", context_probe, re.IGNORECASE):
+        return True
+    line_start = text.rfind("\n", 0, match.start()) + 1
+    line_end = text.find("\n", match.end())
+    if line_end == -1:
+        line_end = len(text)
+    line_text = text[line_start:line_end].strip()
+    return bool(re.fullmatch(r"\d{1,2}[:.]\d{1,2}\s*\(?[A-Z][^.]{0,120}", line_text))
+
+
 def candidate_from_match(source_path: str, source_id: str | None, text: str, match_type: str, match: re.Match[str], context_chars: int) -> Candidate | None:
     groups = match.groupdict()
     # Collapse any internal whitespace (e.g. a line break splitting "thirty-five\nminutes")
@@ -414,20 +564,17 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
     minute: int | None = None
     explicit_daypart = groups.get("daypart")
 
-    if match_type == "digital":
+    if match_type in {"digital", "dotted_time"}:
         hour = int(groups["hour"])
         minute = int(groups["minute"])
         if hour > 23:
             return None
-        context_probe = text[max(0, match.start() - 24) : min(len(text), match.end() + 24)]
-        if re.search(r"\b(?:chapter|psalm|verse|book|epistle)\b", context_probe, re.IGNORECASE):
+        if _numeric_time_is_a_reference(text, match):
             return None
-        line_start = text.rfind("\n", 0, match.start()) + 1
-        line_end = text.find("\n", match.end())
-        if line_end == -1:
-            line_end = len(text)
-        line_text = text[line_start:line_end].strip()
-        if re.fullmatch(r"\d{1,2}:\d{1,2}\s*\(?[A-Z][^.]{0,120}", line_text):
+        # A twenty-four-hour dotted number ("17.45", "00.50") is a time on its
+        # own; a twelve-hour one needs a clock word nearby, because the unit
+        # guard cannot name every measure ("about 1.17 Earth inches").
+        if match_type == "dotted_time" and 1 <= hour <= 12 and not _has_clock_context(text, match):
             return None
     elif match_type == "oclock_word":
         hour = hour_word_to_int(groups["hourword"])
@@ -447,11 +594,43 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
         minute_value = normalize_number_phrase(groups["minuteword"])
         if hour is None or minute_value is None:
             return None
-        if groups["relation"].lower() == "past":
+        # "after" is the American "past"; "of" is the American "to"
+        # ("ten minutes of nine" is 8:50).
+        if groups["relation"].lower() in {"past", "after"}:
             minute = minute_value
         else:
             hour = 12 if hour == 1 else hour - 1
             minute = 60 - minute_value
+    elif match_type == "bare_past_to":
+        hour = hour_word_to_int(groups["hourword"])
+        minute_value = normalize_number_phrase(groups["minuteword"])
+        if hour is None or minute_value is None:
+            return None
+        if groups["relation"].lower() == "past":
+            minute = minute_value
+        else:
+            if hour == 1 or _is_a_range(text, match) or not _has_clock_context(text, match):
+                return None
+            hour -= 1
+            minute = 60 - minute_value
+    elif match_type == "gone_hour":
+        hour = hour_word_to_int(groups["hourword"])
+        if hour is None or not _has_clock_context(text, match):
+            return None
+        if re.match(r"gone", groups["prefix"], re.IGNORECASE):
+            minute = 3
+        else:
+            hour = 12 if hour == 1 else hour - 1
+            minute = 57
+    elif match_type == "stroke_of":
+        hw = groups["hourword"].lower()
+        if hw == "midnight":
+            hour, minute = 0, 0
+        elif hw == "noon":
+            hour, minute = 12, 0
+        else:
+            hour = hour_word_to_int(hw)
+            minute = 0
     elif match_type == "just_after_before":
         prefix = groups["prefix"].lower()
         if explicit_daypart:

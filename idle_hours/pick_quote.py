@@ -26,7 +26,21 @@ from idle_hours.jsonl_io import iter_jsonl
 from idle_hours.match_span import has_display_match
 
 DEFAULT_HISTORY_PATH = "~/.idle-hours/history.jsonl"
-DEFAULT_HISTORY_DAYS = 7
+# Sixty days, not a week. A bucket comes round twice a day (the twelve-hour
+# clock folds AM and PM), the picker is strict top-1 by score, and exact ties
+# are rare, so the ledger is the only thing that rotates a bucket: a 7-day
+# window cycled the same ~14 rows for ever while the :00 buckets hold hundreds.
+# Sixty days walks about 120 rows deep before the first one comes back.
+DEFAULT_HISTORY_DAYS = 60
+
+# The fresh-first filter keeps a *row* off the panel for DEFAULT_HISTORY_DAYS;
+# this keeps a *voice* off it for a few renders. A bucket's best row and the
+# next bucket's best row are often the same author (Dickens has ten books in
+# the corpus), and the same narrator twice in a row reads as a stuck clock
+# even when the lines differ. The last RECENT_SOURCE_WINDOW ledger entries
+# name the sources shown most recently; rows by those sources' authors step
+# aside when the bucket has any other voice (see ``pick_best``).
+RECENT_SOURCE_WINDOW = 3
 
 # Paths of the two corpus artifacts shipped inside ``idle_hours/assets/`` as
 # package-data. ``DEFAULT_DATABASE_PATH`` is the baked, display-ready corpus
@@ -725,13 +739,41 @@ def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
     surfaces instead of silently defeating the anti-repeat filter.
     Non-existent parent directories are treated as "no history yet" (empty set).
     """
-    if not history_path or days <= 0:
+    return set(_recent_history_entries(history_path, days))
+
+
+def load_recent_sources(history_path: str | None, days: int, window: int = RECENT_SOURCE_WINDOW) -> set[str]:
+    """The ``source_id`` of each of the last ``window`` ledger entries within
+    ``days``: the sources shown most recently, for the voice guard in
+    :func:`pick_best`. Empty whenever :func:`load_recent_history` would be."""
+    return _recent_sources(_recent_history_entries(history_path, days), window)
+
+
+def _recent_sources(entries: list[tuple], window: int = RECENT_SOURCE_WINDOW) -> set[str]:
+    if window <= 0:
         return set()
+    return {source_id for source_id, _line in entries[-window:]}
+
+
+def load_history_views(history_path: str | None, days: int) -> tuple[set[tuple], set[str]]:
+    """Both ledger views the picker needs from one read of the file: the set
+    of recently shown rows and the sources of the last few renders."""
+    entries = _recent_history_entries(history_path, days)
+    return set(entries), _recent_sources(entries)
+
+
+def _recent_history_entries(history_path: str | None, days: int) -> list[tuple]:
+    """The ledger's (source_id, line_number) entries within ``days``, in file
+    order (which is display order: the ledger is append-only and compaction
+    keeps it). The one reader behind :func:`load_recent_history` and
+    :func:`load_recent_sources`."""
+    if not history_path or days <= 0:
+        return []
     path = Path(history_path).expanduser()
     if not path.exists():
-        return set()
+        return []
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
-    recent: set[tuple] = set()
+    recent: list[tuple] = []
     warned = False
     with path.open(encoding="utf-8") as handle:
         for line in handle:
@@ -759,8 +801,18 @@ def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
             line_number = entry.get("line_number")
             if source_id is None or line_number is None:
                 continue
-            recent.add((str(source_id), line_number))
+            recent.append((str(source_id), line_number))
     return recent
+
+
+def _voice_key(row: dict) -> str:
+    """What the voice guard treats as "the same voice": the author when the
+    row has one, else the source, so two editions of one book and ten novels
+    by one author all count as the voice just heard."""
+    author = str(row.get("author") or "").strip().lower()
+    if author:
+        return author
+    return f"source:{row.get('source_id')}"
 
 
 def append_history(history_path: str | None, source_id, line_number) -> None:
@@ -960,8 +1012,15 @@ def pick_best(
     requested_time: str | None = None,
     recent_history: set[tuple] | None = None,
     return_ranked: bool = False,
+    recent_sources: set[str] | None = None,
 ):
     """Pick the highest-ranked row for ``bucket`` (walking neighbour buckets on empty).
+
+    ``recent_history`` is the fresh-first filter (rows shown within the ledger
+    window step aside); ``recent_sources`` is the voice guard (rows whose author
+    was among the last few renders step aside when the bucket has another
+    voice). Both fall through: voice guard → fresh → every candidate, so a
+    sparse bucket still renders.
 
     Returns ``(chosen_row, resolved_bucket)`` by default. When ``return_ranked``
     is True, returns ``(chosen_row, resolved_bucket, ranked)`` where ``ranked``
@@ -1000,10 +1059,13 @@ def pick_best(
     # frozen panel and a backoff window, so a single malformed row must
     # degrade the way it always did: silently ignored.
     rows_by_bucket: dict[str, list[dict]] = defaultdict(list)
+    recent_voices: set[str] = set()
     for row in rows:
         bucket_name = row.get("fuzzy_bucket")
         if isinstance(bucket_name, str):
             rows_by_bucket[bucket_name].append(row)
+        if recent_sources and row.get("source_id") is not None and str(row.get("source_id")) in recent_sources:
+            recent_voices.add(_voice_key(row))
 
     recent = recent_history or set()
     banned_texts, recent_texts = _twin_texts(rows, ban_quote_keys(overrides), recent)
@@ -1030,7 +1092,11 @@ def pick_best(
             ]
             if recent else candidates
         )
-        pool = fresh or candidates
+        # The voice guard sits on top of the fresh filter and falls through the
+        # same way: a bucket whose every fresh row is the voice just heard
+        # shows that voice rather than nothing.
+        varied = [row for row in fresh if _voice_key(row) not in recent_voices] if recent_voices else fresh
+        pool = varied or fresh or candidates
         # score_row is pure, so compute each candidate's score once and derive
         # the sort, the top-score filter, and the ranked view from it rather
         # than re-scoring 3-4× per row on this per-tick path. A stable sort over
@@ -1111,9 +1177,10 @@ def select_candidates(
         raise ValueError("select_candidates requires time_str or bucket")
     rows = load_rows(resolve_path(input_path))
     overrides = load_overrides(resolve_path(overrides_path))
-    recent = load_recent_history(history_path, history_days)
+    recent, recent_sources = load_history_views(history_path, history_days)
     chosen, resolved_bucket, ranked = pick_best(
         rows, target_bucket, seed, min_quality, overrides, time_str, recent, return_ranked=True,
+        recent_sources=recent_sources,
     )
     chosen_key = (chosen.get("source_id"), chosen.get("line_number"))
     result: list[dict] = []
@@ -1353,8 +1420,10 @@ def select_quote(
             "(missing, banned, or matched-text mismatch); picking normally",
             file=sys.stderr,
         )
-    recent = load_recent_history(history_path, history_days)
-    best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str, recent)
+    recent, recent_sources = load_history_views(history_path, history_days)
+    best, resolved_bucket = pick_best(
+        rows, target_bucket, seed, min_quality, overrides, time_str, recent, recent_sources=recent_sources,
+    )
     return _select_result(time_str, target_bucket, resolved_bucket, best)
 
 

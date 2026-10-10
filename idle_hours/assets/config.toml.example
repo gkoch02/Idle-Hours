@@ -58,7 +58,7 @@ interval_seconds = 60
 # paths so the service works regardless of WorkingDirectory.
 state_path     = "/var/lib/idle-hours/state.json"
 history_path   = "/var/lib/idle-hours/history.jsonl"
-history_days   = 7
+history_days   = 60
 telemetry_path = "/var/lib/idle-hours/telemetry.jsonl"
 telemetry_retain_days = 90
 pidfile        = "/var/lib/idle-hours/run_clock.pid"

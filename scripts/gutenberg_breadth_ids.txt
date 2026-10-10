@@ -1,0 +1,60 @@
+# Breadth batch: more detective voices, 1900-1930, two or three books each,
+# so the off-minute buckets stop depending on a handful of authors (before
+# this list the median off-minute bucket had four distinct authors and
+# eighteen had one). Same era and genre as gutenberg_golden_age_ids.txt;
+# the difference is width, not depth.
+# Run via: bash scripts/run_dawn_expansion.sh scripts/gutenberg_breadth_ids.txt
+#
+# Earl Derr Biggers (Charlie Chan)
+73771
+30836
+1814
+# Sax Rohmer
+2028
+6382
+# Sapper (H. C. McNeile)
+49935
+# Arthur B. Reeve (Craig Kennedy, the scientific detective)
+2454
+5054
+# Carolyn Wells (Fleming Stone)
+2883
+6159
+5335
+# Hulbert Footner
+31361
+57088
+# J. J. Connington
+71351
+72816
+73126
+# John Rhode
+72926
+# Henry Wade
+75318
+# Ellery Queen
+76339
+78823
+# Isabel Ostrander
+77423
+23885
+73155
+# Frank Froest
+22173
+# Victor Bridges
+67079
+66969
+# Edgar Jepson
+9808
+# Arthur J. Rees
+10082
+20546
+# Octavus Roy Cohen
+78848
+# A. Fielding
+75146
+# G. D. H. and Margaret Cole
+73716
+79206
+# Philip MacDonald
+72462
