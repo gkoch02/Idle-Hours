@@ -48,6 +48,10 @@ SENTENCE_OK_ABBREVIATIONS = frozenset({
     "No", "Nos",
 })
 _LAST_TOKEN_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
+_SPACED_AM_PM_RE = re.compile(r"(?<![A-Za-z])[ap]\. ?m\.$", re.IGNORECASE)
+# The "a." of a spaced "a. m.", split from its "m." by the sentence regex.
+_AM_PM_FIRST_HALF_RE = re.compile(r"(?<![A-Za-z])[ap]\.$", re.IGNORECASE)
+_AM_PM_SECOND_HALF_RE = re.compile(r"m\.(?:\s|$)", re.IGNORECASE)
 HEADING_PREFIX = re.compile(
     r"^(?:"
     r"(?:[A-Z][A-Z'.-]+(?:\s+[A-Z][A-Z'.-]+){0,5})\s+"
@@ -200,6 +204,10 @@ def _ends_with_sentence_ok_abbreviation(text: str) -> bool:
     (signalled by a lowercase start), but we must not flag these as fragments
     when they're genuinely sentence-final.
     """
+    # The spaced "a. m." / "p. m." some editions print: one abbreviation,
+    # whatever the spacing.
+    if _SPACED_AM_PM_RE.search(text):
+        return True
     head = _last_token_head(text)
     if head is None:
         return False
@@ -231,6 +239,11 @@ def split_sentences(text: str) -> list[str]:
         if merged:
             prev = merged[-1]
             if _ends_with_title_abbreviation(prev):
+                merged[-1] = f"{prev} {part}"
+                continue
+            # "5.20 p." + "m. when the detective emerged": the two halves of
+            # a spaced "p. m." are one token, always.
+            if _AM_PM_FIRST_HALF_RE.search(prev) and _AM_PM_SECOND_HALF_RE.match(part):
                 merged[-1] = f"{prev} {part}"
                 continue
             if _ends_with_sentence_ok_abbreviation(prev) and part and part[0].islower():

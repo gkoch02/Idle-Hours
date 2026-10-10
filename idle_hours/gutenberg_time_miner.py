@@ -360,6 +360,8 @@ def hour_word_to_int(word: str) -> int | None:
 
 
 _SENTENCE_CONTINUES_RE = re.compile(r"\s+[A-Z\"“‘']")
+_AM_PM_TAIL_RE = re.compile(r" ?m\.", re.IGNORECASE)              # after the "a." of "a.m." / "a. m."
+_AM_PM_HEAD_RE = re.compile(r"(?<![A-Za-z])[ap]\. ?$", re.IGNORECASE)  # before the "m." of "a.m." / "a. m."
 
 
 def _is_sentence_period(text: str, i: int) -> bool:
@@ -376,9 +378,10 @@ def _is_sentence_period(text: str, i: int) -> bool:
     after = text[i + 1] if i + 1 < len(text) else ""
     if before.isdigit() and after.isdigit():
         return False
-    if before.lower() in ("a", "p") and after.lower() == "m" and text[i + 2 : i + 3] == "." and (i < 2 or not text[i - 2].isalpha()):
+    # "a.m." and the spaced "a. m." some editions print.
+    if before.lower() in ("a", "p") and _AM_PM_TAIL_RE.match(text, i + 1) and (i < 2 or not text[i - 2].isalpha()):
         return False
-    if before.lower() == "m" and text[i - 3 : i - 1].lower() in ("a.", "p.") and not _SENTENCE_CONTINUES_RE.match(text, i + 1):
+    if before.lower() == "m" and _AM_PM_HEAD_RE.search(text, 0, i - 1) and not _SENTENCE_CONTINUES_RE.match(text, i + 1):
         return False
     return True
 

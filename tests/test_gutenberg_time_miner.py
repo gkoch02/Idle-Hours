@@ -659,3 +659,9 @@ class TestSentenceWindowAbbreviations:
     def test_a_capitalised_word_after_am_is_a_new_sentence(self):
         text = "We left at 6.35 a.m. Turin was still asleep."
         assert self._quote(text, "at 6.35") == "We left at 6.35 a.m."
+
+    def test_the_spaced_p_m_some_editions_print(self):
+        text = "The shoals of small fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there. Then it rained."
+        assert self._quote(text, "at 5.20") == "The shoals of small fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there."
+        text = "It had taken place at 6.30 p. m. With that assumption he went on."
+        assert self._quote(text, "at 6.30") == "It had taken place at 6.30 p. m."

@@ -649,3 +649,30 @@ class TestCorpusHygiene:
         assert cdq.drop_stray_underscores("ALGERNON. [Stiffly_._] I believe") == "ALGERNON. [Stiffly.] I believe"
         assert cdq.drop_stray_underscores("It was _very_ late.") == "It was _very_ late."
         assert cdq.drop_stray_underscores("Mr. ____ called at ten.") == "Mr. ____ called at ten."
+
+
+class TestSpacedAmPm:
+    """Some editions print "p. m." with a space; the sentence regex splits it
+    into "p." and "m." and the quote used to end at "5.20 p."."""
+
+    def test_spaced_pm_mid_sentence_stays_one_sentence(self):
+        from idle_hours.clean_display_quotes import split_sentences
+        text = "The fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there. Then it rained."
+        assert split_sentences(text) == [
+            "The fry would not be released till six, but at 5.20 p. m. when the detective emerged he was there.",
+            "Then it rained.",
+        ]
+
+    def test_spaced_pm_at_a_sentence_end_still_ends_it(self):
+        from idle_hours.clean_display_quotes import split_sentences
+        assert split_sentences("It had taken place at 6.30 p. m. With that assumption he went on.") == [
+            "It had taken place at 6.30 p. m.",
+            "With that assumption he went on.",
+        ]
+
+    def test_unspaced_pm_still_merges_a_lowercase_continuation(self):
+        from idle_hours.clean_display_quotes import split_sentences
+        assert split_sentences("It left at 3.00 p.m. that afternoon; the agent saw them. The next day was wet.") == [
+            "It left at 3.00 p.m. that afternoon; the agent saw them.",
+            "The next day was wet.",
+        ]
