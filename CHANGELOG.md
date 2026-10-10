@@ -9,6 +9,9 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The `lieder` theme no longer lets a beam run into the lyrics. A beamed group
+  that mixed high and low notes hung its beam into the words below the staff;
+  the stems now shorten to keep it clear.
 - The `escritoire` signature and book title now end where the handwriting
   does, instead of hanging out past a short or ragged quote toward the
   sheet's edge.
