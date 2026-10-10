@@ -270,7 +270,8 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     * ``nightvision`` — green body → G+W 1:1 mint; yellow phrase → Y+G
       5/8:3/8 lime.
     * ``gothic`` — red phrase → R+Y 1:1 amber; ``betweenus_dark`` — yellow
-      phrase → the same amber.
+      phrase → the same amber; ``pourjudgment`` — yellow phrase → Y+R 3/4:1/4
+      gold.
     * ``deco`` — red phrase → R+Y 5/8:3/8 tangerine (matches
       ``draw_deco_border``'s post-pass threshold).
     * ``fillmore`` — red body → R+K maroon.
@@ -324,6 +325,11 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # ``want`` (#DFA07C) lands on. On black the mix's brightness is the
         # point; the recipes doc's washed-out caveat is about white grounds.
         draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=SPECTRA6["yellow"])
+    elif theme == "pourjudgment" and fill == SPECTRA6["yellow"]:
+        # Yellow sentinel → Y+R 3/4:1/4, the app's gold (#E8C48A) on claret:
+        # the quarter red warms the panel's lemon yellow, and on the red card
+        # it reads as the card showing through a gold stroke.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["yellow"], light=SPECTRA6["red"], light_density=0.25)
     else:
         draw.text(xy, text, font=font, fill=fill)
 

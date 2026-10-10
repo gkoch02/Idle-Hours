@@ -237,6 +237,16 @@ MONTSERRAT_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat[wght].ttf")
 # Black (wght 900), so every candidate pins an instance by name.
 FRAUNCES_VARIABLE = str(BASE_DIR / "fonts/fraunces/Fraunces-Variable.ttf")
 FRAUNCES_ITALIC_VARIABLE = str(BASE_DIR / "fonts/fraunces/Fraunces-Italic-Variable.ttf")
+# Bricolage Grotesque — Mathieu Triay (OFL). The heading face of the HippoChomp
+# marketing page; used by ``hippochomp``. Variable on optical size, width and
+# weight. The DEFAULT axis instance is ExtraBold, so every candidate pins one.
+BRICOLAGE_VARIABLE = str(BASE_DIR / "fonts/bricolage-grotesque/BricolageGrotesque[opsz,wdth,wght].ttf")
+# Bodoni Moda — Owen Earl (OFL). The Pour Judgment app's Didone; used by
+# ``pourjudgment`` / ``pourjudgment_dark``. Static cuts of the text optical
+# size (opsz 14), as the app bundles them; Medium is the app's "regular".
+BODONIMODA_MEDIUM = str(BASE_DIR / "fonts/bodoni-moda/BodoniModa-Medium.ttf")
+BODONIMODA_SEMIBOLD = str(BASE_DIR / "fonts/bodoni-moda/BodoniModa-SemiBold.ttf")
+BODONIMODA_MEDIUM_ITALIC = str(BASE_DIR / "fonts/bodoni-moda/BodoniModa-MediumItalic.ttf")
 # Cormorant Garamond — Christian Thalmann (OFL). High-contrast Garamond
 # revival with a poster-register contrast (``nocturne``'s body). Variable,
 # named instances Light..Bold (default Regular).

@@ -878,6 +878,11 @@ class TestThemes:
         # page ground so the fence below stays honest.
         "betweenus",
         "betweenus_dark",
+        # hippochomp / pourjudgment — skipped the same way: neither app nor
+        # its marketing page has quotation marks, and the marks would land on
+        # the field or the leather outside the card.
+        "hippochomp",
+        "pourjudgment",
     })
 
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):

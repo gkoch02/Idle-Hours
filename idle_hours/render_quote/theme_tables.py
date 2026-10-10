@@ -31,6 +31,9 @@ from ._paths import (
     BARLOWCOND_REGULAR,
     BARLOWCOND_SEMIBOLD,
     BEBASNEUE_REGULAR,
+    BODONIMODA_MEDIUM,
+    BODONIMODA_SEMIBOLD,
+    BRICOLAGE_VARIABLE,
     BUNGEE_SHADE_REGULAR,
     CAESARDRESSING_REGULAR,
     CARDO_BOLD,
@@ -166,6 +169,33 @@ THEMES = {
     # reroutes to the R+Y 1:1 amber (literal only in the debug banner).
     # Ornaments skipped, as for the light variant.
     "betweenus_dark": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["black"],
+        "source": SPECTRA6["white"],
+    },
+    # HippoChomp: black on the white card, the matched phrase in solid green
+    # (the marketing page's green ``h1 em``). Ornament marks skipped.
+    "hippochomp": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Pour Judgment: the quote sits on the claret verdict card, so ``text``
+    # is parchment (white) and ``accent`` a yellow sentinel ``_draw_text_body``
+    # reroutes to Y+R 3/4:1/4 gold on solid red; ``page_bg`` is the leather
+    # the painter floats the card on. Ornament slots take the page ground;
+    # the marks are skipped outright.
+    "pourjudgment": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
         "subtle": SPECTRA6["white"],
@@ -1231,6 +1261,28 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             (FRAUNCES_VARIABLE, "SemiBold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
+    },
+    # Bricolage Grotesque, every candidate pinned (the default instance is
+    # ExtraBold): Regular body, ExtraBold matched phrase.
+    "hippochomp": {
+        "quote_regular": [
+            (BRICOLAGE_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            *QUOTE_FONT_REGULAR_CANDIDATES,
+        ],
+        "quote_bold": [
+            (BRICOLAGE_VARIABLE, "ExtraBold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [(BRICOLAGE_VARIABLE, "ExtraBold"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    # Bodoni Moda's text cut: Medium (the app's regular) for the body,
+    # SemiBold (the weight the app names a drink in) for the phrase.
+    "pourjudgment": {
+        "quote_regular": [BODONIMODA_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [BODONIMODA_SEMIBOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BODONIMODA_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     # Jost: near-monoline strokes bloom evenly, where a high-contrast face
     # haloes unevenly. Space Mono Bold carries the stencilled legend.
@@ -2577,7 +2629,9 @@ THEME_FONTS: dict[str, dict[str, list]] = {
 # Themes whose layout draws no oversized quote marks at all. Distinct from
 # setting both ornament slots to ``page_bg`` (which still paints, invisibly on
 # a flat ground but visibly on a washed one).
-_THEMES_WITHOUT_ORNAMENT_MARKS: frozenset[str] = frozenset({"betweenus", "betweenus_dark"})
+_THEMES_WITHOUT_ORNAMENT_MARKS: frozenset[str] = frozenset(
+    {"betweenus", "betweenus_dark", "hippochomp", "pourjudgment"}
+)
 
 # Themes whose matched-phrase face has a silhouette that breaks if its
 # inter-word gaps are inflated by justification: these keep the
