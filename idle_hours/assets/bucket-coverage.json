@@ -1,7 +1,7 @@
 {
   "total_rows": 7771,
-  "displayable_rows": 6698,
-  "banned_rows": 30,
+  "displayable_rows": 6691,
+  "banned_rows": 31,
   "min_quality": 60,
   "total_expected_buckets": 144,
   "populated_bucket_count": 144,
@@ -9,9 +9,9 @@
   "empty_bucket_count": 0,
   "coverage_percent": 100.0,
   "bucket_counts": {
-    "h1_exact": 274,
+    "h1_exact": 272,
     "h1_five_past": 4,
-    "h1_ten_past": 3,
+    "h1_ten_past": 2,
     "h1_quarter_past": 17,
     "h1_twenty_past": 7,
     "h1_twenty_five_past": 4,
@@ -30,7 +30,7 @@
     "h2_half_past": 75,
     "h2_twenty_five_to": 5,
     "h2_twenty_to": 4,
-    "h2_quarter_to": 19,
+    "h2_quarter_to": 18,
     "h2_ten_to": 4,
     "h2_five_to": 22,
     "h3_exact": 318,
@@ -45,7 +45,7 @@
     "h3_quarter_to": 23,
     "h3_ten_to": 4,
     "h3_five_to": 25,
-    "h4_exact": 271,
+    "h4_exact": 270,
     "h4_five_past": 5,
     "h4_ten_past": 1,
     "h4_quarter_past": 15,
@@ -93,7 +93,7 @@
     "h7_quarter_to": 32,
     "h7_ten_to": 6,
     "h7_five_to": 25,
-    "h8_exact": 368,
+    "h8_exact": 366,
     "h8_five_past": 8,
     "h8_ten_past": 11,
     "h8_quarter_past": 15,
@@ -323,6 +323,10 @@
       "count": 1
     },
     {
+      "bucket": "h1_ten_past",
+      "count": 2
+    },
+    {
       "bucket": "h6_five_past",
       "count": 2
     },
@@ -344,10 +348,6 @@
     },
     {
       "bucket": "h12_twenty_past",
-      "count": 3
-    },
-    {
-      "bucket": "h1_ten_past",
       "count": 3
     },
     {
@@ -409,6 +409,10 @@
       "count": 1
     },
     {
+      "bucket": "h1_ten_past",
+      "count": 2
+    },
+    {
       "bucket": "h6_five_past",
       "count": 2
     },
@@ -436,7 +440,7 @@
     },
     {
       "bucket": "h8_exact",
-      "count": 368
+      "count": 366
     },
     {
       "bucket": "h3_exact",
@@ -456,11 +460,11 @@
     },
     {
       "bucket": "h1_exact",
-      "count": 274
+      "count": 272
     },
     {
       "bucket": "h4_exact",
-      "count": 271
+      "count": 270
     },
     {
       "bucket": "h7_exact",
@@ -612,11 +616,6 @@
         "quote_text": "got back to the studio at ten minutes past one.",
         "matched_text": "ten minutes past one",
         "source_id": "44"
-      },
-      {
-        "quote_text": "“It must have been about five or ten minutes past one.",
-        "matched_text": "ten minutes past one",
-        "source_id": "60"
       }
     ],
     "h1_quarter_past": [

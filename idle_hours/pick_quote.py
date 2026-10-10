@@ -568,6 +568,7 @@ def override_bonus(row: dict, overrides: dict, bucket: str) -> int:
 SHIPPED_BAN_QUOTE_KEYS: frozenset[str] = frozenset({
     "76:2524",  # Adventures of Huckleberry Finn: a racial slur
     "60:52",  # The Scarlet Pimpernel: its table of contents, not a passage
+    "72883:109",  # The Layton Court Mystery: its time is only in the chapter's title
 })
 
 

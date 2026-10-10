@@ -166,6 +166,32 @@ TRAILING_SPEAKER_CUE = re.compile(
     r"(?<=[.!?”’\"])\s+(?:[A-Z][A-Z’'\-]+(?:\s+[A-Z][A-Z’'\-]+){0,2})\.(?:\s*\[[^\[\]]*\])?\s*$"
 )
 
+# A section break opening the excerpt: the "* * * * *" a novel sets between
+# scenes, the asterisked chapter number some editions print ("*II* At twelve
+# o'clock…"), or a list's bullet ("* Some services…").
+LEADING_ASTERISKS = re.compile(r"^(?:\*[IVXLC\d]*\*?\s*)+(?=\S)")
+# A section break anywhere: the excerpt runs across two scenes. Penalised by the
+# quality filter rather than cut, since which side to keep depends on the phrase.
+SECTION_BREAK = re.compile(r"\*\s*\*")
+
+# Spaced dots at the edges: the tail of an author's ". . ." the miner's window
+# cut through (". . Half-past twelve of a wild night…", "…kept on that way . .").
+# At the start they go; at the end they become one ellipsis.
+LEADING_SPACED_DOTS = re.compile(r"^\.(?:\s*\.)*\s+(?=\S)")
+TRAILING_SPACED_DOTS = re.compile(r"\.?(?:\s+\.)+\s*$")
+
+# A chapter heading in ordinary case ("Chapter V The Tragedy of Pondicherry
+# Lodge It was…", "Chapter 8 We passed…"). Its title cannot be told from the
+# sentence after it ("Chapter XIII An Arrest Inspector Blaikie had…"), so it is
+# not cut; the quality filter keeps such an excerpt off the panel instead.
+LEADING_CHAPTER_HEADING = re.compile(
+    r"^(?:“[^”]*”\s+)?(?:Chapter|CHAPTER|Stave|STAVE)\s+(?:[IVXLCDM]+|\d+|[A-Z][a-z]+)\b"
+)
+
+# A word broken across a line by the source's hyphenation ("forty- seven",
+# "trumpet- toned"); a suspended hyphen ("eight- or nine-year-old") is not one.
+BROKEN_HYPHENATION = re.compile(r"\b[a-z]+- (?!(?:or|and|to|nor)\b)[a-z]+\b")
+
 # An opening ellipsis ("… But I have to go…", "... You are right") is the
 # source's own elision mark, which reads as a fragment on the panel. Applied
 # by ``clean_edges`` to the whole excerpt only.
@@ -329,6 +355,8 @@ def clean_edges(text: str) -> str:
     # text is the author's, and ``strip_heading_prefix`` (which also runs per
     # interior sentence) must leave it alone.
     text = TRAILING_SPEAKER_CUE.sub("", text)
+    text = LEADING_SPACED_DOTS.sub("", LEADING_ASTERISKS.sub("", text))
+    text = TRAILING_SPACED_DOTS.sub("…", text)
     return LEADING_ELLIPSIS.sub("", text).strip()
 
 

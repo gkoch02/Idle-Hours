@@ -9,6 +9,13 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- A sweep of the corpus for leftover markup: quotes no longer open with a
+  scene break ("* * * * *"), an asterisked chapter number or an
+  ordinary-case chapter heading ("Chapter V The Tragedy of Pondicherry
+  Lodge…"), or start or end on the stray dots of a cut ellipsis; words
+  broken across a line ("stormy- looking") are mended, and a "{sic}" and a
+  numbered list are tidied. Six quotes that were only ever fragments drop
+  out, and one whose time was in its chapter title is banned.
 - Quotes from plays no longer end on the next speaker's name ("…under the
   name of Ernest. JACK."); the cleaner cuts it, the thirteen shipped rows that
   carried one are fixed, and *The Scarlet Pimpernel*'s table of contents,

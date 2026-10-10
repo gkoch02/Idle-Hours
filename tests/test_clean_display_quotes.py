@@ -711,6 +711,52 @@ class TestCorpusHygiene:
     def test_text_that_only_looks_like_a_cue_survives(self, text):
         assert cdq.clean_edges(text) == text
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("* * * * * It was about ten o’clock that night.", "It was about ten o’clock that night."),
+            ("* * * * * * It was four o'clock next morning.", "It was four o'clock next morning."),
+            ("*II* At twelve o’clock precisely the bell rang.", "At twelve o’clock precisely the bell rang."),
+            ("* Some services list the news at 11.02.", "Some services list the news at 11.02."),
+        ],
+    )
+    def test_leading_section_break_is_stripped(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            (". . Half-past twelve of a wild night.", "Half-past twelve of a wild night."),
+            (". Did you notice the time at one?", "Did you notice the time at one?"),
+            ("At one o’clock she kept on that way . .", "At one o’clock she kept on that way…"),
+            ("One o’clock came .", "One o’clock came…"),
+            ("until four o'clock. . .", "until four o'clock…"),
+        ],
+    )
+    def test_spaced_dots_at_the_edges_are_tidied(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "It was at 4.54 that he left.",
+            "He waited... It was ten o’clock.",
+            "By ten o’clock . . . nothing had happened.",  # an author's spaced ellipsis inside
+        ],
+    )
+    def test_dots_that_belong_to_the_text_survive(self, text):
+        assert cdq.clean_edges(text) == text
+
+    def test_ordinary_case_chapter_heading_is_flagged_not_cut(self):
+        text = "Chapter XIII An Arrest Inspector Blaikie had made arrangements at half-past two."
+        assert cdq.clean_edges(text) == text
+        assert cdq.LEADING_CHAPTER_HEADING.match(text)
+        assert not cdq.LEADING_CHAPTER_HEADING.match("Chapterhouse bells rang at two.")
+
+    def test_broken_hyphenation_is_detected_but_suspended_hyphens_are_not(self):
+        assert cdq.BROKEN_HYPHENATION.search("a stormy- looking night")
+        assert not cdq.BROKEN_HYPHENATION.search("an eight- or nine-year-old")
+
     @pytest.mark.parametrize("word", ["MIX", "DI", "LIV", "CC", "MD", "DC", "CD", "MC", "MM", "CM", "DIV"])
     def test_numeral_shaped_words_are_not_headings(self, word):
         text = f"{word}. It was ten o’clock."
