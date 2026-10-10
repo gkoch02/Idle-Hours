@@ -8,7 +8,13 @@ import re
 from pathlib import Path
 
 from idle_hours import atomic_io
-from idle_hours.clean_display_quotes import EXPANSION_MAX_CHARS, HEADING_PREFIX, LEADING_CAPS_HEADING, unbalanced_quotes
+from idle_hours.clean_display_quotes import (
+    EXPANSION_MAX_CHARS,
+    HEADING_PREFIX,
+    LEADING_BRACKET_TAIL,
+    LEADING_CAPS_HEADING,
+    unbalanced_quotes,
+)
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -125,6 +131,11 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     if HEADING_PREFIX.match(display_quote) or LEADING_CAPS_HEADING.match(display_quote):
         score -= 35
         reasons.append("leading_heading")
+    # The tail of a cut-off bracketed aside ("Looks at his watch] It's about…"): the
+    # same structural residue, the same weight.
+    if LEADING_BRACKET_TAIL.match(display_quote):
+        score -= 35
+        reasons.append("leading_bracket_tail")
 
     for pattern, label, penalty in BAD_PATTERNS:
         if pattern.search(display_quote):

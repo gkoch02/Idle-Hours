@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Quotes no longer open with the cut-off end of a stage direction, an
+  illustration caption or a footnote ("Looks at his watch] It's about
+  time…"); the cleaner drops the stray bracketed tail, and the fifteen
+  shipped rows that carried one are fixed.
 - Two-word chapter titles no longer reach the panel at the start of a quote
   ("LORAINE'S ADVENTURES Loraine Wade sat up in bed…", "THE INQUEST…"); the
   cleaner strips them as it already did longer ones, and the eleven shipped
