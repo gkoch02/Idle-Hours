@@ -860,6 +860,81 @@ class TestLiederRhythm:
                 )
 
 
+class TestLiederBeamReach:
+    """A beamed group's beam stays clear of the lyric line.
+
+    The beam used to lie a full stem past the group's farthest head. A group that
+    mixes high and low heads (its stems down by majority, its lowest head on the
+    bottom line) then hung its beam into the syllables below the staff. A fixed
+    reach below the staff was the next cut, and still touched the ascenders of a
+    lyric fitted at the largest size, so the floor is now the lyric's own tallest
+    ink less a clearance. The beam shortens the stems to keep above it, never to
+    under ``_LIEDER_BEAM_MIN_STEM``, and a down group that cannot turns up.
+    """
+
+    GAP = 7
+    TOP = 100.0
+    FLOOR = TOP + 4 * GAP + 2.5 * GAP
+
+    def _y(self, pitch):
+        return rq._lieder_pitch_y(self.TOP, pitch, self.GAP)
+
+    def _beam(self, pitches, down, floor=FLOOR):
+        return rq._lieder_beam_y([self._y(p) for p in pitches], down, self.TOP, self.GAP, floor)
+
+    def test_a_middle_group_keeps_its_full_stem(self):
+        assert self._beam([4, 5], True) == (True, self._y(4) + rq._LIEDER_STEM_LEN * self.GAP)
+
+    def test_a_mixed_down_group_stops_at_the_floor(self):
+        assert self._beam([7, 5, 0], True) == (True, self.FLOOR)  # C5, A4, E4 on the bottom line
+
+    def test_a_mixed_up_group_stops_short_of_the_headroom(self):
+        assert self._beam([1, 3, 8], False) == (False, self.TOP - rq._LIEDER_BEAM_REACH * self.GAP)
+
+    def test_a_head_too_low_for_a_minimum_stem_turns_the_group_up(self):
+        low = rq._LIEDER_PITCH_MIN
+        down, beam = self._beam([low, 6], True, floor=self._y(low) + self.GAP)
+        assert not down
+        assert beam == self._y(6) - rq._LIEDER_STEM_LEN * self.GAP
+
+    def test_an_up_ledger_head_keeps_a_minimum_stem(self):
+        high = self._y(rq._LIEDER_PITCH_MAX)
+        assert self._beam([rq._LIEDER_PITCH_MAX], False) == (False, high - rq._LIEDER_BEAM_MIN_STEM * self.GAP)
+
+    def test_the_beam_clears_the_ascenders_on_the_panel(self):
+        """The reported case, read off the pixels: a short quote fitted at the
+        largest lyric size, its capped group over "he was in the". Find the beam as
+        the lowest horizontal run of ink below the staff and require a clear row
+        between it and the first lyric ink beneath it."""
+        row = make_row(display_quote="what did it and he was in the end.", matched_text="the end",
+                       source_id=2, line_number=1)
+        img = rq.render("12:00", row, 800, 480, theme="lieder", mode="production").convert("L")
+        width, height = img.size
+        pixels = img.load()
+        dark = [[pixels[x, y] < 100 for x in range(width)] for y in range(height)]
+
+        def runs(y):
+            out, start = [], None
+            for x in range(width + 1):
+                on = x < width and dark[y][x]
+                if on and start is None:
+                    start = x
+                elif not on and start is not None:
+                    out.append((start, x))
+                    start = None
+            return out
+
+        staff_lines = [y for y in range(height) if any(b - a > 600 for a, b in runs(y))]
+        assert staff_lines
+        beams = [(y, a, b) for y in range(max(staff_lines) + 1, height) for a, b in runs(y) if 40 <= b - a <= 600]
+        assert beams, "the quote should carry a down beam below the staff"
+        bottom = max(y for y, _, _ in beams)
+        x0, x1 = next((a, b) for y, a, b in beams if y == bottom)
+        below = [y for y in range(bottom + 1, height) if any(dark[y][x] for x in range(x0, x1))]
+        assert below, "the lyric should sit under the beam"
+        assert below[0] - bottom > rq._LIEDER_BEAM_CLEARANCE, (bottom, below[0])
+
+
 class TestFooterTruncationTerminates:
     """Text-shrinking loops must terminate however small the width budget is.
 

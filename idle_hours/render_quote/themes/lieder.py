@@ -34,6 +34,10 @@ _LIEDER_LYRIC_OFFSET = 5.0       # staff spaces from staff bottom to lyric basel
                                  # (clears a down-stem, which hangs 3.4 spaces below a
                                  #  middle-line notehead, by ~7px at the largest lyric)
 _LIEDER_STEM_LEN = 3.4           # staff spaces
+_LIEDER_BEAM_REACH = 2.5         # staff spaces a beam may lie outside the staff (clears the lyric)
+_LIEDER_BEAM_MIN_STEM = 1.5      # staff spaces a shortened beamed stem keeps past its head
+_LIEDER_BEAM_CLEARANCE = 2       # px between a down beam and the lyric's tallest ink
+_LIEDER_LYRIC_RISE_PROBE = "bdfhklABDHKLT'\u201c"  # the lyric's tallest glyphs
 _LIEDER_PITCH_MIN = -2           # one ledger line below the staff
 _LIEDER_PITCH_MAX = 10           # one ledger line above the staff
 _LIEDER_FONT_MAX = 26
@@ -651,6 +655,29 @@ def _lieder_paint_slur(draw, xs: list[float], ys: list[float], gap: int) -> None
     draw.arc(box, start=180, end=360, fill=SPECTRA6["red"], width=2)
 
 
+def _lieder_lyric_rise(ctx: dict) -> int:
+    """How far the lyric's tallest ink rises above its baseline, in either face."""
+    return max(-font.getbbox(_LIEDER_LYRIC_RISE_PROBE, anchor="ls")[1] for font in (ctx["regular"], ctx["bold"]))
+
+
+def _lieder_beam_y(heads: list[float], down: bool, staff_top: float, gap: int,
+                   floor: float) -> tuple[bool, float]:
+    """A beamed group's stem direction and beam line. The beam lies a full stem past
+    the farthest head, but no lower than ``floor`` (where the lyric's tallest ink
+    starts, less a clearance, or ``_LIEDER_BEAM_REACH`` spaces below the staff if that
+    is higher) and no higher than ``_LIEDER_BEAM_REACH`` spaces above it, shortening
+    the stems as an engraver does, never to under ``_LIEDER_BEAM_MIN_STEM`` past a
+    head. A down group that cannot keep that minimum above ``floor`` turns up."""
+    if down:
+        lowest = max(heads)
+        beam = max(min(lowest + _LIEDER_STEM_LEN * gap, floor), lowest + _LIEDER_BEAM_MIN_STEM * gap)
+        if beam <= floor:
+            return True, beam
+    highest = min(heads)
+    reach = staff_top - _LIEDER_BEAM_REACH * gap
+    return False, min(max(highest - _LIEDER_STEM_LEN * gap, reach), highest - _LIEDER_BEAM_MIN_STEM * gap)
+
+
 def _lieder_paint_system(draw, ctx: dict, index: int, line: list[dict]) -> None:
     """Engrave one staff: lines, clef/meter, barlines, notes, lyrics, slur.
 
@@ -689,13 +716,17 @@ def _lieder_paint_system(draw, ctx: dict, index: int, line: list[dict]) -> None:
         cursor += slot
 
     # Pass 2: beam groups. A whole group shares one stem direction (majority
-    # side of the middle line) and one horizontal beam clear of every head in it.
+    # side of the middle line) and one horizontal beam clear of every head in it,
+    # kept above the lyric's tallest ink (``_lieder_beam_y``), so a group mixing
+    # high and low heads cannot hang its beam into the words.
     stem_h = _LIEDER_STEM_LEN * gap
     beamed: dict[int, tuple[bool, float]] = {}
     beams: list[tuple[float, float, float, bool]] = []
+    beam_floor = min(staff_bottom + _LIEDER_BEAM_REACH * gap,
+                     staff_bottom + _LIEDER_LYRIC_OFFSET * gap - _lieder_lyric_rise(ctx) - _LIEDER_BEAM_CLEARANCE)
     for run in _lieder_beam_groups(line):
         down = sum(1 for i in run if line[i]["pitch"] >= 4) * 2 >= len(run)
-        beam_y = (max(ys[i] for i in run) + stem_h) if down else (min(ys[i] for i in run) - stem_h)
+        down, beam_y = _lieder_beam_y([ys[i] for i in run], down, staff_top, gap, beam_floor)
         for i in run:
             beamed[i] = (down, beam_y)
         beams.append((xs[run[0]], xs[run[-1]], beam_y, down))
