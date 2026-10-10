@@ -241,9 +241,11 @@ def _astrarium_paint_dial(
     del time_str  # kept for signature symmetry; the disc reads the shared ``now``
 
     # Tiny sun glyph below "TODAY", above the date: red sentinel, then the
-    # bbox post-pass below flips Bayer ranks >= 6 (10/16) to yellow.
+    # bbox post-pass below flips Bayer ranks >= 6 (10/16) to yellow. Centred
+    # in the gap between TODAY's foot (cy - 46) and the tallest date's top
+    # (cy - 20); at cy - 38 its top ray ran into the word.
     sun_cx = cx
-    sun_cy = cy - 38
+    sun_cy = cy - 33
     sun_r = 4
     draw.ellipse((sun_cx - sun_r, sun_cy - sun_r, sun_cx + sun_r, sun_cy + sun_r), fill=RED)
     for ang_deg in range(0, 360, 45):
