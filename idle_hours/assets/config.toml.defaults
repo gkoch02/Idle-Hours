@@ -45,7 +45,7 @@ interval_seconds = 60
 # /var/lib/idle-hours/... — see assets/config.toml.example.
 state_path            = "~/.idle-hours/state.json"
 history_path          = "~/.idle-hours/history.jsonl"
-history_days          = 7
+history_days          = 60
 telemetry_path        = "~/.idle-hours/telemetry.jsonl"
 telemetry_retain_days = 90
 pidfile               = "~/.idle-hours/run_clock.pid"

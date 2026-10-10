@@ -1522,6 +1522,71 @@ class TestQuoteKeyShape:
         assert pq.load_overrides(path)["ban_quote_keys"] == ["141:482"]
 
 
+class TestRecentVoiceGuard:
+    """The last few renders' authors step aside when the bucket has another
+    voice (``RECENT_SOURCE_WINDOW``); a bucket with no other voice still shows."""
+
+    def _rows(self):
+        return [
+            # Same shape, no weak or pronoun opener on either, so the quality
+            # score alone ranks them: Dickens first.
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=95, author="Charles Dickens",
+                     display_quote="The town was quiet at three o'clock and all was well."),
+            make_row(fuzzy_bucket="h3_exact", source_id="2", line_number=200, quality_score=90, author="Thomas Hardy",
+                     display_quote="The church was full at three o'clock and all looked up."),
+        ]
+
+    def _pick(self, rows, history, days=60):
+        return pq.select_quote(time_str="03:00", rows=rows, overrides={}, history_path=str(history), history_days=days)
+
+    def test_without_history_the_best_row_wins(self, tmp_path):
+        assert self._pick(self._rows(), tmp_path / "history.jsonl")["source_id"] == "1"
+
+    def test_the_voice_just_heard_yields_to_another(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "1", 999)  # another Dickens row, not this one
+        assert self._pick(self._rows(), history)["source_id"] == "2"
+
+    def test_the_guard_is_by_author_not_by_book(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "77", 5)  # a different Dickens book
+        rows = self._rows() + [make_row(fuzzy_bucket="h3_exact", source_id="77", line_number=5, quality_score=50,
+                                        author="Charles Dickens", display_quote="x")]
+        assert self._pick(rows, history)["source_id"] == "2"
+
+    def test_only_the_last_window_entries_count(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "1", 999)
+        for n in range(pq.RECENT_SOURCE_WINDOW):
+            pq.append_history(str(history), "2", 300 + n)
+        rows = self._rows()
+        # Hardy is now the recent voice, Dickens has scrolled out of the window.
+        assert self._pick(rows, history)["source_id"] == "1"
+
+    def test_a_bucket_with_one_voice_still_shows_it(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "1", 999)
+        rows = [r for r in self._rows() if r["author"] == "Charles Dickens"]
+        assert self._pick(rows, history)["source_id"] == "1"
+
+    def test_history_disabled_disables_the_guard(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "1", 999)
+        assert self._pick(self._rows(), history, days=0)["source_id"] == "1"
+
+    def test_load_recent_sources_is_the_ledger_tail(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        for sid in ["5", "6", "7", "8"]:
+            pq.append_history(str(history), sid, 1)
+        assert pq.load_recent_sources(str(history), 60, window=3) == {"6", "7", "8"}
+        assert pq.load_recent_sources(str(history), 0) == set()
+        assert pq.load_recent_sources(None, 60) == set()
+
+    def test_a_row_without_an_author_is_its_own_voice(self):
+        assert pq._voice_key({"author": "", "source_id": "9"}) == "source:9"
+        assert pq._voice_key({"author": " Thomas Hardy ", "source_id": "9"}) == "thomas hardy"
+
+
 class TestSelectQuotePin:
     """Regression (#190): theme-only repaints pin the render subprocess to the
     exact row already on the panel — bypassing scoring and the anti-repeat
