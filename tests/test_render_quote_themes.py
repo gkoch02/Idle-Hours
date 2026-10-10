@@ -860,6 +860,46 @@ class TestLiederRhythm:
                 )
 
 
+class TestLiederBeamReach:
+    """A beamed group's beam stays clear of the lyric line.
+
+    The beam used to lie a full stem past the group's farthest head. A group that
+    mixes high and low heads (its stems down by majority, its lowest head on the
+    bottom line) then hung its beam 3.9 spaces below the staff, into the syllables
+    set 5 spaces below it. The beam is now held within ``_LIEDER_BEAM_REACH`` of the
+    staff, shortening the stems, but never closer than ``_LIEDER_BEAM_MIN_STEM`` to
+    a head.
+    """
+
+    GAP = 7
+    TOP = 100.0
+
+    def _y(self, pitch):
+        return rq._lieder_pitch_y(self.TOP, pitch, self.GAP)
+
+    def test_a_middle_group_keeps_its_full_stem(self):
+        heads = [self._y(4), self._y(5)]
+        assert rq._lieder_beam_y(heads, True, self.TOP, self.GAP) == max(heads) + rq._LIEDER_STEM_LEN * self.GAP
+
+    def test_a_mixed_down_group_stops_short_of_the_lyric(self):
+        heads = [self._y(7), self._y(5), self._y(0)]  # C5, A4, E4 on the bottom line
+        beam = rq._lieder_beam_y(heads, True, self.TOP, self.GAP)
+        staff_bottom = self.TOP + 4 * self.GAP
+        assert beam == staff_bottom + rq._LIEDER_BEAM_REACH * self.GAP
+        assert beam < staff_bottom + rq._LIEDER_LYRIC_OFFSET * self.GAP - 2 * self.GAP
+
+    def test_a_mixed_up_group_stops_short_of_the_headroom(self):
+        heads = [self._y(1), self._y(3), self._y(8)]
+        beam = rq._lieder_beam_y(heads, False, self.TOP, self.GAP)
+        assert beam == self.TOP - rq._LIEDER_BEAM_REACH * self.GAP
+
+    def test_a_ledger_head_keeps_a_minimum_stem(self):
+        low = self._y(rq._LIEDER_PITCH_MIN)
+        assert rq._lieder_beam_y([low], True, self.TOP, self.GAP) == low + rq._LIEDER_BEAM_MIN_STEM * self.GAP
+        high = self._y(rq._LIEDER_PITCH_MAX)
+        assert rq._lieder_beam_y([high], False, self.TOP, self.GAP) == high - rq._LIEDER_BEAM_MIN_STEM * self.GAP
+
+
 class TestFooterTruncationTerminates:
     """Text-shrinking loops must terminate however small the width budget is.
 
