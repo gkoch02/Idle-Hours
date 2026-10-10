@@ -26,7 +26,7 @@ from pathlib import Path
 
 from idle_hours import atomic_io
 from idle_hours.buckets import bucket_for_time
-from idle_hours.clean_display_quotes import looks_fragment
+from idle_hours.clean_display_quotes import curl_quotes, looks_fragment
 from idle_hours.jsonl_io import iter_jsonl
 from idle_hours.quality_filter import score_quote
 from idle_hours.runtime_config import validate_hhmm
@@ -222,6 +222,11 @@ def apply_overrides(
                 held.add(field)
                 continue
             writes[field] = value
+        # Quotes as the cleaner leaves them, so a hand-typed override with straight
+        # quotes reads like the rest of the corpus and its time phrase still matches.
+        for field in ("display_quote", "matched_text"):
+            if isinstance(writes.get(field), str):
+                writes[field] = curl_quotes(writes[field])
         if "normalized_time" in writes:
             parts = dict(zip(("hour", "minute"), (int(p) for p in writes["normalized_time"].split(":")), strict=True))
             for field in ("hour", "minute"):

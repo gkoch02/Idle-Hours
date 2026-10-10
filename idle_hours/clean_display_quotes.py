@@ -360,6 +360,60 @@ def clean_edges(text: str) -> str:
     return LEADING_ELLIPSIS.sub("", text).strip()
 
 
+# Words a leading apostrophe elides, so ``'tis`` and ``'em`` take ’ rather than
+# an opening ‘. Lowercased, matched against the word that follows.
+_ELIDED_WORDS = frozenset({
+    "tis", "twas", "twere", "twill", "twould", "twon", "em", "un", "ere", "bout", "cause", "cos",
+    "cept", "gainst", "mongst", "neath", "nough", "nother", "tother", "appen", "ow", "ome", "ope",
+})
+_OPENING_CONTEXT = set("([{“‘\"'")
+_DASHES = set("—–-")
+
+
+def _mark_opens(prev: str, nxt: str) -> bool:
+    """Whether a quotation mark between ``prev`` and ``nxt`` opens a quotation.
+
+    At the start, after whitespace or an opening bracket or mark it opens. After a
+    dash it opens only where a word follows: "at--" closes a speech broken off,
+    "--'Tis" opens one.
+    """
+    if not prev or prev.isspace() or prev in _OPENING_CONTEXT:
+        return True
+    return prev in _DASHES and (nxt.isalnum() or nxt in "\"'")
+
+
+def curl_quotes(text: str) -> str:
+    """Straight quotation marks and apostrophes as typographic ones.
+
+    A quarter of the corpus came in with straight quotes, and faces such as IM
+    Fell draw ``"`` and ``'`` as *closing* marks, so every opening mark read
+    backwards (issue: imprimatur's "And he left you at—"). A ``"`` opens at the
+    start of the text or after whitespace or an opening bracket, dash or mark,
+    and closes otherwise; after a dash it opens only where a word follows
+    ("at--" closes a broken-off speech). A ``'`` in or after a word is an
+    apostrophe or a closing mark (’); one that starts a word is an opening mark
+    (‘), unless it elides the word's head (``'tis``, ``'em``, ``'90s``).
+    """
+    if '"' not in text and "'" not in text:
+        return text
+    out: list[str] = []
+    for i, ch in enumerate(text):
+        prev = out[-1] if out else ""
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if ch == '"':
+            out.append("“" if _mark_opens(prev, nxt) else "”")
+        elif ch == "'":
+            if not _mark_opens(prev, nxt):
+                out.append("’")
+            else:
+                word = re.match(r"[A-Za-z0-9]+", text[i + 1:])
+                elided = word is not None and (word.group(0).lower() in _ELIDED_WORDS or word.group(0)[0].isdigit())
+                out.append("’" if elided else "‘")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def drop_stray_underscores(text: str) -> str:
     """Remove single ``_`` markers that have no emphasis partner.
 
@@ -543,7 +597,10 @@ def main() -> int:
     rows = []
     for row in iter_jsonl(input_path):
         display_quote, is_fragment, cleanup_status = best_display_quote(row)
-        row["display_quote"] = display_quote
+        # The time phrase is curled with its quote, so the renderers still find it.
+        row["display_quote"] = curl_quotes(display_quote)
+        if isinstance(row.get("matched_text"), str):
+            row["matched_text"] = curl_quotes(row["matched_text"])
         row["display_fragment"] = is_fragment
         row["cleanup_status"] = cleanup_status
         rows.append(row)

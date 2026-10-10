@@ -757,6 +757,23 @@ class TestCorpusHygiene:
         assert cdq.BROKEN_HYPHENATION.search("a stormy- looking night")
         assert not cdq.BROKEN_HYPHENATION.search("an eight- or nine-year-old")
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # The imprimatur report: a speech broken off at a dash closes.
+            ('"And he left you at--" "About five minutes past two."', "“And he left you at--” “About five minutes past two.”"),
+            ("It was ten o'clock, and he didn't come.", "It was ten o’clock, and he didn’t come."),
+            ("He said, 'It is two o'clock.'", "He said, ‘It is two o’clock.’"),
+            ("--'tis a very good clock.", "--’tis a very good clock."),
+            ("'Twas eleven when 'em lads came, back in the '90s.", "’Twas eleven when ’em lads came, back in the ’90s."),
+            ('"Ten," said he--"no, eleven."', "“Ten,” said he--“no, eleven.”"),
+            ("Las' night 'bout ten o'clock.", "Las’ night ’bout ten o’clock."),
+            ("Already “curled” at one o’clock.", "Already “curled” at one o’clock."),
+        ],
+    )
+    def test_curl_quotes(self, text, expected):
+        assert cdq.curl_quotes(text) == expected
+
     @pytest.mark.parametrize("word", ["MIX", "DI", "LIV", "CC", "MD", "DC", "CD", "MC", "MM", "CM", "DIV"])
     def test_numeral_shaped_words_are_not_headings(self, word):
         text = f"{word}. It was ten o’clock."
