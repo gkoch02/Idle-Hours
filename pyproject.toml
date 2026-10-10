@@ -44,7 +44,9 @@ dependencies = [
 # ``mypy`` is pinned exactly because the ``typecheck`` CI job is required: a new
 # release that finds new errors should arrive as a PR bumping this pin, not as
 # a red main. Bump it on purpose and fix what the new version reports.
-dev = ["build", "mypy==2.4.0", "pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
+# ``fonttools`` is only for scripts/build_idle_hours_fraktur.py, which rebuilds
+# the bundled Idle Hours Fraktur; the renderer itself never imports it.
+dev = ["build", "fonttools", "mypy==2.4.0", "pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
 # gpiozero deliberately does not choose a pin backend on its own. Raspberry Pi
 # OS deployments should install the distro's python3-lgpio + python3-rpi-lgpio
 # packages and create the venv with --system-site-packages; see the Pi guide and

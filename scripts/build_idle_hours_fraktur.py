@@ -22,6 +22,8 @@ OFL 1.1 §3 forbids on a modified version, hence the new family name.
 The k source is Manufacturing Consent 3.000
 (https://github.com/googlefonts/manufacturing-consent-font), not bundled here.
 
+Needs FontTools, which the ``dev`` extra installs (``pip install -e ".[dev]"``).
+
 Usage::
 
     python3 scripts/build_idle_hours_fraktur.py path/to/ManufacturingConsent-Regular.ttf
