@@ -9,10 +9,13 @@ from pathlib import Path
 
 from idle_hours import atomic_io
 from idle_hours.clean_display_quotes import (
+    BROKEN_HYPHENATION,
     EXPANSION_MAX_CHARS,
     HEADING_PREFIX,
     LEADING_BRACKET_TAIL,
     LEADING_CAPS_HEADING,
+    LEADING_CHAPTER_HEADING,
+    SECTION_BREAK,
     TRAILING_SPEAKER_CUE,
     unbalanced_quotes,
 )
@@ -141,6 +144,18 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     if TRAILING_SPEAKER_CUE.search(display_quote):
         score -= 35
         reasons.append("trailing_speaker_cue")
+    # A chapter heading in ordinary case, which the cleaner cannot cut cleanly.
+    if LEADING_CHAPTER_HEADING.match(display_quote):
+        score -= 35
+        reasons.append("leading_chapter_heading")
+    # An excerpt that runs across a section break ("* * * * *").
+    if SECTION_BREAK.search(display_quote):
+        score -= 35
+        reasons.append("section_break")
+    # A word the source broke across a line ("forty- seven").
+    if BROKEN_HYPHENATION.search(display_quote):
+        score -= 20
+        reasons.append("broken_hyphenation")
 
     for pattern, label, penalty in BAD_PATTERNS:
         if pattern.search(display_quote):

@@ -445,6 +445,34 @@ class TestDisplayHygiene:
         offenders = [_key(r) for r in displayable_baked_rows if TRAILING_SPEAKER_CUE.search(r["display_quote"])]
         assert not offenders, offenders[:10]
 
+    def test_no_section_break(self, displayable_baked_rows):
+        # "* * * * * It was about ten o'clock…": a scene break the excerpt opens on
+        # or runs across.
+        from idle_hours.clean_display_quotes import LEADING_ASTERISKS, SECTION_BREAK
+
+        offenders = [
+            _key(r) for r in displayable_baked_rows
+            if LEADING_ASTERISKS.match(r["display_quote"]) or SECTION_BREAK.search(r["display_quote"])
+        ]
+        assert not offenders, offenders[:10]
+
+    def test_no_spaced_dots_at_the_edges(self, displayable_baked_rows):
+        # ". . Half-past twelve…", "…kept on that way . .": the tail of a cut ellipsis.
+        from idle_hours.clean_display_quotes import LEADING_SPACED_DOTS, TRAILING_SPACED_DOTS
+
+        offenders = [
+            _key(r) for r in displayable_baked_rows
+            if LEADING_SPACED_DOTS.match(r["display_quote"]) or TRAILING_SPACED_DOTS.search(r["display_quote"])
+        ]
+        assert not offenders, offenders[:10]
+
+    def test_no_leading_chapter_heading(self, displayable_baked_rows):
+        # "Chapter V The Tragedy of Pondicherry Lodge It was…": an ordinary-case heading.
+        from idle_hours.clean_display_quotes import LEADING_CHAPTER_HEADING
+
+        offenders = [_key(r) for r in displayable_baked_rows if LEADING_CHAPTER_HEADING.match(r["display_quote"])]
+        assert not offenders, offenders[:10]
+
     def test_no_bare_roman_numeral_sentence(self, displayable_baked_rows):
         # "XXXIV. Next morning…" or a trailing "…with you.” II." — a numeral
         # of two or more letters standing alone as a sentence.
