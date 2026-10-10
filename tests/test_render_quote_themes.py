@@ -8900,6 +8900,11 @@ class TestGantryFrame:
         for ch in "£œ—’":
             assert all(rq._gantry_glyph(sub)[0] for sub in rq._gantry_chars(ch)), ch
 
+    def test_fractions_read_as_a_mixed_number(self):
+        assert rq._gantry_chars("½") == " 1/2"
+        words = ["".join(g for g, _ in w) for w in rq._gantry_segment_words([("wear 3½'s at 9.30¼", False)])]
+        assert words == ["wear", "3", "1/2's", "at", "9.30", "1/4"]
+
     def test_arrows_are_the_faces_own_ligatures(self):
         """``->`` is one glyph: the face's 12-dot arrow, not a hyphen and a
         chevron side by side. Only the arrows are tokenised."""

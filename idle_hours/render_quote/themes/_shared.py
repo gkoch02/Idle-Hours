@@ -318,7 +318,10 @@ _GANTRY_SAMPLE = 8           # supersampling factor when reading the font's dots
 # Characters the face lacks, beyond what render's glyph fallbacks already
 # replaced: a sign can only show what its font carries.
 _GANTRY_STANDINS = {**GLYPH_FALLBACKS, "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE",
-                    "£": "L", "ß": "ss"}
+                    "£": "L", "ß": "ss",
+                    # NFKD would give "3½" as "312": the face has no fraction slash.
+                    # The leading space splits a mixed number into "3 1/2".
+                    "¼": " 1/4", "½": " 1/2", "¾": " 3/4"}
 # Two-character sequences the face shapes into one glyph. Only the arrows: a
 # motorway sign points, and the face's other ligatures (a heart, a smiley,
 # maths operators) would turn the sign into a font demo.
