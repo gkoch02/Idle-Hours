@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Two new themes from sibling Plumpbug apps. `hippochomp` puts the quote on a
+  white card in HippoChomp's sunny field, with the hippo in the corner and a
+  row of fruit counting the hour, one per hour on the 12-hour clock.
+  `pourjudgment` sets it on Pour Judgment's claret verdict card on leather,
+  in Bodoni Moda and brass, with the app's "How full" bottle gauge draining
+  over the day. They bundle Bricolage Grotesque and Bodoni Moda (both OFL).
 - Quotation marks and apostrophes are curled throughout the corpus. A
   quarter of the quotes used straight ones, which the IM Fell themes
   (`imprimatur`, `alchemy`, `cartograph`, `expedition`) draw as closing

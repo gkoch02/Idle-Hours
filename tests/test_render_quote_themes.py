@@ -3043,6 +3043,242 @@ class TestBetweenUs:
         assert (Path(rq.FRAUNCES_VARIABLE).parent / "OFL.txt").exists()
 
 
+class TestHippoChomp:
+    """``hippochomp`` — the HippoChomp field with the quote on a white card.
+
+    Pinned here: the registration checklist, the ornament skip, the hour's
+    fruit as the one time carrier besides the phrase (one per hour on the
+    12-hour clock, byte-identical across an hour's minutes, absent on the
+    registry path), the hippo never rising into the attribution, the clean
+    card on its flat drop, and the Bricolage instance pin — the file's
+    default axis instance is ExtraBold.
+    """
+
+    THEME = "hippochomp"
+
+    @staticmethod
+    def _row():
+        return make_row(
+            display_quote="Do you think I should be standing here at five minutes to nine "
+                          "looking for it if I had it in my pocket all the while?",
+            matched_text="five minutes to nine",
+            author="Arthur Conan Doyle",
+            title="The Adventures of Sherlock Holmes",
+            quality_score=90,
+            bucket="h9_five_to",
+            resolved_bucket="h9_five_to",
+        )
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        theme = self.THEME
+        assert theme in rq.THEMES
+        assert theme in rq.THEME_ORDER
+        assert theme in rq.THEME_FONTS
+        assert rq._BORDER_PAINTERS.get(theme) is rq.draw_hippochomp_border
+        assert display_inky.THEME_SATURATION[theme] == 0.5
+        assert theme in rq._DEBUG_LABEL_RIGHT_INSET
+        assert theme in rq._THEMES_WITHOUT_ORNAMENT_MARKS
+
+    def test_palette_shape(self):
+        colors = rq.THEMES[self.THEME]
+        assert colors["page_bg"] == rq.SPECTRA6["white"]
+        assert colors["text"] == rq.SPECTRA6["black"]
+        assert colors["accent"] == rq.SPECTRA6["green"], "the page's green operative phrase"
+
+    def test_render_is_deterministic(self):
+        a = pixel_bytes(rq.render("08:55", self._row(), 800, 480, mode="production", theme=self.THEME))
+        b = pixel_bytes(rq.render("08:55", self._row(), 800, 480, mode="production", theme=self.THEME))
+        assert a == b
+
+    def test_frame_stays_on_palette_at_every_size(self):
+        allowed = set(rq.SPECTRA6.values())
+        for size in ((80, 60), (240, 144), (320, 192), (800, 480)):
+            for mode in ("production", "debug", "card"):
+                img = rq.render("08:55", self._row(), *size, mode=mode, theme=self.THEME)
+                assert img.size == size
+                assert distinct_inks(img) <= allowed, (size, mode)
+
+    # -- the hour's fruit ---------------------------------------------------
+
+    @staticmethod
+    def _count_fruit(monkeypatch, paint):
+        from idle_hours.render_quote.themes import hippochomp
+        calls = []
+        real = hippochomp._hippochomp_paint_fruit
+        monkeypatch.setattr(hippochomp, "_hippochomp_paint_fruit", lambda *a, **k: (calls.append(a[2]), real(*a, **k)))
+        paint()
+        return calls
+
+    @pytest.mark.parametrize("time_str,expected", [
+        ("01:05", 1), ("09:55", 9), ("12:30", 12), ("13:00", 1), ("00:10", 12), ("23:40", 11),
+    ])
+    def test_one_fruit_per_hour(self, monkeypatch, time_str, expected):
+        kinds = self._count_fruit(
+            monkeypatch, lambda: rq.render(time_str, self._row(), 800, 480, mode="production", theme=self.THEME)
+        )
+        assert len(kinds) == expected
+        assert kinds[:4] == list(rq_themes.hippochomp._HIPPOCHOMP_FRUIT)[: min(4, expected)]
+
+    def test_frame_is_identical_across_an_hours_minutes(self):
+        """An hour-only carrier: nothing on the page moves with the minute."""
+        frames = {pixel_bytes(rq.render(t, self._row(), 800, 480, mode="production", theme=self.THEME))
+                  for t in ("09:00", "09:25", "09:55")}
+        assert len(frames) == 1
+        other = pixel_bytes(rq.render("10:00", self._row(), 800, 480, mode="production", theme=self.THEME))
+        assert other not in frames
+
+    def test_registry_path_paints_no_fruit(self, monkeypatch):
+        image = Image.new("RGB", (800, 480), rq.THEMES[self.THEME]["page_bg"])
+        kinds = self._count_fruit(monkeypatch, lambda: rq._BORDER_PAINTERS[self.THEME](image, rq.THEMES[self.THEME]))
+        assert kinds == []
+
+    # -- the hippo, the card ------------------------------------------------
+
+    def test_hippo_never_rises_into_the_attribution(self, monkeypatch):
+        """Across the corpus's longest passages, his ears stay below the last
+        line of text: the card's bottom padding is his to stand in front of."""
+        from idle_hours.render_quote.themes import hippochomp
+        seen = []
+        real = hippochomp._hippochomp_hippo_scale
+
+        def spy(height, k, clear_rect):
+            s = real(height, k, clear_rect)
+            seen.append((clear_rect, s))
+            return s
+
+        monkeypatch.setattr(hippochomp, "_hippochomp_hippo_scale", spy)
+        rows = sorted(iter_jsonl(pathlib.Path(pq.DEFAULT_DATABASE_PATH)), key=lambda r: -len(r.get("display_quote") or ""))[:25]
+        for row in rows:
+            rq.render("10:00", row, 800, 480, mode="production", theme=self.THEME)
+        assert seen
+        ground = 480 - hippochomp._HIPPOCHOMP_GROUND_RISE
+        for clear_rect, s in seen:
+            assert clear_rect is not None
+            text_bottom = clear_rect[3] - hippochomp._HIPPOCHOMP_PAD_BOTTOM
+            assert ground - hippochomp._HIPPOCHOMP_HIPPO_POINTS * s >= text_bottom, (clear_rect, s)
+
+    def test_card_is_clean_white_on_a_flat_green_drop(self):
+        from idle_hours.render_quote.themes import hippochomp
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        rq._BORDER_PAINTERS[self.THEME](image, rq.THEMES[self.THEME])
+        px = image.load()
+        margin = hippochomp._HIPPOCHOMP_MARGIN
+        top, bottom = 60, 480 - 80
+        inner = {px[x, y] for x in range(margin + 30, 800 - margin - 30, 7) for y in range(top + 30, bottom - 30, 7)}
+        assert inner == {rq.SPECTRA6["white"]}
+        # The unblurred drop under the card's foot, on the grass: solid green.
+        drop = {px[400, y] for y in range(bottom + 1, bottom + hippochomp._HIPPOCHOMP_SHADOW_DROP)}
+        assert drop == {rq.SPECTRA6["green"]}
+        # The grass beyond it is the G+Y checkerboard.
+        assert {px[400, bottom + 30], px[401, bottom + 30]} == {rq.SPECTRA6["green"], rq.SPECTRA6["yellow"]}
+
+    def test_bricolage_instances_are_pinned_off_the_extrabold_default(self):
+        from PIL import ImageFont
+        rq._FONT_CACHE.clear()
+        assert rq.THEME_FONTS[self.THEME]["quote_regular"][0] == (rq.BRICOLAGE_VARIABLE, "Regular")
+        pinned = rq.load_font([(rq.BRICOLAGE_VARIABLE, "Regular")], size=48)
+        raw = ImageFont.truetype(rq.BRICOLAGE_VARIABLE, size=48)
+
+        def coverage(font):
+            img = Image.new("L", (600, 80), 0)
+            ImageDraw.Draw(img).text((5, 5), "HippoChomp", font=font, fill=255)
+            return sum(img.histogram()[128:])
+
+        assert coverage(pinned) < 0.8 * coverage(raw), "Regular instance was not applied"
+
+    def test_bricolage_file_and_licence_ship(self):
+        path = pathlib.Path(rq.BRICOLAGE_VARIABLE)
+        assert path.exists()
+        assert (path.parent / "OFL.txt").exists()
+
+
+class TestPourJudgment:
+    """``pourjudgment`` — the Pour Judgment Home screen, dark: leather, brass
+    and the claret verdict card.
+
+    Pinned here: the registration checklist, the ornament skip, the "How
+    full" gauge as the time carrier (five fill words, draining with the day),
+    the card as flat red behind the body, and the leather ground.
+    """
+
+    THEME = "pourjudgment"
+
+    _row = staticmethod(TestHippoChomp._row)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        theme = self.THEME
+        assert theme in rq.THEMES
+        assert theme in rq.THEME_ORDER
+        assert theme in rq.THEME_FONTS
+        assert rq._BORDER_PAINTERS.get(theme) is rq.draw_pourjudgment_border
+        assert display_inky.THEME_SATURATION[theme] == 0.7
+        assert theme in rq._DEBUG_LABEL_RIGHT_INSET
+        assert theme in rq._THEMES_WITHOUT_ORNAMENT_MARKS
+
+    def test_palette_shape(self):
+        colors = rq.THEMES[self.THEME]
+        assert colors["page_bg"] == rq.SPECTRA6["black"]
+        assert colors["text"] == rq.SPECTRA6["white"], "parchment on the claret card"
+        assert colors["accent"] == rq.SPECTRA6["yellow"], "the card's gold"
+
+    def test_render_is_deterministic(self):
+        a = pixel_bytes(rq.render("08:55", self._row(), 800, 480, mode="production", theme=self.THEME))
+        b = pixel_bytes(rq.render("08:55", self._row(), 800, 480, mode="production", theme=self.THEME))
+        assert a == b
+
+    def test_frame_stays_on_palette_at_every_size(self):
+        allowed = set(rq.SPECTRA6.values())
+        for size in ((80, 60), (240, 144), (320, 192), (800, 480)):
+            for mode in ("production", "debug", "card"):
+                img = rq.render("08:55", self._row(), *size, mode=mode, theme=self.THEME)
+                assert img.size == size
+                assert distinct_inks(img) <= allowed, (size, mode)
+
+    @pytest.mark.parametrize("time_str,steps", [
+        ("00:00", 5), ("04:47", 5), ("04:48", 4), ("12:00", 3), ("14:24", 2), ("19:12", 1), ("23:59", 1),
+        (None, 5), ("", 5),
+    ])
+    def test_bottle_drains_with_the_day(self, time_str, steps):
+        assert rq._pourjudgment_fill_steps(time_str) == steps
+
+    def test_fill_words_are_the_apps(self):
+        assert rq._POURJUDGMENT_FILL_WORDS == ("Fumes", "A quarter", "Half gone", "Mostly full", "Unopened")
+
+    def test_gauge_shows_the_drain(self):
+        """Fewer brass squares are full late in the day than just after
+        midnight, and the rest of the page does not move."""
+        def gauge_brass(time_str):
+            img = rq.render(time_str, self._row(), 800, 480, mode="production", theme=self.THEME)
+            return ink_counts(img.crop((800 - 120, 10, 800 - 20, 32))).get(rq.SPECTRA6["yellow"], 0)
+        assert gauge_brass("23:30") < gauge_brass("00:30")
+
+    def test_card_is_flat_red(self):
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+        rq._BORDER_PAINTERS[self.THEME](image, rq.THEMES[self.THEME])
+        inner = {image.getpixel((x, y)) for x in range(60, 740, 9) for y in range(110, 400, 9)}
+        assert inner == {rq.SPECTRA6["red"]}
+
+    def test_quote_sits_on_the_card(self):
+        img = rq.render("08:55", self._row(), 800, 480, mode="production", theme=self.THEME)
+        counts = ink_counts(img)
+        assert counts[rq.SPECTRA6["red"]] > 0.4 * 800 * 480
+
+    def test_leather_is_a_sparse_red_trace_on_black(self):
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+        rq._BORDER_PAINTERS[self.THEME](image, rq.THEMES[self.THEME])
+        counts = ink_counts(image.crop((0, 70, 24, 400)))
+        assert set(counts) <= {rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+        share = counts.get(rq.SPECTRA6["red"], 0) / sum(counts.values())
+        assert 0.02 < share < 0.07, share
+
+    def test_bodoni_files_and_licence_ship(self):
+        for path in (rq.BODONIMODA_MEDIUM, rq.BODONIMODA_SEMIBOLD):
+            assert pathlib.Path(path).exists(), path
+        assert (pathlib.Path(rq.BODONIMODA_MEDIUM).parent / "OFL.txt").exists()
+
+
 class TestAutochromePlate:
     """The full-palette dither is the theme's entire pitch, so it is measured.
 
