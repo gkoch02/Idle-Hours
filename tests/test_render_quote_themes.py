@@ -7086,6 +7086,19 @@ class TestDskyFrame(_CustomFrameCase):
         assert ul > lr
         assert len(rq._dsky_key_rects()) == 19 and len(rq._dsky_lamp_rects()) == 14
 
+    def test_keypad_sits_inside_the_plate(self):
+        rects = rq._dsky_key_rects()
+        pad = rq._DSKY_TRAY_PAD
+        x0, _, x1, _ = rq._DSKY_UNIT_RECT
+        # The tray stays inside the raised rim on both sides.
+        assert min(r[0] for r in rects) - pad > x0 + rq._DSKY_RIM
+        assert max(r[2] for r in rects) + pad < x1 - rq._DSKY_RIM
+        # VERB/NOUN and ENTR/RSET are centred on the three rows between them.
+        by = {r[4]: r for r in rects}
+        middle = (by["7"][1] + by["2"][3]) / 2
+        for top, bottom in (("VERB", "NOUN"), ("ENTR", "RSET")):
+            assert abs((by[top][1] + by[bottom][3]) / 2 - middle) <= 1
+
 
 class TestOblivionFrame(_CustomFrameCase):
     """``oblivion`` — the Sky Tower's light table: dithered glass, a contour

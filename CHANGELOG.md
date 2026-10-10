@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The `dsky` keypad fits inside its unit. Its tray ran past the plate's rim
+  and out over the console on the right; the keys are now a little narrower,
+  and VERB/NOUN and ENTR/RSET sit half a row down, centred on the rows between
+  them, as on the real DSKY.
 - The `gantry` and `platform` signs show a fraction as a mixed number: "3½"
   reads "3 1/2" instead of "312", which is all the face's missing fraction
   slash left.
