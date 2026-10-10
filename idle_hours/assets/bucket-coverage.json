@@ -1,6 +1,6 @@
 {
-  "total_rows": 7847,
-  "displayable_rows": 6763,
+  "total_rows": 7771,
+  "displayable_rows": 6699,
   "banned_rows": 29,
   "min_quality": 60,
   "total_expected_buckets": 144,
@@ -10,10 +10,10 @@
   "coverage_percent": 100.0,
   "bucket_counts": {
     "h1_exact": 275,
-    "h1_five_past": 12,
+    "h1_five_past": 4,
     "h1_ten_past": 3,
-    "h1_quarter_past": 18,
-    "h1_twenty_past": 8,
+    "h1_quarter_past": 17,
+    "h1_twenty_past": 7,
     "h1_twenty_five_past": 4,
     "h1_half_past": 60,
     "h1_twenty_five_to": 1,
@@ -22,40 +22,40 @@
     "h1_ten_to": 7,
     "h1_five_to": 19,
     "h2_exact": 308,
-    "h2_five_past": 8,
+    "h2_five_past": 6,
     "h2_ten_past": 12,
     "h2_quarter_past": 7,
-    "h2_twenty_past": 5,
+    "h2_twenty_past": 3,
     "h2_twenty_five_past": 1,
-    "h2_half_past": 77,
-    "h2_twenty_five_to": 4,
+    "h2_half_past": 75,
+    "h2_twenty_five_to": 5,
     "h2_twenty_to": 4,
     "h2_quarter_to": 19,
     "h2_ten_to": 4,
-    "h2_five_to": 23,
+    "h2_five_to": 22,
     "h3_exact": 318,
     "h3_five_past": 10,
     "h3_ten_past": 12,
     "h3_quarter_past": 12,
     "h3_twenty_past": 7,
     "h3_twenty_five_past": 3,
-    "h3_half_past": 68,
+    "h3_half_past": 67,
     "h3_twenty_five_to": 3,
     "h3_twenty_to": 5,
     "h3_quarter_to": 23,
     "h3_ten_to": 4,
     "h3_five_to": 25,
     "h4_exact": 271,
-    "h4_five_past": 6,
+    "h4_five_past": 5,
     "h4_ten_past": 1,
     "h4_quarter_past": 15,
     "h4_twenty_past": 3,
     "h4_twenty_five_past": 1,
     "h4_half_past": 77,
     "h4_twenty_five_to": 6,
-    "h4_twenty_to": 4,
+    "h4_twenty_to": 6,
     "h4_quarter_to": 15,
-    "h4_ten_to": 17,
+    "h4_ten_to": 14,
     "h4_five_to": 21,
     "h5_exact": 281,
     "h5_five_past": 4,
@@ -63,31 +63,31 @@
     "h5_quarter_past": 19,
     "h5_twenty_past": 13,
     "h5_twenty_five_past": 4,
-    "h5_half_past": 91,
+    "h5_half_past": 90,
     "h5_twenty_five_to": 3,
     "h5_twenty_to": 4,
     "h5_quarter_to": 27,
     "h5_ten_to": 3,
-    "h5_five_to": 24,
+    "h5_five_to": 22,
     "h6_exact": 303,
-    "h6_five_past": 3,
+    "h6_five_past": 2,
     "h6_ten_past": 3,
     "h6_quarter_past": 25,
     "h6_twenty_past": 6,
     "h6_twenty_five_past": 2,
-    "h6_half_past": 128,
+    "h6_half_past": 127,
     "h6_twenty_five_to": 4,
-    "h6_twenty_to": 10,
+    "h6_twenty_to": 9,
     "h6_quarter_to": 21,
-    "h6_ten_to": 4,
-    "h6_five_to": 13,
+    "h6_ten_to": 5,
+    "h6_five_to": 10,
     "h7_exact": 243,
-    "h7_five_past": 12,
+    "h7_five_past": 11,
     "h7_ten_past": 11,
     "h7_quarter_past": 28,
-    "h7_twenty_past": 6,
+    "h7_twenty_past": 5,
     "h7_twenty_five_past": 9,
-    "h7_half_past": 119,
+    "h7_half_past": 116,
     "h7_twenty_five_to": 1,
     "h7_twenty_to": 5,
     "h7_quarter_to": 32,
@@ -96,56 +96,56 @@
     "h8_exact": 368,
     "h8_five_past": 8,
     "h8_ten_past": 11,
-    "h8_quarter_past": 17,
+    "h8_quarter_past": 15,
     "h8_twenty_past": 14,
     "h8_twenty_five_past": 6,
-    "h8_half_past": 146,
+    "h8_half_past": 145,
     "h8_twenty_five_to": 4,
-    "h8_twenty_to": 17,
+    "h8_twenty_to": 16,
     "h8_quarter_to": 35,
-    "h8_ten_to": 22,
+    "h8_ten_to": 20,
     "h8_five_to": 35,
-    "h9_exact": 424,
+    "h9_exact": 425,
     "h9_five_past": 7,
-    "h9_ten_past": 19,
-    "h9_quarter_past": 29,
+    "h9_ten_past": 17,
+    "h9_quarter_past": 23,
     "h9_twenty_past": 5,
     "h9_twenty_five_past": 6,
-    "h9_half_past": 165,
+    "h9_half_past": 164,
     "h9_twenty_five_to": 3,
     "h9_twenty_to": 2,
     "h9_quarter_to": 45,
     "h9_ten_to": 4,
-    "h9_five_to": 30,
+    "h9_five_to": 27,
     "h10_exact": 510,
-    "h10_five_past": 12,
+    "h10_five_past": 11,
     "h10_ten_past": 5,
-    "h10_quarter_past": 36,
+    "h10_quarter_past": 33,
     "h10_twenty_past": 12,
     "h10_twenty_five_past": 8,
-    "h10_half_past": 198,
+    "h10_half_past": 197,
     "h10_twenty_five_to": 7,
-    "h10_twenty_to": 4,
-    "h10_quarter_to": 49,
+    "h10_twenty_to": 3,
+    "h10_quarter_to": 48,
     "h10_ten_to": 14,
     "h10_five_to": 31,
     "h11_exact": 382,
     "h11_five_past": 9,
     "h11_ten_past": 10,
     "h11_quarter_past": 25,
-    "h11_twenty_past": 35,
+    "h11_twenty_past": 32,
     "h11_twenty_five_past": 3,
-    "h11_half_past": 152,
+    "h11_half_past": 151,
     "h11_twenty_five_to": 9,
     "h11_twenty_to": 6,
     "h11_quarter_to": 53,
-    "h11_ten_to": 14,
+    "h11_ten_to": 12,
     "h11_five_to": 17,
     "h12_exact": 218,
     "h12_five_past": 8,
-    "h12_ten_past": 6,
+    "h12_ten_past": 5,
     "h12_quarter_past": 18,
-    "h12_twenty_past": 4,
+    "h12_twenty_past": 3,
     "h12_twenty_five_past": 4,
     "h12_half_past": 101,
     "h12_twenty_five_to": 4,
@@ -156,10 +156,10 @@
   },
   "raw_bucket_counts": {
     "h1_exact": 302,
-    "h1_five_past": 13,
+    "h1_five_past": 5,
     "h1_ten_past": 3,
-    "h1_quarter_past": 20,
-    "h1_twenty_past": 9,
+    "h1_quarter_past": 19,
+    "h1_twenty_past": 7,
     "h1_twenty_five_past": 5,
     "h1_half_past": 68,
     "h1_twenty_five_to": 1,
@@ -168,40 +168,40 @@
     "h1_ten_to": 7,
     "h1_five_to": 19,
     "h2_exact": 349,
-    "h2_five_past": 8,
+    "h2_five_past": 6,
     "h2_ten_past": 13,
     "h2_quarter_past": 7,
-    "h2_twenty_past": 6,
+    "h2_twenty_past": 3,
     "h2_twenty_five_past": 1,
-    "h2_half_past": 83,
-    "h2_twenty_five_to": 4,
+    "h2_half_past": 81,
+    "h2_twenty_five_to": 5,
     "h2_twenty_to": 4,
     "h2_quarter_to": 22,
     "h2_ten_to": 4,
-    "h2_five_to": 24,
+    "h2_five_to": 23,
     "h3_exact": 374,
     "h3_five_past": 10,
-    "h3_ten_past": 13,
+    "h3_ten_past": 12,
     "h3_quarter_past": 14,
     "h3_twenty_past": 7,
     "h3_twenty_five_past": 3,
-    "h3_half_past": 71,
+    "h3_half_past": 70,
     "h3_twenty_five_to": 3,
     "h3_twenty_to": 5,
     "h3_quarter_to": 24,
-    "h3_ten_to": 5,
+    "h3_ten_to": 4,
     "h3_five_to": 27,
     "h4_exact": 312,
-    "h4_five_past": 7,
+    "h4_five_past": 6,
     "h4_ten_past": 1,
     "h4_quarter_past": 16,
-    "h4_twenty_past": 5,
+    "h4_twenty_past": 4,
     "h4_twenty_five_past": 1,
     "h4_half_past": 82,
     "h4_twenty_five_to": 6,
-    "h4_twenty_to": 6,
+    "h4_twenty_to": 8,
     "h4_quarter_to": 17,
-    "h4_ten_to": 20,
+    "h4_ten_to": 17,
     "h4_five_to": 23,
     "h5_exact": 320,
     "h5_five_past": 4,
@@ -209,31 +209,31 @@
     "h5_quarter_past": 20,
     "h5_twenty_past": 17,
     "h5_twenty_five_past": 5,
-    "h5_half_past": 97,
+    "h5_half_past": 96,
     "h5_twenty_five_to": 4,
     "h5_twenty_to": 4,
     "h5_quarter_to": 27,
     "h5_ten_to": 3,
-    "h5_five_to": 30,
+    "h5_five_to": 29,
     "h6_exact": 356,
-    "h6_five_past": 3,
+    "h6_five_past": 2,
     "h6_ten_past": 3,
-    "h6_quarter_past": 31,
+    "h6_quarter_past": 29,
     "h6_twenty_past": 7,
     "h6_twenty_five_past": 2,
-    "h6_half_past": 134,
+    "h6_half_past": 133,
     "h6_twenty_five_to": 4,
-    "h6_twenty_to": 10,
+    "h6_twenty_to": 9,
     "h6_quarter_to": 21,
-    "h6_ten_to": 4,
-    "h6_five_to": 13,
+    "h6_ten_to": 5,
+    "h6_five_to": 10,
     "h7_exact": 265,
-    "h7_five_past": 12,
+    "h7_five_past": 11,
     "h7_ten_past": 11,
     "h7_quarter_past": 31,
-    "h7_twenty_past": 9,
+    "h7_twenty_past": 8,
     "h7_twenty_five_past": 9,
-    "h7_half_past": 138,
+    "h7_half_past": 135,
     "h7_twenty_five_to": 1,
     "h7_twenty_to": 5,
     "h7_quarter_to": 34,
@@ -242,58 +242,58 @@
     "h8_exact": 421,
     "h8_five_past": 10,
     "h8_ten_past": 12,
-    "h8_quarter_past": 18,
+    "h8_quarter_past": 16,
     "h8_twenty_past": 14,
     "h8_twenty_five_past": 7,
-    "h8_half_past": 157,
+    "h8_half_past": 156,
     "h8_twenty_five_to": 4,
-    "h8_twenty_to": 18,
+    "h8_twenty_to": 17,
     "h8_quarter_to": 41,
-    "h8_ten_to": 22,
+    "h8_ten_to": 20,
     "h8_five_to": 39,
-    "h9_exact": 469,
+    "h9_exact": 470,
     "h9_five_past": 7,
-    "h9_ten_past": 19,
-    "h9_quarter_past": 31,
+    "h9_ten_past": 17,
+    "h9_quarter_past": 25,
     "h9_twenty_past": 5,
     "h9_twenty_five_past": 7,
-    "h9_half_past": 182,
+    "h9_half_past": 181,
     "h9_twenty_five_to": 5,
     "h9_twenty_to": 3,
     "h9_quarter_to": 47,
     "h9_ten_to": 7,
-    "h9_five_to": 34,
+    "h9_five_to": 30,
     "h10_exact": 560,
-    "h10_five_past": 12,
+    "h10_five_past": 11,
     "h10_ten_past": 5,
-    "h10_quarter_past": 38,
+    "h10_quarter_past": 35,
     "h10_twenty_past": 17,
-    "h10_twenty_five_past": 10,
-    "h10_half_past": 206,
+    "h10_twenty_five_past": 9,
+    "h10_half_past": 205,
     "h10_twenty_five_to": 8,
-    "h10_twenty_to": 4,
-    "h10_quarter_to": 58,
+    "h10_twenty_to": 3,
+    "h10_quarter_to": 57,
     "h10_ten_to": 15,
     "h10_five_to": 36,
     "h11_exact": 425,
     "h11_five_past": 10,
-    "h11_ten_past": 12,
+    "h11_ten_past": 11,
     "h11_quarter_past": 27,
-    "h11_twenty_past": 36,
+    "h11_twenty_past": 33,
     "h11_twenty_five_past": 4,
-    "h11_half_past": 165,
+    "h11_half_past": 164,
     "h11_twenty_five_to": 9,
     "h11_twenty_to": 7,
     "h11_quarter_to": 57,
-    "h11_ten_to": 15,
+    "h11_ten_to": 12,
     "h11_five_to": 19,
     "h12_exact": 249,
     "h12_five_past": 8,
-    "h12_ten_past": 7,
+    "h12_ten_past": 6,
     "h12_quarter_past": 19,
-    "h12_twenty_past": 4,
-    "h12_twenty_five_past": 5,
-    "h12_half_past": 108,
+    "h12_twenty_past": 3,
+    "h12_twenty_five_past": 4,
+    "h12_half_past": 107,
     "h12_twenty_five_to": 4,
     "h12_twenty_to": 5,
     "h12_quarter_to": 23,
@@ -323,6 +323,10 @@
       "count": 1
     },
     {
+      "bucket": "h6_five_past",
+      "count": 2
+    },
+    {
       "bucket": "h6_twenty_five_past",
       "count": 2
     },
@@ -331,11 +335,23 @@
       "count": 2
     },
     {
+      "bucket": "h10_twenty_to",
+      "count": 3
+    },
+    {
       "bucket": "h11_twenty_five_past",
       "count": 3
     },
     {
+      "bucket": "h12_twenty_past",
+      "count": 3
+    },
+    {
       "bucket": "h1_ten_past",
+      "count": 3
+    },
+    {
+      "bucket": "h2_twenty_past",
       "count": 3
     },
     {
@@ -360,10 +376,6 @@
     },
     {
       "bucket": "h5_twenty_five_to",
-      "count": 3
-    },
-    {
-      "bucket": "h6_five_past",
       "count": 3
     },
     {
@@ -397,6 +409,10 @@
       "count": 1
     },
     {
+      "bucket": "h6_five_past",
+      "count": 2
+    },
+    {
       "bucket": "h6_twenty_five_past",
       "count": 2
     },
@@ -412,7 +428,7 @@
     },
     {
       "bucket": "h9_exact",
-      "count": 424
+      "count": 425
     },
     {
       "bucket": "h11_exact",
@@ -456,27 +472,27 @@
     },
     {
       "bucket": "h10_half_past",
-      "count": 198
+      "count": 197
     },
     {
       "bucket": "h9_half_past",
-      "count": 165
+      "count": 164
     },
     {
       "bucket": "h11_half_past",
-      "count": 152
+      "count": 151
     },
     {
       "bucket": "h8_half_past",
-      "count": 146
+      "count": 145
     },
     {
       "bucket": "h6_half_past",
-      "count": 128
+      "count": 127
     },
     {
       "bucket": "h7_half_past",
-      "count": 119
+      "count": 116
     },
     {
       "bucket": "h12_half_past",
@@ -484,19 +500,19 @@
     },
     {
       "bucket": "h5_half_past",
-      "count": 91
-    },
-    {
-      "bucket": "h2_half_past",
-      "count": 77
+      "count": 90
     },
     {
       "bucket": "h4_half_past",
       "count": 77
     },
     {
+      "bucket": "h2_half_past",
+      "count": 75
+    },
+    {
       "bucket": "h3_half_past",
-      "count": 68
+      "count": 67
     },
     {
       "bucket": "h1_half_past",
@@ -508,11 +524,11 @@
     }
   ],
   "daypart_counts": {
-    "morning": 3916,
-    "night": 2068,
-    "dawn": 1166,
-    "noon": 515,
-    "midnight": 87,
+    "morning": 3877,
+    "night": 2044,
+    "dawn": 1157,
+    "noon": 510,
+    "midnight": 88,
     "evening": 50,
     "dusk": 41,
     "afternoon": 4
@@ -533,6 +549,23 @@
         "quote_text": "clock struck midnight, the slow, deep strokes reverberating heavily.",
         "matched_text": "struck midnight",
         "source_id": "22173"
+      }
+    ],
+    "h12_ten_to": [
+      {
+        "quote_text": "At 00.50 GMT on December 9th 1921 Godley identified signals from",
+        "matched_text": "At 00.50",
+        "source_id": "66"
+      },
+      {
+        "quote_text": "train, the 12.50 from London?",
+        "matched_text": "the 12.50",
+        "source_id": "1155"
+      },
+      {
+        "quote_text": "time it wanted but ten minutes of one o’clock, and we began to look out",
+        "matched_text": "ten minutes of one",
+        "source_id": "1400"
       }
     ],
     "h1_exact": [
@@ -564,9 +597,9 @@
         "source_id": "135"
       },
       {
-        "quote_text": "The poor helpless chickens had gone one by one to their doom, so it was",
+        "quote_text": "beginning of the season, when she was not singing often, she had gone one afternoon to hear Paderewski’s recital.",
         "matched_text": "gone one",
-        "source_id": "1477"
+        "source_id": "44"
       }
     ],
     "h1_ten_past": [
@@ -758,9 +791,9 @@
         "source_id": "164"
       },
       {
-        "quote_text": "Before she had gone two paces",
-        "matched_text": "gone two",
-        "source_id": "178"
+        "quote_text": "It was just after two o'clock in the morning when Private Hal Overton",
+        "matched_text": "just after two o'clock",
+        "source_id": "27680"
       }
     ],
     "h2_ten_past": [
@@ -804,14 +837,14 @@
         "source_id": "1477"
       },
       {
-        "quote_text": "“Twenty minutes past two,",
-        "matched_text": "Twenty minutes past two",
-        "source_id": "564"
-      },
-      {
-        "quote_text": "crossed from London by the 2.20.",
+        "quote_text": "Where would a traveller by the 2.20 p.",
         "matched_text": "the 2.20",
         "source_id": "59854"
+      },
+      {
+        "quote_text": "She looked at her watch, and it was twenty minutes past two.",
+        "matched_text": "twenty minutes past two",
+        "source_id": "98"
       }
     ],
     "h2_twenty_five_past": [
@@ -1151,14 +1184,14 @@
         "source_id": "119"
       },
       {
-        "quote_text": "He had hardly gone four steps when he",
-        "matched_text": "gone four",
-        "source_id": "128"
-      },
-      {
         "quote_text": "The boy sat with his head in his hands until a little after four o’clock.",
         "matched_text": "a little after four o’clock",
         "source_id": "77600"
+      },
+      {
+        "quote_text": "D’Arnot returned from his conference with Monsieur Flaubert shortly after four.",
+        "matched_text": "shortly after four",
+        "source_id": "81"
       }
     ],
     "h4_ten_past": [
@@ -1255,9 +1288,9 @@
         "source_id": "233"
       },
       {
-        "quote_text": "At twenty minutes to five he left Mrs.",
-        "matched_text": "twenty minutes to five",
-        "source_id": "9808"
+        "quote_text": "twenty to five, or thereabouts, for Miss Forrest saw him when she came",
+        "matched_text": "twenty to five",
+        "source_id": "71351"
       }
     ],
     "h4_quarter_to": [
@@ -1415,11 +1448,6 @@
     ],
     "h5_half_past": [
       {
-        "quote_text": "I shall get to Knype at 5.28, and take the Loop.",
-        "matched_text": "at 5.28",
-        "source_id": "5247"
-      },
-      {
         "quote_text": "That would only bring you into Paris at 5.29—five",
         "matched_text": "at 5.29",
         "source_id": "72235"
@@ -1428,6 +1456,11 @@
         "quote_text": "We left the Zoo at half past five and went home and had",
         "matched_text": "half past five",
         "source_id": "10082"
+      },
+      {
+        "quote_text": "half-past five.",
+        "matched_text": "half-past five",
+        "source_id": "1155"
       }
     ],
     "h5_twenty_five_to": [
@@ -1500,19 +1533,19 @@
     ],
     "h5_five_to": [
       {
-        "quote_text": "to-night), there were from five to six feet of water in the harbour.",
-        "matched_text": "five to six",
-        "source_id": "2360"
-      },
-      {
         "quote_text": "hundred and thirty, and the hands of the clock at five minutes to six,",
         "matched_text": "five minutes to six",
         "source_id": "6753"
       },
       {
-        "quote_text": "considerable time, estimated by the doctors as from five to six weeks,",
-        "matched_text": "five to six",
-        "source_id": "72771"
+        "quote_text": "Five minutes to six!",
+        "matched_text": "Five minutes to six",
+        "source_id": "73155"
+      },
+      {
+        "quote_text": "at 5.55 and as soon as it was dark the work of the exhumation began.",
+        "matched_text": "at 5.55",
+        "source_id": "75318"
       }
     ],
     "h6_exact": [
@@ -1537,11 +1570,6 @@
         "quote_text": "“A little after six.",
         "matched_text": "A little after six",
         "source_id": "108"
-      },
-      {
-        "quote_text": "had gone six paces, he sacrificed oxen and fatlings.",
-        "matched_text": "gone six",
-        "source_id": "30"
       },
       {
         "quote_text": "At five minutes past six that evening, Sir Ralph Fairfield was",
@@ -1704,14 +1732,14 @@
         "source_id": "172"
       },
       {
-        "quote_text": "The harbour has from five to seven feet in it for two hours out of twelve!",
-        "matched_text": "five to seven",
-        "source_id": "2360"
+        "quote_text": "At five minutes to seven",
+        "matched_text": "five minutes to seven",
+        "source_id": "59478"
       },
       {
-        "quote_text": "I got a good two hours’ sleep from five to seven, when my man called me",
-        "matched_text": "five to seven",
-        "source_id": "58820"
+        "quote_text": "fourteen minutes to seven, and his body was found at five minutes to seven--nine minutes after his arrival.",
+        "matched_text": "five minutes to seven",
+        "source_id": "59478"
       }
     ],
     "h7_exact": [
@@ -1961,11 +1989,6 @@
     ],
     "h8_quarter_past": [
       {
-        "quote_text": "I knew a commuter once who rode in town every day on the 8.13.",
-        "matched_text": "the 8.13",
-        "source_id": "172"
-      },
-      {
         "quote_text": "quarter after eight o’clock to a quarter before ten.",
         "matched_text": "quarter after eight",
         "source_id": "1400"
@@ -1974,6 +1997,11 @@
         "quote_text": "“At a quarter-past eight, being no longer able to draw breath",
         "matched_text": "quarter-past eight",
         "source_id": "2147"
+      },
+      {
+        "quote_text": "“And it’s now a quarter-past eight o’clock,” grumbled Herr Böhme from",
+        "matched_text": "quarter-past eight",
+        "source_id": "2360"
       }
     ],
     "h8_twenty_past": [
@@ -2296,11 +2324,6 @@
     ],
     "h9_five_to": [
       {
-        "quote_text": "At intervals of some five to ten minutes, his blackened briar (which I",
-        "matched_text": "five to ten",
-        "source_id": "173"
-      },
-      {
         "quote_text": "o’clock, but it was already five minutes to ten, and the girls were",
         "matched_text": "five minutes to ten",
         "source_id": "2600"
@@ -2309,6 +2332,11 @@
         "quote_text": "It wanted five minutes to ten.",
         "matched_text": "five minutes to ten",
         "source_id": "2688"
+      },
+      {
+        "quote_text": "At five minutes to ten, when Constance had yawned, he threw a bomb",
+        "matched_text": "five minutes to ten",
+        "source_id": "5247"
       }
     ],
     "h10_exact": [
@@ -2459,9 +2487,9 @@
         "source_id": "72462"
       },
       {
-        "quote_text": "‘Twenty minutes to eleven.",
-        "matched_text": "Twenty minutes to eleven",
-        "source_id": "883"
+        "quote_text": "“Forty-two minutes past ten!",
+        "matched_text": "Forty-two minutes past ten",
+        "source_id": "83"
       }
     ],
     "h10_quarter_to": [
@@ -2590,12 +2618,12 @@
         "source_id": "73126"
       },
       {
-        "quote_text": "at 11.19; Staveley's fall on the rock; and the bolt in the car to the",
+        "quote_text": "because he couldn't have heard the shot at 11.19, being so far away.",
         "matched_text": "at 11.19",
         "source_id": "73126"
       },
       {
-        "quote_text": "because he couldn't have heard the shot at 11.19, being so far away.",
+        "quote_text": "“First, Staveley had banged his wrist and stopped his watch at 11.19.",
         "matched_text": "at 11.19",
         "source_id": "73126"
       }
@@ -2772,11 +2800,6 @@
     ],
     "h12_twenty_past": [
       {
-        "quote_text": "might be at twenty minutes past eleven, and it might be at twenty minutes past twelve; we ain’t got no watches here to know the time",
-        "matched_text": "twenty minutes past twelve",
-        "source_id": "1023"
-      },
-      {
         "quote_text": "There, it is twenty minutes after twelve, and now I _shall_ give it up entirely.",
         "matched_text": "twenty minutes after twelve",
         "source_id": "121"
@@ -2785,6 +2808,11 @@
         "quote_text": "twenty minutes past twelve.",
         "matched_text": "twenty minutes past twelve",
         "source_id": "72926"
+      },
+      {
+        "quote_text": "\"It's now twenty past twelve,\" said one of the other girls sadly.",
+        "matched_text": "twenty past twelve",
+        "source_id": "75288"
       }
     ],
     "h12_twenty_five_past": [
@@ -2870,23 +2898,6 @@
         "quote_text": "be in the carriage by ten; so, about a quarter before one on Wednesday,",
         "matched_text": "quarter before one",
         "source_id": "121"
-      }
-    ],
-    "h12_ten_to": [
-      {
-        "quote_text": "train, the 12.50 from London?",
-        "matched_text": "the 12.50",
-        "source_id": "1155"
-      },
-      {
-        "quote_text": "time it wanted but ten minutes of one o’clock, and we began to look out",
-        "matched_text": "ten minutes of one",
-        "source_id": "1400"
-      },
-      {
-        "quote_text": "The packing was done at 12.50; and Harris sat on the big hamper, and",
-        "matched_text": "at 12.50",
-        "source_id": "308"
       }
     ],
     "h12_five_to": [
