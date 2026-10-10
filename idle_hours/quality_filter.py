@@ -29,12 +29,23 @@ BAD_PATTERNS = [
         "contains_work_schedule",
         45,
     ),
-    # a.m. / p.m. as a clock suffix: bare ``am`` / ``pm`` only after a number
-    # ("3 pm", "10:30 am"); the dotted forms are unambiguous on their own.
+    # The modern clock suffix: bare ``am`` / ``pm`` after a number ("3 pm",
+    # "10:30 am"). Never the verb ("I am"), which was every am/pm flag in the
+    # shipped corpus before issue #296.
     (
-        re.compile(r"\b(?:\d{1,2}(?::\d{2})?\s*(?:a\.m\.|p\.m\.|am|pm)\b|a\.m\.|p\.m\.)", re.IGNORECASE),
+        re.compile(r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.IGNORECASE),
         "contains_modern_am_pm",
         45,
+    ),
+    # The dotted forms are period: "the 7.47 p.m. boat train" is how a 1920
+    # timetable mystery states a time, and those sentences are most of the
+    # off-minute corpus. A mild penalty ranks them below a clean alternative
+    # in the same bucket without dropping them under the bake floor, which
+    # the old 45-point penalty did to a fifth of the dotted-time rows.
+    (
+        re.compile(r"\b[ap]\.\s?m\.", re.IGNORECASE),
+        "contains_dotted_am_pm",
+        15,
     ),
     (re.compile(r"\b\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}\b"), "contains_time_range", 55),
     # A heading, not the words: "Chapter IV", "BOOK 2", "ACT", "Scene 3" —

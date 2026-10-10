@@ -288,6 +288,134 @@ class TestDaypartMatchType:
         assert c.daypart_bucket == "dusk"
 
 
+class TestDottedTimeMatchType:
+    """The railway-age dotted clock time ("the 8.13"), kept under --strict."""
+
+    @pytest.mark.parametrize("text, matched, time", [
+        ("He left by the 8.13 and was in town by nine.", "the 8.13", "08:13"),
+        ("A gentleman called about 11.30 to see you.", "about 11.30", "11:30"),
+        ("It was taken by the 7.47 p.m. boat train.", "the 7.47", "07:47"),
+        ("The ship sailed at 00.50 on the tide.", "at 00.50", "00:50"),
+        ("We shall be there till 17.45, I expect.", "till 17.45", "17:45"),
+    ])
+    def test_prefixed_dotted_time(self, text, matched, time):
+        c = _first_candidate(text, "dotted_time")
+        assert c is not None
+        assert (c.matched_text, c.normalized_time) == (matched, time)
+
+    def test_twenty_four_hour_time_folds_into_a_twelve_hour_bucket(self):
+        c = _first_candidate("We shall be there till 17.45, I expect.", "dotted_time")
+        assert (c.normalized_time, c.fuzzy_bucket) == ("17:45", "h5_quarter_to")
+
+    def test_a_sentence_ending_full_stop_is_not_part_of_the_time(self):
+        c = _first_candidate("He left by the 8.13.", "dotted_time")
+        assert (c.matched_text, c.normalized_time) == ("the 8.13", "08:13")
+
+    @pytest.mark.parametrize("text", [
+        "The ratio came to 3.14 in the end.",          # no article or preposition: a number
+        "Shares stood at 2.50 a share that morning.",  # a price
+        "The pole measured about 2.30 metres.",        # a measure
+        "He paid the 2.5 without a murmur.",           # one minute digit: a price
+        "See chapter 8.13 for the rest of the argument.",
+        "It is written in verse 8.13 of the epistle.",
+    ])
+    def test_numbers_prices_and_references_are_not_times(self, text):
+        assert _first_candidate(text, "dotted_time") is None
+
+    def test_strict_keeps_dotted_time(self):
+        """Unlike ``digital``, the dotted form survives --strict: it is how
+        Golden Age detective fiction states most of its off-minute times."""
+        text = "He left by the 8.13."
+        kept = [c.match_type for c in miner.iter_candidates("t.txt", None, text, 120, 0) if c.match_type not in {"daypart", "digital"}]
+        assert kept == ["dotted_time"]
+
+
+class TestAmericanMinutesOfAfter:
+    """``minutes_past_to`` takes the American relations: "after" is "past",
+    "of" is "to"."""
+
+    def test_twenty_minutes_after_four(self):
+        c = _first_candidate("It was twenty minutes after four.", "minutes_past_to")
+        assert (c.hour, c.minute) == (4, 20)
+
+    def test_ten_minutes_of_nine_is_eight_fifty(self):
+        c = _first_candidate("It was only ten minutes of nine.", "minutes_past_to")
+        assert (c.hour, c.minute, c.normalized_time) == (8, 50, "08:50")
+
+    def test_minutes_of_one_wraps_to_twelve(self):
+        c = _first_candidate("It wanted ten minutes of one.", "minutes_past_to")
+        assert c.normalized_time == "12:50"
+
+
+class TestBarePastToMatchType:
+    """The minutes-less "ten past seven" / "five to seven" forms."""
+
+    @pytest.mark.parametrize("text, time", [
+        ("It was ten past seven when she rang.", "07:10"),
+        ("At twenty past eleven the lights went out.", "11:20"),
+        ("It was five past three by the kitchen clock.", "03:05"),
+        ("At five-and-twenty past seven the bell rang.", "07:25"),
+        ("Twenty-five past four, and still no sign.", "04:25"),
+    ])
+    def test_bare_past(self, text, time):
+        c = _first_candidate(text, "bare_past_to")
+        assert c is not None and c.normalized_time == time
+
+    def test_reversed_compound_is_one_row_not_two(self):
+        """The bare "twenty past seven" inside "five-and-twenty past seven"
+        must not be filed a second time at :20."""
+        cands = list(miner.iter_candidates("t.txt", None, "At five-and-twenty past seven the bell rang.", 120, 0))
+        assert [(c.matched_text, c.normalized_time) for c in cands] == [("five-and-twenty past seven", "07:25")]
+
+    def test_bare_to_needs_a_clock_word_nearby(self):
+        assert _first_candidate("Dinner is at five to seven, said the clock-watcher.", "bare_past_to").normalized_time == "06:55"
+        assert _first_candidate("It is five to seven that he fails the exam.", "bare_past_to") is None
+        assert _first_candidate("Ten to twelve men were lost in the storm.", "bare_past_to") is None
+
+    def test_bare_to_one_is_never_a_time(self):
+        """"Ten to one" is betting odds far more often than 12:50, even next to a clock."""
+        assert _first_candidate("Ten to one he's lying; it was ten to one by the clock.", "bare_past_to") is None
+
+    def test_minutes_form_still_wins(self):
+        c = _first_candidate("At ten minutes past five the coach left.", None)
+        assert c.match_type == "minutes_past_to"
+
+
+class TestGoneHourMatchType:
+    def test_gone_four_is_just_after_four(self):
+        c = _first_candidate("It had gone four when he woke.", "gone_hour")
+        assert (c.hour, c.minute, c.normalized_time) == (4, 3, "04:03")
+
+    @pytest.mark.parametrize("text, time", [
+        ("It was getting on for ten.", "09:57"),
+        ("It was going on for six when they stopped.", "05:57"),
+        ("The night was hard upon twelve.", "11:57"),
+        ("It was getting on for one.", "12:57"),
+    ])
+    def test_getting_on_for_is_just_short(self, text, time):
+        assert _first_candidate(text, "gone_hour").normalized_time == time
+
+    @pytest.mark.parametrize("text", [
+        "He had gone four days without sleep.",
+        "She had gone three miles before dark.",
+        "They had gone two or three times already.",
+    ])
+    def test_a_quantity_is_not_an_hour(self, text):
+        assert _first_candidate(text, "gone_hour") is None
+
+
+class TestStrokeOfMatchType:
+    def test_on_the_stroke_of_nine(self):
+        c = _first_candidate("On the stroke of nine the door opened.", "stroke_of")
+        assert (c.hour, c.minute, c.normalized_time) == (9, 0, "09:00")
+
+    def test_at_the_stroke_of_midnight(self):
+        assert _first_candidate("At the stroke of midnight the bells rang out.", "stroke_of").normalized_time == "00:00"
+
+    def test_stroke_of_noon(self):
+        assert _first_candidate("Upon the stroke of noon the gun fired.", "stroke_of").normalized_time == "12:00"
+
+
 class TestMatchedTextWhitespaceCollapsing:
     def test_embedded_newline_is_collapsed(self):
         """Miner collapses whitespace within matched_text so phrases captured
