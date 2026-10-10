@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Two-word chapter titles no longer reach the panel at the start of a quote
+  ("LORAINE'S ADVENTURES Loraine Wade sat up in bed…", "THE INQUEST…"); the
+  cleaner strips them as it already did longer ones, and the eleven shipped
+  rows that carried one are fixed.
 - The `astrarium` dial's sun glyph no longer runs into the word TODAY above
   it; it now sits centred between TODAY and the date.
 - The `dsky` keypad fits inside its unit. Its tray ran past the plate's rim
