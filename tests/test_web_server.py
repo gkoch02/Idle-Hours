@@ -46,8 +46,12 @@ def _start(tmp_path: Path, *, token: str = "", args: argparse.Namespace | None =
 
 
 def _client(server) -> http.client.HTTPConnection:
+    # A hang guard, not a latency budget. ``/api/coverage`` and ``/api/gaps``
+    # walk the whole raw corpus, so their cost grows with every harvest; at
+    # 3 s, coverage tracing on a contended ``-n auto`` runner pushed one of
+    # them over the line each time the corpus grew.
     host, port = server.server_address[:2]
-    return http.client.HTTPConnection(host, port, timeout=3)
+    return http.client.HTTPConnection(host, port, timeout=30)
 
 
 def _get(server, path: str, headers: dict | None = None):
@@ -900,10 +904,8 @@ class TestReadEndpoints:
         the UI consumes it -- ``live`` carries the useful signal.
 
         Served from a three-row corpus: ``/api/coverage`` walks the whole raw
-        corpus with the baker's gates, and over the shipped corpus under
-        coverage tracing on a contended CI runner that crossed the 3 s
-        ``_client`` timeout. The assertion is about the payload's shape, not
-        the corpus."""
+        corpus with the baker's gates, and the assertion is about the
+        payload's shape, not the corpus."""
         corpus = tmp_path / "corpus.jsonl"
         rows = [
             {"source_id": "1", "line_number": n, "match_type": "oclock_word", "matched_text": "three o'clock",
@@ -2400,11 +2402,9 @@ class TestApiPreview:
         }
         with patch("idle_hours.pick_quote.select_quote", return_value=fake_row):
             for boundary in ("00:00", "23:59"):
-                # Small width/height keeps each real PIL render well under the
-                # 3 s ``_client`` timeout — at 800×480 with coverage tracing
-                # on a contended CI runner, a single render can exceed it and
-                # flake the assertion. Matches the size ``test_preview_returns_png``
-                # already uses for the same reason.
+                # Small width/height keeps each real PIL render cheap: the
+                # assertion is about the boundary times, not the frame size.
+                # Matches the size ``test_preview_returns_png`` uses.
                 status, _body = _get(server, f"/api/preview?theme=default&time={boundary}&width=400&height=240")
                 assert status == 200, f"{boundary} should be accepted"
 
