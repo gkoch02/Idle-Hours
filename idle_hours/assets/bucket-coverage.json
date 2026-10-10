@@ -1,7 +1,7 @@
 {
   "total_rows": 7771,
-  "displayable_rows": 6699,
-  "banned_rows": 29,
+  "displayable_rows": 6698,
+  "banned_rows": 30,
   "min_quality": 60,
   "total_expected_buckets": 144,
   "populated_bucket_count": 144,
@@ -9,7 +9,7 @@
   "empty_bucket_count": 0,
   "coverage_percent": 100.0,
   "bucket_counts": {
-    "h1_exact": 275,
+    "h1_exact": 274,
     "h1_five_past": 4,
     "h1_ten_past": 3,
     "h1_quarter_past": 17,
@@ -456,7 +456,7 @@
     },
     {
       "bucket": "h1_exact",
-      "count": 275
+      "count": 274
     },
     {
       "bucket": "h4_exact",

@@ -438,6 +438,13 @@ class TestDisplayHygiene:
         offenders = [_key(r) for r in displayable_baked_rows if not paired(r["display_quote"])]
         assert not offenders, offenders[:10]
 
+    def test_no_trailing_speaker_cue(self, displayable_baked_rows):
+        # "…under the name of Ernest. JACK.": the play's next speaker.
+        from idle_hours.clean_display_quotes import TRAILING_SPEAKER_CUE
+
+        offenders = [_key(r) for r in displayable_baked_rows if TRAILING_SPEAKER_CUE.search(r["display_quote"])]
+        assert not offenders, offenders[:10]
+
     def test_no_bare_roman_numeral_sentence(self, displayable_baked_rows):
         # "XXXIV. Next morning…" or a trailing "…with you.” II." — a numeral
         # of two or more letters standing alone as a sentence.
