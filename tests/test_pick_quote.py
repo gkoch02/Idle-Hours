@@ -2230,3 +2230,36 @@ def test_selection_overrides_with_bom_load(tmp_path):
     path = tmp_path / "selection_overrides.json"
     path.write_bytes(b"\xef\xbb\xbf" + b'{"ban_source_ids": ["141"]}')
     assert pick_quote.load_overrides(path)["ban_source_ids"] == ["141"]
+
+
+class TestShippedBans:
+    """``SHIPPED_BAN_QUOTE_KEYS`` hold whatever the operator's sidecar says.
+
+    An appliance's sidecar is seeded once and never rewritten by an upgrade, so a
+    ban the project ships has to live in the code to reach an existing install.
+    """
+
+    def test_key_shapes(self):
+        assert pq.SHIPPED_BAN_QUOTE_KEYS
+        assert all(pq.is_quote_key(k) for k in pq.SHIPPED_BAN_QUOTE_KEYS)
+
+    def test_every_key_names_a_shipped_row(self):
+        # Fails on absence: a key the corpus no longer carries bans nothing, so it
+        # is either stale or mistyped.
+        keys = {f"{r.get('source_id')}:{r.get('line_number')}" for r in pq.load_rows(Path(pq.DEFAULT_DATABASE_PATH))}
+        assert pq.SHIPPED_BAN_QUOTE_KEYS <= keys
+
+    def test_applies_with_no_sidecar(self):
+        row = make_row(source_id="76", line_number=2524)
+        assert pq.is_banned(row, {})
+        assert pq.is_banned(row, pq.load_overrides(Path("/nonexistent/overrides.json")))
+        assert "76:2524" in pq.ban_quote_keys(None)
+
+    def test_never_picked_and_twins_go_with_it(self):
+        rows = pq.load_rows(Path(pq.DEFAULT_DATABASE_PATH))
+        banned = [r for r in rows if f"{r.get('source_id')}:{r.get('line_number')}" in pq.SHIPPED_BAN_QUOTE_KEYS]
+        texts = {pq.normalize_display_text(r["display_quote"]) for r in banned}
+        for row in banned:
+            bucket = row["fuzzy_bucket"]
+            _, _, ranked = pq.pick_best(rows, bucket, 0, 0, pq._empty_overrides(), None, None, return_ranked=True)
+            assert all(pq.normalize_display_text(r["row"]["display_quote"]) not in texts for r in ranked)

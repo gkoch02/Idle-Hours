@@ -13,6 +13,7 @@ from idle_hours.match_span import has_display_match
 from idle_hours.pick_quote import (
     DEFAULT_OVERRIDES_PATH,
     _twin_texts,
+    ban_quote_keys,
     is_banned,
     load_overrides,
     normalize_display_text,
@@ -79,12 +80,12 @@ def banned_twin_texts(rows: list[dict], overrides: dict | None) -> frozenset[str
     passage under several keys. Coverage has to follow the same rule or a
     bucket whose only quote was banned through a twin still reads as covered.
     """
-    ban_keys = {str(k) for k in (overrides or {}).get("ban_quote_keys", [])}
-    return _twin_texts(rows, ban_keys, set())[0]
+    return _twin_texts(rows, ban_quote_keys(overrides), set())[0]
 
 
 def _banned(row: dict, overrides: dict | None, banned_texts: frozenset[str]) -> bool:
-    if overrides and is_banned(row, overrides):
+    # Even without a sidecar: the shipped bans still apply.
+    if is_banned(row, overrides or {}):
         return True
     return bool(banned_texts) and normalize_display_text(row.get("display_quote")) in banned_texts
 
