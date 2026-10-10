@@ -385,7 +385,20 @@ class TestQuotationBalance:
     rows) can never return unnoticed."""
 
     def test_no_baked_row_starts_with_a_closing_mark(self, baked_rows):
-        offenders = [r for r in baked_rows if (r.get("display_quote") or "")[:1] in "”’"]
+        # An apostrophe eliding a word's head ("’Twas", "’em") is not a closing mark.
+        import re
+
+        from idle_hours.clean_display_quotes import _ELIDED_WORDS
+
+        def stray(text: str) -> bool:
+            if text[:1] == "”":
+                return True
+            if text[:1] != "’":
+                return False
+            word = re.match(r"[A-Za-z0-9]+", text[1:])
+            return not (word and (word.group(0).lower() in _ELIDED_WORDS or word.group(0)[0].isdigit()))
+
+        offenders = [r for r in baked_rows if stray(r.get("display_quote") or "")]
         assert not offenders, [(r["source_id"], r["line_number"]) for r in offenders[:10]]
 
     def test_unbalanced_double_quotes_are_rare_in_the_baked_db(self, baked_rows):
@@ -471,6 +484,15 @@ class TestDisplayHygiene:
         from idle_hours.clean_display_quotes import LEADING_CHAPTER_HEADING
 
         offenders = [_key(r) for r in displayable_baked_rows if LEADING_CHAPTER_HEADING.match(r["display_quote"])]
+        assert not offenders, offenders[:10]
+
+    def test_quotes_are_curled(self, displayable_baked_rows):
+        # IM Fell draws a straight " or ' as a closing mark, so an opening one read
+        # backwards; the cleaner curls them, and the time phrase with them.
+        offenders = [
+            _key(r) for r in displayable_baked_rows
+            if any(ch in r["display_quote"] + (r.get("matched_text") or "") for ch in "\"'")
+        ]
         assert not offenders, offenders[:10]
 
     def test_no_bare_roman_numeral_sentence(self, displayable_baked_rows):

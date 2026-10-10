@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Quotation marks and apostrophes are curled throughout the corpus. A
+  quarter of the quotes used straight ones, which the IM Fell themes
+  (`imprimatur`, `alchemy`, `cartograph`, `expedition`) draw as closing
+  marks, so an opening quote read backwards ("” And he left you at—”").
 - A sweep of the corpus for leftover markup: quotes no longer open with a
   scene break ("* * * * *"), an asterisked chapter number or an
   ordinary-case chapter heading ("Chapter V The Tragedy of Pondicherry

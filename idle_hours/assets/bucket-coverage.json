@@ -791,7 +791,7 @@
       },
       {
         "quote_text": "It was just after two o'clock in the morning when Private Hal Overton",
-        "matched_text": "just after two o'clock",
+        "matched_text": "just after two o’clock",
         "source_id": "27680"
       }
     ],
@@ -968,7 +968,7 @@
       },
       {
         "quote_text": "bar at three o'clock on the morning of the 19th of August.",
-        "matched_text": "three o'clock",
+        "matched_text": "three o’clock",
         "source_id": "10082"
       }
     ],
@@ -1356,7 +1356,7 @@
       },
       {
         "quote_text": "stayed there till after five o'clock.",
-        "matched_text": "five o'clock",
+        "matched_text": "five o’clock",
         "source_id": "10082"
       }
     ],
@@ -1761,7 +1761,7 @@
     "h7_five_past": [
       {
         "quote_text": "since a sharp shower just after seven o'clock last night_.",
-        "matched_text": "just after seven o'clock",
+        "matched_text": "just after seven o’clock",
         "source_id": "11252"
       },
       {
@@ -1943,19 +1943,19 @@
       },
       {
         "quote_text": "about eight o'clock?",
-        "matched_text": "eight o'clock",
+        "matched_text": "eight o’clock",
         "source_id": "10082"
       },
       {
         "quote_text": "I left the house at eight o'clock, and after",
-        "matched_text": "eight o'clock",
+        "matched_text": "eight o’clock",
         "source_id": "10082"
       }
     ],
     "h8_five_past": [
       {
         "quote_text": "\"Then we shall say that it passed just after eight o'clock.",
-        "matched_text": "just after eight o'clock",
+        "matched_text": "just after eight o’clock",
         "source_id": "126"
       },
       {
@@ -2358,12 +2358,12 @@
     "h10_five_past": [
       {
         "quote_text": "Shortly after ten o'clock",
-        "matched_text": "Shortly after ten o'clock",
+        "matched_text": "Shortly after ten o’clock",
         "source_id": "20546"
       },
       {
         "quote_text": "assured me it was not there when he looked in at a little after ten o'clock.",
-        "matched_text": "a little after ten o'clock",
+        "matched_text": "a little after ten o’clock",
         "source_id": "2883"
       },
       {
@@ -2555,7 +2555,7 @@
       },
       {
         "quote_text": "About eleven o'clock, and then about three.",
-        "matched_text": "eleven o'clock",
+        "matched_text": "eleven o’clock",
         "source_id": "10082"
       }
     ],
