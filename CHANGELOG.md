@@ -14,7 +14,7 @@ these entries under the new dated version heading.
   ordinary-case chapter heading ("Chapter V The Tragedy of Pondicherry
   Lodge…"), or start or end on the stray dots of a cut ellipsis; words
   broken across a line ("stormy- looking") are mended, and a "{sic}" and a
-  numbered list are tidied. Five quotes that were only ever fragments drop
+  numbered list are tidied. Six quotes that were only ever fragments drop
   out, and one whose time was in its chapter title is banned.
 - Quotes from plays no longer end on the next speaker's name ("…under the
   name of Ernest. JACK."); the cleaner cuts it, the thirteen shipped rows that
