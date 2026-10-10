@@ -545,6 +545,22 @@ def override_bonus(row: dict, overrides: dict, bucket: str) -> int:
     return 0
 
 
+# Rows the project itself will never show, whatever the selection-overrides sidecar
+# says. The sidecar is the operator's: an appliance relocates it to a writable path
+# that is seeded once and never rewritten by an upgrade, so a ban the project ships
+# there would never reach an existing install. A ban here ships with the code.
+# Same "<source_id>:<line_number>" keys as ``ban_quote_keys``, and the same reach:
+# every row showing the same text goes with it (issue #294).
+SHIPPED_BAN_QUOTE_KEYS: frozenset[str] = frozenset({
+    "76:2524",  # Adventures of Huckleberry Finn: a racial slur
+})
+
+
+def ban_quote_keys(overrides: dict | None) -> set[str]:
+    """Every per-row ban in force: the sidecar's ``ban_quote_keys`` and the shipped ones."""
+    return {str(k) for k in (overrides or {}).get("ban_quote_keys", [])} | SHIPPED_BAN_QUOTE_KEYS
+
+
 def is_banned(row: dict, overrides: dict) -> bool:
     """True when ``row`` should be excluded from picking entirely.
 
@@ -556,7 +572,8 @@ def is_banned(row: dict, overrides: dict) -> bool:
       ``"<source_id>:<line_number>"``. Added in v2 to let the curator UI
       blacklist a single quote without nuking the rest of its source. Keys are
       strings; the line_number portion is compared as text so we match what the
-      web UI's "Ban this quote" button writes.
+      web UI's "Ban this quote" button writes. ``SHIPPED_BAN_QUOTE_KEYS`` is
+      added to the sidecar's list, so a shipped ban cannot be lifted there.
     """
     source_id = str(row.get("source_id") or "")
     if source_id in {str(x) for x in overrides.get("ban_source_ids", [])}:
@@ -565,7 +582,7 @@ def is_banned(row: dict, overrides: dict) -> bool:
     if line_number is None or not source_id:
         return False
     row_key = f"{source_id}:{line_number}"
-    return row_key in {str(x) for x in overrides.get("ban_quote_keys", [])}
+    return row_key in ban_quote_keys(overrides)
 
 
 def parse_requested_minute(bucket: str, requested_time: str | None) -> int | None:
@@ -989,8 +1006,7 @@ def pick_best(
             rows_by_bucket[bucket_name].append(row)
 
     recent = recent_history or set()
-    ban_keys = {str(k) for k in overrides.get("ban_quote_keys", [])}
-    banned_texts, recent_texts = _twin_texts(rows, ban_keys, recent)
+    banned_texts, recent_texts = _twin_texts(rows, ban_quote_keys(overrides), recent)
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
             row for row in rows_by_bucket.get(candidate_bucket, ())
