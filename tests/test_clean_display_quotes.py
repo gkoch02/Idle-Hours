@@ -684,6 +684,33 @@ class TestCorpusHygiene:
     def test_balanced_or_distant_brackets_survive(self, text):
         assert cdq.clean_edges(text) == text
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # Shipped rows that ended on the play's next speaker.
+            ("To be christened at a quarter to six under the name of Ernest. JACK.",
+             "To be christened at a quarter to six under the name of Ernest."),
+            ("Do you know it is nearly seven? JACK. [Irritably.]", "Do you know it is nearly seven?"),
+            ("I propose that we tell Robert the whole thing at once. LADY CHILTERN.",
+             "I propose that we tell Robert the whole thing at once."),
+            ("It’s only nine o’clock now! MASHA.", "It’s only nine o’clock now!"),
+        ],
+    )
+    def test_trailing_speaker_cue_is_stripped(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "It was ten o’clock, and so said I.",  # a one-letter word is never a cue
+            "At ten o’clock she left. I.",
+            "At ten o’clock she joined the U.S.A.",
+            "BERNARDO. ’Tis now struck twelve. Get thee to bed, Francisco.",  # a leading label stays
+        ],
+    )
+    def test_text_that_only_looks_like_a_cue_survives(self, text):
+        assert cdq.clean_edges(text) == text
+
     @pytest.mark.parametrize("word", ["MIX", "DI", "LIV", "CC", "MD", "DC", "CD", "MC", "MM", "CM", "DIV"])
     def test_numeral_shaped_words_are_not_headings(self, word):
         text = f"{word}. It was ten o’clock."

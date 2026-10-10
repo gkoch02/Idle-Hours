@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Quotes from plays no longer end on the next speaker's name ("…under the
+  name of Ernest. JACK."); the cleaner cuts it, the thirteen shipped rows that
+  carried one are fixed, and *The Scarlet Pimpernel*'s table of contents,
+  which had been filed as a one o'clock quote, is banned.
 - Quotes no longer open with the cut-off end of a stage direction, an
   illustration caption or a footnote ("Looks at his watch] It's about
   time…"); the cleaner drops the stray bracketed tail, and the fifteen

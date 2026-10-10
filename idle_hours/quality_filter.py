@@ -13,6 +13,7 @@ from idle_hours.clean_display_quotes import (
     HEADING_PREFIX,
     LEADING_BRACKET_TAIL,
     LEADING_CAPS_HEADING,
+    TRAILING_SPEAKER_CUE,
     unbalanced_quotes,
 )
 from idle_hours.jsonl_io import iter_jsonl
@@ -136,6 +137,10 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     if LEADING_BRACKET_TAIL.match(display_quote):
         score -= 35
         reasons.append("leading_bracket_tail")
+    # A play's next speaker left at the end ("…the name of Ernest. JACK.").
+    if TRAILING_SPEAKER_CUE.search(display_quote):
+        score -= 35
+        reasons.append("trailing_speaker_cue")
 
     for pattern, label, penalty in BAD_PATTERNS:
         if pattern.search(display_quote):

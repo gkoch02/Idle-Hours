@@ -156,6 +156,16 @@ GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''"})
 # so a stray bracket deep in a long excerpt is not taken as the end of one.
 LEADING_BRACKET_TAIL = re.compile(r"^[^\[\]]{0,120}\]\s*(?=\S)")
 
+# A play's next speaker, caught at the end of the excerpt: "…under the name of
+# Ernest. JACK.", "…nearly seven? JACK. [Irritably.]". One to three all-caps
+# words ending in a period, alone after the last sentence, with any stage
+# direction that follows them. Across the corpus nothing else ends this way
+# but a stray chapter heading ("CHAPTER II."), which goes the same way. A
+# word of one letter ("I.", "A.") is never taken.
+TRAILING_SPEAKER_CUE = re.compile(
+    r"(?<=[.!?”’\"])\s+(?:[A-Z][A-Z’'\-]+(?:\s+[A-Z][A-Z’'\-]+){0,2})\.(?:\s*\[[^\[\]]*\])?\s*$"
+)
+
 # An opening ellipsis ("… But I have to go…", "... You are right") is the
 # source's own elision mark, which reads as a fragment on the panel. Applied
 # by ``clean_edges`` to the whole excerpt only.
@@ -318,6 +328,7 @@ def clean_edges(text: str) -> str:
     # Only the excerpt's own opening ellipsis is dropped — one inside the
     # text is the author's, and ``strip_heading_prefix`` (which also runs per
     # interior sentence) must leave it alone.
+    text = TRAILING_SPEAKER_CUE.sub("", text)
     return LEADING_ELLIPSIS.sub("", text).strip()
 
 
