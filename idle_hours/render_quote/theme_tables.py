@@ -50,6 +50,7 @@ from ._paths import (
     FRAUNCES_ITALIC_VARIABLE,
     FRAUNCES_VARIABLE,
     GRENZE_GOTISCH_VARIABLE,
+    IDLE_HOURS_FRAKTUR_BOOK,
     IMFELLDOUBLEPICA_ITALIC,
     IMFELLDOUBLEPICA_REGULAR,
     IMFELLENGLISH_ITALIC,
@@ -1411,17 +1412,19 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     "gothic": {
         # Blackletter for the matched phrase and quote marks; EB Garamond
         # body for legibility, and its Bold behind a missing Unifraktur.
+        # Idle Hours Fraktur is Unifraktur with an open k, so "o'clock"
+        # doesn't read as "o'clocf".
         "quote_regular": [
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            UNIFRAKTUR_BOOK,
+            IDLE_HOURS_FRAKTUR_BOOK,
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
-            UNIFRAKTUR_BOOK,
+            IDLE_HOURS_FRAKTUR_BOOK,
             EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
