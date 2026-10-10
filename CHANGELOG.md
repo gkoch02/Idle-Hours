@@ -9,6 +9,8 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The `astrarium` dial's sun glyph no longer runs into the word TODAY above
+  it; it now sits centred between TODAY and the date.
 - The `dsky` keypad fits inside its unit. Its tray ran past the plate's rim
   and out over the console on the right; the keys are now a little narrower,
   and VERB/NOUN and ENTR/RSET sit half a row down, centred on the rows between
