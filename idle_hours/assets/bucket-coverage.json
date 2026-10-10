@@ -1,6 +1,6 @@
 {
-  "total_rows": 5681,
-  "displayable_rows": 4755,
+  "total_rows": 5486,
+  "displayable_rows": 4577,
   "banned_rows": 19,
   "min_quality": 60,
   "total_expected_buckets": 144,
@@ -9,7 +9,7 @@
   "empty_bucket_count": 14,
   "coverage_percent": 90.28,
   "bucket_counts": {
-    "h1_exact": 231,
+    "h1_exact": 228,
     "h1_five_past": 3,
     "h1_ten_past": 3,
     "h1_quarter_past": 12,
@@ -20,56 +20,56 @@
     "h1_twenty_to": 3,
     "h1_quarter_to": 11,
     "h1_ten_to": 4,
-    "h1_five_to": 13,
-    "h2_exact": 267,
+    "h1_five_to": 12,
+    "h2_exact": 265,
     "h2_five_past": 4,
     "h2_ten_past": 4,
     "h2_quarter_past": 3,
     "h2_twenty_past": 2,
     "h2_twenty_five_past": 0,
-    "h2_half_past": 54,
+    "h2_half_past": 52,
     "h2_twenty_five_to": 2,
     "h2_twenty_to": 3,
     "h2_quarter_to": 12,
     "h2_ten_to": 3,
-    "h2_five_to": 19,
-    "h3_exact": 289,
+    "h2_five_to": 18,
+    "h3_exact": 287,
     "h3_five_past": 6,
     "h3_ten_past": 3,
     "h3_quarter_past": 8,
     "h3_twenty_past": 2,
     "h3_twenty_five_past": 0,
-    "h3_half_past": 34,
+    "h3_half_past": 32,
     "h3_twenty_five_to": 0,
     "h3_twenty_to": 2,
     "h3_quarter_to": 7,
     "h3_ten_to": 2,
     "h3_five_to": 17,
-    "h4_exact": 233,
+    "h4_exact": 229,
     "h4_five_past": 4,
     "h4_ten_past": 0,
     "h4_quarter_past": 9,
     "h4_twenty_past": 0,
     "h4_twenty_five_past": 1,
-    "h4_half_past": 38,
+    "h4_half_past": 37,
     "h4_twenty_five_to": 1,
     "h4_twenty_to": 1,
     "h4_quarter_to": 9,
     "h4_ten_to": 3,
-    "h4_five_to": 12,
-    "h5_exact": 249,
+    "h4_five_to": 11,
+    "h5_exact": 248,
     "h5_five_past": 2,
     "h5_ten_past": 1,
     "h5_quarter_past": 8,
     "h5_twenty_past": 7,
     "h5_twenty_five_past": 0,
-    "h5_half_past": 49,
+    "h5_half_past": 46,
     "h5_twenty_five_to": 0,
     "h5_twenty_to": 0,
-    "h5_quarter_to": 20,
+    "h5_quarter_to": 18,
     "h5_ten_to": 0,
     "h5_five_to": 11,
-    "h6_exact": 262,
+    "h6_exact": 250,
     "h6_five_past": 1,
     "h6_ten_past": 2,
     "h6_quarter_past": 6,
@@ -81,7 +81,7 @@
     "h6_quarter_to": 14,
     "h6_ten_to": 1,
     "h6_five_to": 5,
-    "h7_exact": 202,
+    "h7_exact": 200,
     "h7_five_past": 7,
     "h7_ten_past": 6,
     "h7_quarter_past": 8,
@@ -92,56 +92,56 @@
     "h7_twenty_to": 2,
     "h7_quarter_to": 20,
     "h7_ten_to": 2,
-    "h7_five_to": 16,
-    "h8_exact": 318,
+    "h7_five_to": 15,
+    "h8_exact": 311,
     "h8_five_past": 5,
     "h8_ten_past": 5,
     "h8_quarter_past": 9,
     "h8_twenty_past": 3,
     "h8_twenty_five_past": 3,
-    "h8_half_past": 75,
+    "h8_half_past": 69,
     "h8_twenty_five_to": 2,
     "h8_twenty_to": 13,
-    "h8_quarter_to": 18,
+    "h8_quarter_to": 17,
     "h8_ten_to": 17,
     "h8_five_to": 30,
-    "h9_exact": 352,
+    "h9_exact": 343,
     "h9_five_past": 6,
     "h9_ten_past": 9,
     "h9_quarter_past": 5,
     "h9_twenty_past": 1,
     "h9_twenty_five_past": 5,
-    "h9_half_past": 93,
+    "h9_half_past": 82,
     "h9_twenty_five_to": 2,
-    "h9_twenty_to": 2,
+    "h9_twenty_to": 1,
     "h9_quarter_to": 32,
     "h9_ten_to": 4,
-    "h9_five_to": 26,
-    "h10_exact": 412,
-    "h10_five_past": 5,
+    "h9_five_to": 25,
+    "h10_exact": 389,
+    "h10_five_past": 4,
     "h10_ten_past": 2,
-    "h10_quarter_past": 15,
-    "h10_twenty_past": 2,
+    "h10_quarter_past": 13,
+    "h10_twenty_past": 1,
     "h10_twenty_five_past": 2,
-    "h10_half_past": 87,
+    "h10_half_past": 73,
     "h10_twenty_five_to": 3,
     "h10_twenty_to": 2,
     "h10_quarter_to": 17,
     "h10_ten_to": 4,
     "h10_five_to": 22,
-    "h11_exact": 302,
+    "h11_exact": 287,
     "h11_five_past": 4,
     "h11_ten_past": 3,
     "h11_quarter_past": 10,
-    "h11_twenty_past": 7,
-    "h11_twenty_five_past": 3,
-    "h11_half_past": 77,
+    "h11_twenty_past": 6,
+    "h11_twenty_five_past": 1,
+    "h11_half_past": 53,
     "h11_twenty_five_to": 3,
-    "h11_twenty_to": 9,
+    "h11_twenty_to": 2,
     "h11_quarter_to": 30,
-    "h11_ten_to": 11,
-    "h11_five_to": 15,
-    "h12_exact": 177,
+    "h11_ten_to": 8,
+    "h11_five_to": 9,
+    "h12_exact": 176,
     "h12_five_past": 6,
     "h12_ten_past": 4,
     "h12_quarter_past": 7,
@@ -152,10 +152,10 @@
     "h12_twenty_to": 1,
     "h12_quarter_to": 12,
     "h12_ten_to": 1,
-    "h12_five_to": 21
+    "h12_five_to": 19
   },
   "raw_bucket_counts": {
-    "h1_exact": 260,
+    "h1_exact": 257,
     "h1_five_past": 3,
     "h1_ten_past": 3,
     "h1_quarter_past": 13,
@@ -166,56 +166,56 @@
     "h1_twenty_to": 5,
     "h1_quarter_to": 12,
     "h1_ten_to": 4,
-    "h1_five_to": 13,
-    "h2_exact": 309,
+    "h1_five_to": 12,
+    "h2_exact": 307,
     "h2_five_past": 4,
     "h2_ten_past": 4,
     "h2_quarter_past": 3,
     "h2_twenty_past": 3,
     "h2_twenty_five_past": 0,
-    "h2_half_past": 61,
+    "h2_half_past": 59,
     "h2_twenty_five_to": 2,
     "h2_twenty_to": 4,
     "h2_quarter_to": 15,
     "h2_ten_to": 3,
-    "h2_five_to": 20,
-    "h3_exact": 342,
+    "h2_five_to": 19,
+    "h3_exact": 340,
     "h3_five_past": 6,
     "h3_ten_past": 4,
     "h3_quarter_past": 9,
     "h3_twenty_past": 2,
     "h3_twenty_five_past": 0,
-    "h3_half_past": 35,
+    "h3_half_past": 33,
     "h3_twenty_five_to": 0,
     "h3_twenty_to": 2,
     "h3_quarter_to": 7,
     "h3_ten_to": 2,
     "h3_five_to": 18,
-    "h4_exact": 272,
+    "h4_exact": 268,
     "h4_five_past": 5,
     "h4_ten_past": 0,
     "h4_quarter_past": 10,
     "h4_twenty_past": 0,
     "h4_twenty_five_past": 1,
-    "h4_half_past": 43,
+    "h4_half_past": 42,
     "h4_twenty_five_to": 1,
     "h4_twenty_to": 1,
     "h4_quarter_to": 11,
     "h4_ten_to": 3,
-    "h4_five_to": 14,
-    "h5_exact": 285,
+    "h4_five_to": 13,
+    "h5_exact": 284,
     "h5_five_past": 2,
     "h5_ten_past": 1,
     "h5_quarter_past": 9,
     "h5_twenty_past": 10,
     "h5_twenty_five_past": 0,
-    "h5_half_past": 53,
+    "h5_half_past": 50,
     "h5_twenty_five_to": 0,
     "h5_twenty_to": 0,
-    "h5_quarter_to": 20,
+    "h5_quarter_to": 18,
     "h5_ten_to": 0,
     "h5_five_to": 12,
-    "h6_exact": 315,
+    "h6_exact": 303,
     "h6_five_past": 1,
     "h6_ten_past": 2,
     "h6_quarter_past": 7,
@@ -227,7 +227,7 @@
     "h6_quarter_to": 14,
     "h6_ten_to": 1,
     "h6_five_to": 5,
-    "h7_exact": 226,
+    "h7_exact": 222,
     "h7_five_past": 7,
     "h7_ten_past": 6,
     "h7_quarter_past": 10,
@@ -238,67 +238,67 @@
     "h7_twenty_to": 2,
     "h7_quarter_to": 22,
     "h7_ten_to": 2,
-    "h7_five_to": 19,
-    "h8_exact": 373,
+    "h7_five_to": 18,
+    "h8_exact": 366,
     "h8_five_past": 6,
     "h8_ten_past": 6,
     "h8_quarter_past": 10,
     "h8_twenty_past": 3,
     "h8_twenty_five_past": 4,
-    "h8_half_past": 80,
+    "h8_half_past": 74,
     "h8_twenty_five_to": 2,
     "h8_twenty_to": 13,
-    "h8_quarter_to": 20,
+    "h8_quarter_to": 19,
     "h8_ten_to": 17,
     "h8_five_to": 34,
-    "h9_exact": 397,
+    "h9_exact": 387,
     "h9_five_past": 6,
     "h9_ten_past": 9,
     "h9_quarter_past": 6,
     "h9_twenty_past": 1,
     "h9_twenty_five_past": 6,
-    "h9_half_past": 103,
+    "h9_half_past": 90,
     "h9_twenty_five_to": 3,
-    "h9_twenty_to": 2,
+    "h9_twenty_to": 1,
     "h9_quarter_to": 33,
     "h9_ten_to": 6,
-    "h9_five_to": 28,
-    "h10_exact": 458,
-    "h10_five_past": 5,
+    "h9_five_to": 27,
+    "h10_exact": 434,
+    "h10_five_past": 4,
     "h10_ten_past": 2,
-    "h10_quarter_past": 16,
-    "h10_twenty_past": 5,
+    "h10_quarter_past": 14,
+    "h10_twenty_past": 4,
     "h10_twenty_five_past": 3,
-    "h10_half_past": 91,
+    "h10_half_past": 77,
     "h10_twenty_five_to": 3,
     "h10_twenty_to": 2,
     "h10_quarter_to": 23,
     "h10_ten_to": 4,
     "h10_five_to": 27,
-    "h11_exact": 340,
+    "h11_exact": 325,
     "h11_five_past": 5,
     "h11_ten_past": 4,
     "h11_quarter_past": 11,
-    "h11_twenty_past": 7,
-    "h11_twenty_five_past": 4,
-    "h11_half_past": 82,
+    "h11_twenty_past": 6,
+    "h11_twenty_five_past": 2,
+    "h11_half_past": 55,
     "h11_twenty_five_to": 3,
-    "h11_twenty_to": 11,
+    "h11_twenty_to": 3,
     "h11_quarter_to": 33,
-    "h11_ten_to": 11,
-    "h11_five_to": 17,
-    "h12_exact": 207,
+    "h11_ten_to": 8,
+    "h11_five_to": 10,
+    "h12_exact": 206,
     "h12_five_past": 6,
     "h12_ten_past": 4,
     "h12_quarter_past": 8,
     "h12_twenty_past": 1,
     "h12_twenty_five_past": 3,
-    "h12_half_past": 63,
+    "h12_half_past": 62,
     "h12_twenty_five_to": 0,
     "h12_twenty_to": 1,
     "h12_quarter_to": 16,
     "h12_ten_to": 2,
-    "h12_five_to": 24
+    "h12_five_to": 22
   },
   "empty_buckets": [
     "h1_twenty_five_to",
@@ -317,6 +317,14 @@
     "h12_twenty_five_to"
   ],
   "sparse_buckets": [
+    {
+      "bucket": "h10_twenty_past",
+      "count": 1
+    },
+    {
+      "bucket": "h11_twenty_five_past",
+      "count": 1
+    },
     {
       "bucket": "h12_ten_to",
       "count": 1
@@ -366,6 +374,10 @@
       "count": 1
     },
     {
+      "bucket": "h9_twenty_to",
+      "count": 1
+    },
+    {
       "bucket": "h10_ten_past",
       "count": 2
     },
@@ -374,11 +386,11 @@
       "count": 2
     },
     {
-      "bucket": "h10_twenty_past",
+      "bucket": "h10_twenty_to",
       "count": 2
     },
     {
-      "bucket": "h10_twenty_to",
+      "bucket": "h11_twenty_to",
       "count": 2
     },
     {
@@ -430,19 +442,11 @@
       "count": 2
     },
     {
-      "bucket": "h9_twenty_to",
-      "count": 2
-    },
-    {
       "bucket": "h10_twenty_five_to",
       "count": 3
     },
     {
       "bucket": "h11_ten_past",
-      "count": 3
-    },
-    {
-      "bucket": "h11_twenty_five_past",
       "count": 3
     },
     {
@@ -500,6 +504,14 @@
   ],
   "thin_buckets": [
     {
+      "bucket": "h10_twenty_past",
+      "count": 1
+    },
+    {
+      "bucket": "h11_twenty_five_past",
+      "count": 1
+    },
+    {
       "bucket": "h12_ten_to",
       "count": 1
     },
@@ -548,6 +560,10 @@
       "count": 1
     },
     {
+      "bucket": "h9_twenty_to",
+      "count": 1
+    },
+    {
       "bucket": "h10_ten_past",
       "count": 2
     },
@@ -556,11 +572,11 @@
       "count": 2
     },
     {
-      "bucket": "h10_twenty_past",
+      "bucket": "h10_twenty_to",
       "count": 2
     },
     {
-      "bucket": "h10_twenty_to",
+      "bucket": "h11_twenty_to",
       "count": 2
     },
     {
@@ -610,92 +626,88 @@
     {
       "bucket": "h9_twenty_five_to",
       "count": 2
-    },
-    {
-      "bucket": "h9_twenty_to",
-      "count": 2
     }
   ],
   "dense_buckets": [
     {
       "bucket": "h10_exact",
-      "count": 412
+      "count": 389
     },
     {
       "bucket": "h9_exact",
-      "count": 352
+      "count": 343
     },
     {
       "bucket": "h8_exact",
-      "count": 318
+      "count": 311
     },
     {
       "bucket": "h11_exact",
-      "count": 302
+      "count": 287
     },
     {
       "bucket": "h3_exact",
-      "count": 289
+      "count": 287
     },
     {
       "bucket": "h2_exact",
-      "count": 267
+      "count": 265
     },
     {
       "bucket": "h6_exact",
-      "count": 262
+      "count": 250
     },
     {
       "bucket": "h5_exact",
-      "count": 249
+      "count": 248
     },
     {
       "bucket": "h4_exact",
-      "count": 233
+      "count": 229
     },
     {
       "bucket": "h1_exact",
-      "count": 231
+      "count": 228
     },
     {
       "bucket": "h7_exact",
-      "count": 202
+      "count": 200
     },
     {
       "bucket": "h12_exact",
-      "count": 177
+      "count": 176
     },
     {
       "bucket": "h9_half_past",
-      "count": 93
+      "count": 82
     },
     {
       "bucket": "h10_half_past",
-      "count": 87
-    },
-    {
-      "bucket": "h11_half_past",
-      "count": 77
+      "count": 73
     },
     {
       "bucket": "h8_half_past",
-      "count": 75
+      "count": 69
     },
     {
       "bucket": "h12_half_past",
       "count": 58
     },
     {
-      "bucket": "h2_half_past",
-      "count": 54
-    },
-    {
       "bucket": "h6_half_past",
       "count": 54
     },
     {
+      "bucket": "h11_half_past",
+      "count": 53
+    },
+    {
+      "bucket": "h2_half_past",
+      "count": 52
+    },
+    {
       "bucket": "h5_half_past",
-      "count": 49
+      "count": 46
     },
     {
       "bucket": "h7_half_past",
@@ -703,15 +715,15 @@
     },
     {
       "bucket": "h4_half_past",
-      "count": 38
-    },
-    {
-      "bucket": "h3_half_past",
-      "count": 34
+      "count": 37
     },
     {
       "bucket": "h1_half_past",
       "count": 33
+    },
+    {
+      "bucket": "h3_half_past",
+      "count": 32
     },
     {
       "bucket": "h9_quarter_to",
@@ -719,11 +731,11 @@
     }
   ],
   "daypart_counts": {
-    "morning": 2717,
-    "night": 1598,
-    "dawn": 837,
-    "noon": 380,
-    "midnight": 68,
+    "morning": 2568,
+    "night": 1579,
+    "dawn": 819,
+    "noon": 374,
+    "midnight": 65,
     "evening": 48,
     "dusk": 33
   },
@@ -2152,11 +2164,6 @@
         "quote_text": "Nevertheless, at twenty minutes to ten o’clock, Oak came out of his house, and",
         "matched_text": "twenty minutes to ten",
         "source_id": "27"
-      },
-      {
-        "quote_text": "It was now twenty minutes to ten.",
-        "matched_text": "twenty minutes to ten",
-        "source_id": "70788"
       }
     ],
     "h9_quarter_to": [
@@ -2239,9 +2246,9 @@
         "source_id": "72235"
       },
       {
-        "quote_text": "shortly after ten o’clock in the morning, and asked him to come at",
-        "matched_text": "shortly after ten o’clock",
-        "source_id": "72719"
+        "quote_text": "That night we went down the lightning-rod a little after ten, and took",
+        "matched_text": "a little after ten",
+        "source_id": "76"
       }
     ],
     "h10_ten_past": [
@@ -2274,11 +2281,6 @@
       }
     ],
     "h10_twenty_past": [
-      {
-        "quote_text": "It was now twenty minutes past ten.",
-        "matched_text": "twenty minutes past ten",
-        "source_id": "70788"
-      },
       {
         "quote_text": "“My friends,” said he, “it is twenty minutes past ten.",
         "matched_text": "twenty minutes past ten",
@@ -2484,16 +2486,6 @@
         "quote_text": "It was twenty-five minutes past eleven.",
         "matched_text": "twenty-five minutes past eleven",
         "source_id": "5247"
-      },
-      {
-        "quote_text": "It was then twenty-five minutes past eleven; and very soon",
-        "matched_text": "twenty-five minutes past eleven",
-        "source_id": "72719"
-      },
-      {
-        "quote_text": "“It was twenty-five minutes past eleven, I understand.",
-        "matched_text": "twenty-five minutes past eleven",
-        "source_id": "72719"
       }
     ],
     "h11_half_past": [
@@ -2537,14 +2529,9 @@
         "source_id": "174"
       },
       {
-        "quote_text": "“About twenty minutes to twelve a trunk-light flashed on the board,",
+        "quote_text": "It was now twenty minutes to twelve.",
         "matched_text": "twenty minutes to twelve",
-        "source_id": "70788"
-      },
-      {
-        "quote_text": "Cleaver, what were you doing between twenty minutes to twelve—when you phoned Miss Odell—and five minutes to twelve—when you",
-        "matched_text": "twenty minutes to twelve",
-        "source_id": "70788"
+        "source_id": "75288"
       }
     ],
     "h11_quarter_to": [
@@ -2593,9 +2580,9 @@
         "source_id": "155"
       },
       {
-        "quote_text": "And I didn’t go outside the apartment, understand, until five minutes to twelve.",
+        "quote_text": "It was five minutes to twelve.",
         "matched_text": "five minutes to twelve",
-        "source_id": "70788"
+        "source_id": "72235"
       }
     ],
     "h12_five_past": [
