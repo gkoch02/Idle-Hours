@@ -185,6 +185,7 @@ There's a one-shot driver:
 # Add the ID to the batch it belongs to, then run the driver on that list:
 bash scripts/run_dawn_expansion.sh                                         # scripts/gutenberg_dawn_expansion_ids.txt
 bash scripts/run_dawn_expansion.sh scripts/gutenberg_golden_age_ids.txt    # 1895-1930 detective / Edwardian batch
+bash scripts/run_dawn_expansion.sh scripts/gutenberg_breadth_ids.txt       # more detective voices, two or three books each
 ```
 
 That drives the full pipeline and leaves the updated
@@ -197,8 +198,15 @@ Pick the list by what the batch is for. The dawn list is nineteenth-century
 prose with struck-hour vocabulary and fills the `:00` buckets; the Golden Age
 list is detective fiction and interwar prose that states the minute, and is
 the one to grow when the off-minute buckets (`five_past` … `five_to`) are
-thin in `bucket-coverage.md`. Keep a few books per author so one voice does
-not own a bucket.
+thin in `bucket-coverage.md`; the breadth list is the same era with more
+authors and fewer books each, the one to grow when a bucket's rows all come
+from the same two or three voices. Keep a few books per author so one voice
+does not own a bucket.
+
+After a miner change, re-mine every cached text so the corpus picks up what
+the new pattern finds in books already harvested: write the cached IDs to a
+scratch list (`ls data/gutenberg | sed 's/pg//;s/.txt//'`) and run the driver
+on it. `merge_candidates` keeps the existing rows and adds the new ones.
 
 ### Pipeline stages
 
