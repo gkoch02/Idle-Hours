@@ -104,6 +104,7 @@ CUSTOM_FRAME_THEMES = (
     "hal",
     "lumon",
     "dsky",
+    "reactornight",
     "oblivion",
     "yorha",
     "hitchhiker",

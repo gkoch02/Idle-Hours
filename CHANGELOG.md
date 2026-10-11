@@ -9,6 +9,11 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- A new theme, `reactornight`, from the Nightdraft app's Reactor Night panel:
+  a graphite instrument face whose annunciator lamps light for the hour's
+  daypart, with the hour, the book and its line in green nixie readouts and
+  the quote in the tube itself, the time phrase in amber. It has its own
+  sleep frame, the panel on standby.
 - Two new themes from sibling Plumpbug apps. `hippochomp` puts the quote on a
   white card in HippoChomp's sunny field, with the hippo in the corner and a
   row of fruit counting the hour, one per hour on the 12-hour clock.
