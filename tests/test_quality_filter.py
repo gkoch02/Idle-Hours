@@ -316,6 +316,10 @@ class TestLeadingHeadingPenalty:
         )
         assert "leading_heading" in flags
 
+    def test_arabic_chapter_number_is_penalised(self):
+        _, flags = score("3 At twenty minutes to two that afternoon, Anthony stopped his car outside the office.")
+        assert "leading_heading" in flags
+
     def test_play_speaker_label_is_not_a_heading(self):
         _, flags = score("ROSALIND. How say you now? Is it not past two o'clock? And here much Orlando.")
         assert "leading_heading" not in flags

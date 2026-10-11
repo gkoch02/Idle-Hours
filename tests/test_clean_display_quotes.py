@@ -35,6 +35,26 @@ class TestSplitSentences:
         parts = cdq.split_sentences("  First sentence.  Second sentence.  ")
         assert all(p == p.strip() for p in parts)
 
+    def test_no_split_after_no_before_a_number(self):
+        # "No. 3 Rue du Sabot" is one address; cut after "No.", a quote opened
+        # on "3 Rue du Sabot, where she was a folder".
+        text = "She went to a printing office, No. 3 Rue du Sabot, where she worked. It was six o’clock."
+        assert cdq.split_sentences(text) == [
+            "She went to a printing office, No. 3 Rue du Sabot, where she worked.",
+            "It was six o’clock.",
+        ]
+        assert cdq.split_sentences("He took Nos. 4 and 5 in the morning. It was ten o’clock.")[0] == (
+            "He took Nos. 4 and 5 in the morning."
+        )
+
+    @pytest.mark.parametrize("abbreviation", ["No.", "NO.", "no.", "NOS.", "nos."])
+    def test_no_before_a_number_in_any_case(self, abbreviation):
+        # Split there, the address would lose its number to the chapter-number rule.
+        text = f"She went to {abbreviation} 3 Rue du Sabot at six o’clock. It was dark."
+        first = cdq.split_sentences(text)[0]
+        assert first == f"She went to {abbreviation} 3 Rue du Sabot at six o’clock."
+        assert cdq.strip_heading_prefix(first) == first
+
     def test_no_split_on_abbreviation_mid_sentence(self):
         # Sentences separated by newlines in context
         parts = cdq.split_sentences("It was 3 o'clock. She left.")
@@ -657,6 +677,42 @@ class TestCorpusHygiene:
     )
     def test_short_caps_prose_survives(self, text):
         assert cdq.clean_edges(text) == text
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # Shipped rows: the chapter's number, set above it with no period.
+            ("3 At twenty minutes to two that afternoon, Anthony stopped his car.",
+             "At twenty minutes to two that afternoon, Anthony stopped his car."),
+            ("2 At ten minutes past ten the great red Mercedes drew up.",
+             "At ten minutes past ten the great red Mercedes drew up."),
+            ("3 He had barely two hours’ sleep, for by a quarter past six he was up.",
+             "He had barely two hours’ sleep, for by a quarter past six he was up."),
+            ("123 It was ten o’clock.", "It was ten o’clock."),
+        ],
+    )
+    def test_arabic_chapter_number_is_stripped(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "45 or 8 o’clock, and to the Follies about 10.00, any doubt was dispelled.",  # running text
+            "2 NEI. I heard it too, just this day three weeks, at two o’clock.",  # a numbered speaker
+            "16 (up at 6.30, yacht high and dry).",  # a bracket
+            "1066 And All That was open at ten o’clock.",  # four digits is a year, not a chapter
+        ],
+    )
+    def test_number_in_prose_survives(self, text):
+        assert cdq.clean_edges(text) == text
+
+    def test_chapter_number_after_a_sentence_goes_from_the_run(self):
+        # The number sits between the last chapter's close and this one's
+        # opening; once split off, it is stripped like any heading.
+        context = "I meant to ask at the time, but forgot.” 3 At twenty minutes to two that afternoon, he stopped."
+        runs, _ = cdq.expand_candidates(context, "twenty minutes to two")
+        assert "At twenty minutes to two that afternoon, he stopped." in runs
+        assert not any(r.startswith("3 ") for r in runs)
 
     @pytest.mark.parametrize(
         "text, expected",

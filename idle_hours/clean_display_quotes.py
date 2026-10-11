@@ -87,6 +87,16 @@ HEADING_PREFIX = re.compile(
     # "L She plunged into" (issue #403). Only V / X / L: a lone I is the
     # pronoun, and a lone C is as often a label ("C Company").
     r"[VXL](?=\s+[A-Z][a-z])"
+    r"|"
+    # ...and an Arabic chapter number, set above its chapter with no period:
+    # "3 At twenty minutes to two that afternoon…", "2 An Appeal for Help It
+    # was…". Up to three digits, running into a Title-case sentence, so a
+    # number in running text ("45 or 8 o'clock"), a play's numbered speaker
+    # ("2 NEI. I heard it too") and a bracket ("16 (up at 6.30") are never
+    # taken. A number that opens a sentence in prose is spelt out, so the only
+    # digit-led sentences the corpus held were these and the "No. 3 Rue du
+    # Sabot" kind, which ``split_sentences`` no longer cuts after the "No.".
+    r"[0-9]{1,3}(?=\s+[A-Z](?:[a-z’']|\s+[a-z]))"
     r")\s*",
 )
 
@@ -293,6 +303,14 @@ def split_sentences(text: str) -> list[str]:
                 merged[-1] = f"{prev} {part}"
                 continue
             if _ends_with_sentence_ok_abbreviation(prev) and part and part[0].islower():
+                merged[-1] = f"{prev} {part}"
+                continue
+            # "No." / "Nos." before a number is the abbreviation, never a
+            # sentence end: "a printing office, No. 3 Rue du Sabot, where…".
+            # Cut there, the next sentence opened on "3 Rue du Sabot". In any
+            # case ("NO. 3", "no. 3"), or the chapter-number rule would then
+            # take the "3" from the address.
+            if (_last_token_head(prev) or "").lower() in ("no", "nos") and part[:1].isdigit():
                 merged[-1] = f"{prev} {part}"
                 continue
         merged.append(part)
