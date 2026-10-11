@@ -9,6 +9,13 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- A chapter's number no longer opens a quote ("3 At twenty minutes to two
+  that afternoon…", "21 Mr. Isaacstein’s Suit-case At ten o’clock…"); the
+  cleaner strips a bare Arabic chapter number as it does a Roman one, the
+  sentence splitter no longer cuts after "No." before a number (which had
+  opened quotes on "3 Rue du Sabot" and "6 Studio"), and the twelve shipped
+  rows that carried one are fixed.
+
 - A new theme, `reactornight`, from the Nightdraft app's Reactor Night panel:
   a graphite instrument face whose annunciator lamps light for the hour's
   daypart, with the hour, the book and its line in green nixie readouts and
