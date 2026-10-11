@@ -307,8 +307,10 @@ def split_sentences(text: str) -> list[str]:
                 continue
             # "No." / "Nos." before a number is the abbreviation, never a
             # sentence end: "a printing office, No. 3 Rue du Sabot, where…".
-            # Cut there, the next sentence opened on "3 Rue du Sabot".
-            if _last_token_head(prev) in ("No", "Nos") and part[:1].isdigit():
+            # Cut there, the next sentence opened on "3 Rue du Sabot". In any
+            # case ("NO. 3", "no. 3"), or the chapter-number rule would then
+            # take the "3" from the address.
+            if (_last_token_head(prev) or "").lower() in ("no", "nos") and part[:1].isdigit():
                 merged[-1] = f"{prev} {part}"
                 continue
         merged.append(part)

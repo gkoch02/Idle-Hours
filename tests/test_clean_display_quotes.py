@@ -47,6 +47,14 @@ class TestSplitSentences:
             "He took Nos. 4 and 5 in the morning."
         )
 
+    @pytest.mark.parametrize("abbreviation", ["No.", "NO.", "no.", "NOS.", "nos."])
+    def test_no_before_a_number_in_any_case(self, abbreviation):
+        # Split there, the address would lose its number to the chapter-number rule.
+        text = f"She went to {abbreviation} 3 Rue du Sabot at six o’clock. It was dark."
+        first = cdq.split_sentences(text)[0]
+        assert first == f"She went to {abbreviation} 3 Rue du Sabot at six o’clock."
+        assert cdq.strip_heading_prefix(first) == first
+
     def test_no_split_on_abbreviation_mid_sentence(self):
         # Sentences separated by newlines in context
         parts = cdq.split_sentences("It was 3 o'clock. She left.")
