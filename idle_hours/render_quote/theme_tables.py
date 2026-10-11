@@ -100,6 +100,7 @@ from ._paths import (
     RYE_REGULAR,
     SAIRA_ITALIC_VARIABLE,
     SAIRA_VARIABLE,
+    SHARETECHMONO_REGULAR,
     SHOJUMARU_REGULAR,
     SILKSCREEN_BOLD,
     SILKSCREEN_REGULAR,
@@ -811,6 +812,19 @@ THEMES = {
     # The Apollo DSKY, a custom frame (its card is typed black with a red
     # phrase). This dark palette serves only the palette-only paths.
     "dsky": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["green"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # Nightdraft's Reactor Night panel, a custom frame (white nixie cores in a
+    # green bloom, the phrase in amber). This palette serves only the
+    # palette-only paths.
+    "reactornight": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
         "subtle": SPECTRA6["white"],
@@ -2208,6 +2222,13 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [SPECIALELITE_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [SPECIALELITE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(JOST_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "reactornight": {
+        # Share Tech Mono, one weight, the face the Nightdraft prototype set its
+        # nixies in: the phrase differs by its amber. Jost Bold is every legend.
+        "quote_regular": [SHARETECHMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [SHARETECHMONO_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "oblivion": {
         # Exo 2 (for the film's Blender), default instance Thin, so pin one:

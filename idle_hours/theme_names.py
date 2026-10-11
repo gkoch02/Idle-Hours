@@ -68,6 +68,7 @@ THEME_ORDER: tuple[str, ...] = (
     "betweenus_dark",
     "hippochomp",
     "pourjudgment",
+    "reactornight",
     "carcosa",
     "control",
     "observation",

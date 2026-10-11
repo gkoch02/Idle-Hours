@@ -47,7 +47,7 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `im-fell-english/` | OFL.txt | `alchemy`, `cartograph`, `imprimatur` | `lieder`, `carcosa`, `codex`, `bosch`, `expedition` |
 | `im-fell-english-sc/` | OFL.txt | `imprimatur` | — |
 | `inter/` | OFL.txt | `betweenus`, `betweenus_dark`, `lumon` | `furies` |
-| `jost/` | OFL.txt | `bauhaus`, `pride`, `bakelite`, `metro`, `pourjudgment`, `control`, `hal`, `dsky` | `hades`, `lumon`, `hitchhiker` |
+| `jost/` | OFL.txt | `bauhaus`, `pride`, `bakelite`, `metro`, `pourjudgment`, `reactornight`, `control`, `hal`, `dsky` | `hades`, `lumon`, `hitchhiker` |
 | `jura/` | OFL.txt | `culture`, `orbital` | — |
 | `lato/` | OFL.txt | `abyssal`, `hades` | — |
 | `libre-baskerville/` | OFL.txt | `goya` | — |
@@ -72,7 +72,7 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `righteous/` | OFL.txt | `deco` | — |
 | `rye/` | OFL.txt | `saloon` | — |
 | `saira/` | OFL.txt | `atropos`, `saros` | — |
-| `share-tech-mono/` | OFL.txt | `culture`, `orbital`, `expanse`, `lasvegas`, `bladerunner` | — |
+| `share-tech-mono/` | OFL.txt | `reactornight`, `culture`, `orbital`, `expanse`, `lasvegas`, `bladerunner` | — |
 | `shojumaru/` | OFL.txt | `chanbara` | — |
 | `silkscreen/` | OFL.txt | `sampler` | — |
 | `space-mono/` | OFL.txt | `nightvision`, `circuit`, `pulp`, `synoptic`, `bakelite`, `cardcatalog`, `metro`, `trisolaris` | `dispatch`, `observation`, `culture`, `orbital`, `expanse`, `redacted` |
@@ -892,6 +892,23 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
     **Tried and rejected.**
     - *The app's claret → claretDeep gradient*, as black stippled over the red's lower half. On the panel it read as claretDeep, but the speckle shredded the small Bodoni of the attribution that sits over it; the panel's flat red is already claret.
     - *A light variant* (`pourjudgment` on cream paper, ink and claret): see "One appearance" above.
+  - `reactornight` (the **Nightdraft** app's Reactor Night panel) — [gkoch02/Nightdraft](https://github.com/gkoch02/Nightdraft), a whole-house-fan controller whose Reactor theme is a 1950s instrument face: an annunciator grid of stencilled lamps, nixie readouts in a brass-bezelled tube window, a verdict plate and bakelite keys. Reactor Night is the same instrument in graphite with green tubes, for a dark room. The theme began on the TV app (IdleHoursTV's `NightReactorView`) and was brought back to the panel; the TV keeps the moving parts (the cathode strike, the next reading's countdown).
+
+    **Why it fits.** The panel is the app's ventilation console re-wired as a clock. The header's "WHOLE HOUSE FAN" becomes "LITERARY CLOCK" beside the UNIT 01 badge. The six annunciator lamps keep their shape: RUNNING always lit green, the hour's **daypart** (MORNING from 05, AFTERNOON from 12, EVENING from 17, NIGHT from 21) lit amber, and STANDBY, which only the sleep frame lights. The tube's hero readout, the fan's speed "4/6", becomes the **hour** "4/12"; the shut-off clock at its right becomes the book's Project Gutenberg number with its line under it; and the quote takes the metrics rows' place in the tube itself. The byline is the verdict plate, lit green.
+
+    **Time surfaces.** The hour and the daypart lamp are the only time carriers, both hour-only, so the frame is byte-identical across an hour's minutes: it reads only `_clock_hour12` and the hour from `_clock_hh_mm`. Unlike the four `_CustomFrameCase` frames it is *not* identical across a twelve-hour pair: 09:00 lights MORNING and 21:00 NIGHT. The app's shut-off clock and countdown, which the TV keeps as the next reading, are left out: printed HH:MM digits on a static panel would be a clock the frame is not.
+
+    **The tube.** Black glass in a lighter dithered bezel on a graphite ground (white specks on black at about 7%, `_dither_calibrated`, painted once per process). Every lit readout is a `paint_neon_mask`: a solid core in a green bloom restricted to the black glass. The panel's green ink alone is too dark to read as lit on black (#35563A on #1F2226), so the readouts' cores are white with a 30% green share (`core_minor`), mint at a distance; the quote's cores are plain white, since a stippled core shreds at 15 px. The phrase is **amber** (yellow core, green bloom): Nightdraft's night finish keeps amber as the panel's time channel. The hour stands over as many unlit "8"s as it has digits, a 50% green-on-black stipple; a fixed "88" behind a one-digit hour read as "82" across a room.
+
+    **Lamps and brass.** A lit lamp is a solid ink (green, yellow, red) with its legend in white, black on yellow; an unlit one is a black cell with a white legend, still saying which lamp it is, as the app's unlit legends were lifted to. Every rim is aged brass, a yellow and black checker through a ring mask.
+
+    **Its own sleep frame** (`render_reactornight_sleep`): the fan stopped and the panel on standby. RUNNING is dark, NIGHT amber and STANDBY red; the hour reads "--" over its unlit "88", the book "-----", and the tube carries "The fan is off and the house is cooling. The tube stays dark until morning." The plate is an unlit cell reading STANDBY — RESUMES AT DAWN. `time_str` is `del`'d.
+
+    **Tests.** `tests/test_render_quote_themes.py::TestReactorNightFrame` pins the registration, the daypart table, the lit lamps against the hour, the byte-identity across an hour's minutes, the inks in the tube and the lit plate; `TestReactorNightSleepFrame` pins the sleep frame.
+
+    **Tried and rejected.**
+    - *Green nixie cores in solid green ink*: the panel's green is a dark forest that all but vanishes on the glass.
+    - *The APPROX lamp* the TV lights when the picker fell back to a neighbouring bucket: the frame cannot tell, since it is handed the row and the time, not the pick; the lamp became STANDBY.
   - `carcosa` (black night / white Almendra body / solid-yellow matched phrase) — **The King in Yellow**, Robert W. Chambers, 1895, staged as the play itself, after *Cassilda's Song* ("Along the shore the cloud waves break, / The twin suns sink behind the lake, / The shadows lengthen / In Carcosa. / Strange is the night where black stars rise, / And strange moons circle through the skies").
 
     **A literary-layout theme** with a heavy `draw_carcosa_border` painter, no `clear_rect` knockout: the decoration keeps to the margins the shared layout leaves free.
@@ -1606,6 +1623,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 
     **The matched phrase is the italic cut, not a bold.** Regular for the body; "say *what you want.*" is the app's own gesture, and the accent colour plus the roman/italic split carry the differentiation (the `cartograph` move) — Italic 400 in light, where it paints solid, and SemiBold Italic in dark so the amber stipple has stroke mass to live in. The italic chain falls back through the system serif italics before the Playfair bold chain so a missing install still lands on a slanted serif rather than an upright one.
   - `hippochomp` uses **Bricolage Grotesque** (Mathieu Triay, OFL) — the heading face of HippoChomp's marketing page (the app itself sets its one numeral in Arial Rounded MT Bold, which is not redistributable). A variable grotesque with optical-size, width and weight axes whose ink traps and soft terminals read as friendly without being a toy face, which a whole quote needs. **The file's default axis instance is ExtraBold**, so every candidate pins a named instance: Regular for the body, ExtraBold for the phrase and the wordmark.
+  - `reactornight` uses **Share Tech Mono** (already bundled), the face the Nightdraft design prototype set its nixie digits in, for the quote and every readout in the tube: one weight, so the phrase differs by its amber. The legends, the header and the byline plate are **Jost** Bold and Medium in tracked capitals, standing in for the app's geometric label face.
   - `pourjudgment` uses **Bodoni Moda** (Owen Earl, OFL) — the Pour Judgment app's Didone, bundled as the app bundles it: static cuts of the text optical size (opsz 14), Medium (the app's "regular") for the body and SemiBold for the phrase and the masthead. The small tracked capitals use the already-bundled **Jost** (Medium), the app's sans. The app switches to Bodoni's caption cut below 16 pt; the renderer's attribution shares the body face, so the caption cut is not bundled, and the attribution's hairlines are kept whole by setting it on flat red rather than a stipple.
   - `carcosa` uses **Almendra** (Ana Sanfelippo, OFL) — a calligraphic book face whose pen-cut wedges and faintly unsettled rhythm read as fin-de-siècle Decadent printing, the register of Chambers's 1895 first edition; it also sets the historical long-s `ſt` ligature, which suits a book that should not be read.
 
@@ -1813,6 +1831,7 @@ Spectra 6 only has six inks (white / black / red / yellow / blue / green). Any o
 | Light orange | red + yellow + white at 2/5 : 2/5 : 1/5 | (3-ink — not supported by `draw_text_dithered`; for swatch-rectangle fills use `_fill_swatch_stipple_3way`) | — |
 | Out-of-focus brass | black → red → yellow → white ramp, two adjacent inks per pixel | (a blurred luminance field read off `BAYER_8x8`: the integer part picks the pair, the fraction the share; a second blurred alpha field thins it into the ground) | `escritoire` (the inkwell, pen cup and sander beyond the sheet, the pens lying behind, and their reflections on the desk) |
 | Mahogany | red + yellow + black, yellow a fixed 30% of the lit share | (two nested stipples on one `BAYER_8x8` read: `tile < d` takes red, `tile < 0.3 d` takes yellow, so the hue holds down a density falloff) | `escritoire` (the desk under the lamp) |
+| Aged brass | yellow + black at 1/2 : 1/2 | `_fill_swatch_stipple(dark=black, light=yellow, 0.5)` on a copy, pasted through a 2 px rounded-ring mask | `reactornight` (every rim: the lamps, the byline plate, the UNIT 01 badge) |
 
 Three-ink mixes (e.g. plum, light orange) need a Bayer partition into three regions rather than two; `draw_text_dithered` only handles the two-ink case. `_fill_swatch_stipple_3way` covers rectangular swatch fills (used by the `diags` theme's reference panel). Add a polygon-aware helper if a future theme needs 3-ink text strokes.
 

@@ -607,6 +607,11 @@ SCENARIOS: list[dict] = [
         "theme": "dsky",
     },
     {
+        "name": "sleep_reactornight",
+        "mode": "sleep",
+        "theme": "reactornight",
+    },
+    {
         "name": "sleep_vhs",
         "mode": "sleep",
         "theme": "vhs",

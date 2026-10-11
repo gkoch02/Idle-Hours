@@ -8926,6 +8926,100 @@ class TestSemioticSleepFrame:
         assert pixel_bytes(quote) != pixel_bytes(self._render())
 
 
+class TestReactorNightFrame:
+    """``reactornight`` — Nightdraft's Reactor Night instrument panel: the
+    annunciator lit for the hour's daypart, the hour and the book in the
+    tube's readouts, the quote in the tube, the byline on the lit plate."""
+
+    THEME = "reactornight"
+    ROW = TestHalFrame.ROW
+
+    @classmethod
+    def _render(cls, row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert self.THEME not in rq.CYCLE_EXCLUDED_THEMES
+        assert rq.FRAME_SPECS[self.THEME].render is rq.render_reactornight_frame
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.7
+        for role in ("quote_regular", "quote_bold", "ornament"):
+            first = rq.theme_font_candidates(self.THEME, role)[0]
+            path = first[0] if isinstance(first, tuple) else first
+            assert pathlib.Path(path).exists(), path
+
+    def test_on_palette_and_deterministic(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_daypart_lamps(self):
+        cases = {0: "NIGHT", 4: "NIGHT", 5: "MORNING", 11: "MORNING", 12: "AFTERNOON", 16: "AFTERNOON",
+                 17: "EVENING", 20: "EVENING", 21: "NIGHT", 23: "NIGHT"}
+        for hour, lamp in cases.items():
+            assert rq._reactornight_daypart(hour) == lamp, hour
+
+    def test_lit_lamps_follow_the_hour(self):
+        rects = dict(zip(rq._REACTORNIGHT_LEGENDS, rq._reactornight_lamp_rects(), strict=True))
+
+        def fill(image, legend):
+            x0, y0, x1, _y1 = rects[legend]
+            return ink_counts(image.crop((x0 + 4, y0 + 3, x1 - 4, y0 + 7)))
+
+        afternoon, night = self._render(time_str="14:30"), self._render(time_str="22:30")
+        yellow, green = rq.SPECTRA6["yellow"], rq.SPECTRA6["green"]
+        assert fill(afternoon, "RUNNING").get(green, 0) > fill(afternoon, "RUNNING").get(rq.SPECTRA6["black"], 0)
+        assert fill(afternoon, "AFTERNOON").get(yellow, 0) > 0 and fill(afternoon, "NIGHT").get(yellow, 0) == 0
+        assert fill(night, "NIGHT").get(yellow, 0) > 0 and fill(night, "AFTERNOON").get(yellow, 0) == 0
+        assert fill(afternoon, "STANDBY").get(rq.SPECTRA6["red"], 0) == 0
+
+    def test_pinned_across_the_minutes_of_an_hour(self):
+        a = self._render(time_str="09:00")
+        for time_str in ("09:05", "09:33", "09:59"):
+            assert pixel_bytes(self._render(time_str=time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(time_str="10:00")) != pixel_bytes(a)
+        # Same twelve-hour hour, other daypart: the lamps differ.
+        assert pixel_bytes(self._render(time_str="21:00")) != pixel_bytes(a)
+        assert pixel_bytes(self._render(time_str="bogus")) == pixel_bytes(self._render(time_str="00:00"))
+
+    def test_quote_and_phrase_are_lit_in_the_tube(self):
+        image = self._render()
+        x0, y0, x1, y1 = rq._REACTORNIGHT_QUOTE_RECT
+        tube = ink_counts(image.crop((x0, y0, x1, y1)))
+        assert set(tube) <= {rq.SPECTRA6[k] for k in ("black", "white", "green", "yellow")}
+        assert tube.get(rq.SPECTRA6["white"], 0) > 500 and tube.get(rq.SPECTRA6["yellow"], 0) > 50
+
+    def test_byline_plate_is_lit_green(self):
+        image = self._render()
+        x0, y0, x1, y1 = rq._REACTORNIGHT_PLATE
+        plate = ink_counts(image.crop((x0 + 6, y0 + 4, x0 + 40, y1 - 4)))
+        assert max(plate, key=plate.get) == rq.SPECTRA6["green"]
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(self._render().resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestReactorNightSleepFrame:
+    """``reactornight``'s own sleep frame: the fan stopped, NIGHT and STANDBY
+    lit, RUNNING dark, the readouts dashed and the plate a dark cell."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="reactornight")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["reactornight"].sleep is rq.render_reactornight_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_reactornight_sleep("22:00", 800, 480))
+
+    def test_inks_determinism_and_no_time(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert rq.SPECTRA6["red"] in distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render(time_str="03:41"))
+
+
 class TestDskySleepFrame:
     """``dsky``'s own sleep frame: the computer put to bed for the crew's rest
     period, STBY lit and P06's VERB 50 NOUN 25 on the display, with the
