@@ -7,13 +7,15 @@ Design notes: docs/themes.md § astrarium
 from __future__ import annotations
 
 import datetime
+import json
 import math
 import random
+import zoneinfo
 
 from PIL import Image, ImageDraw
 
 from .. import clock
-from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
+from .._paths import BASE_DIR, META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
 from ..layout import _trim_line, fit_quote, strip_underscore_emphasis, wrap_text
@@ -455,6 +457,76 @@ def _astrarium_paint_quote_panel(
             draw.text((panel_left + 8, attrib_y), title_lines[0], font=title_font, fill=BLACK)
 
 
+_ASTRARIUM_ZONE_COORDS: dict[str, tuple[float, float]] | None = None
+
+
+def _astrarium_zone_coords() -> dict[str, tuple[float, float]]:
+    """``assets/zone_coords.json`` (``scripts/generate_zone_coords.py``): each IANA zone's
+    principal city. Fails open to no entries, which puts the sky at the UTC offset's meridian."""
+    global _ASTRARIUM_ZONE_COORDS
+    if _ASTRARIUM_ZONE_COORDS is None:
+        try:
+            raw = json.loads((BASE_DIR / "assets" / "zone_coords.json").read_text(encoding="utf-8"))
+            _ASTRARIUM_ZONE_COORDS = {name: (float(c[0]), float(c[1])) for name, c in raw["zones"].items()}
+        except (OSError, ValueError, KeyError, TypeError, IndexError):
+            _ASTRARIUM_ZONE_COORDS = {}
+    return _ASTRARIUM_ZONE_COORDS
+
+
+def _astrarium_sky(now: datetime.datetime, zone: str | None) -> tuple[float, float]:
+    """The sun's elevation in degrees and the moon's illuminated fraction (0–1) at ``now``
+    (naive local time) seen from ``zone``'s principal city.
+
+    Where the zone is unknown (``UTC``, ``None``) the clock stands on the equator at the
+    meridian of its UTC offset. The sun is the Astronomical Almanac's low-precision position
+    (about 0.01°, no refraction); the moon's phase angle is Meeus's (48.4) from the mean
+    elongation and anomalies, good to a fraction of a percent. Both are sums of sines that
+    port bit for bit (IdleHoursTV's ``Astrarium.Sky``).
+    """
+    coords = _astrarium_zone_coords().get(zone or "")
+    tz: datetime.tzinfo | None = None
+    if zone:
+        try:
+            tz = zoneinfo.ZoneInfo(zone)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+            tz = None
+    offset = (now.replace(tzinfo=tz).utcoffset() if tz is not None else now.astimezone().utcoffset()) or datetime.timedelta(0)
+    lat, lon = coords if coords is not None else (0.0, offset.total_seconds() / 240.0)
+    utc = now - offset
+    n = (utc - datetime.datetime(2000, 1, 1, 12)).total_seconds() / 86400.0
+    rad = math.radians
+
+    # The sun: ecliptic longitude, then right ascension and declination, then the hour angle.
+    mean_long = (280.460 + 0.9856474 * n) % 360.0
+    anomaly = rad((357.528 + 0.9856003 * n) % 360.0)
+    ecl_long = rad(mean_long + 1.915 * math.sin(anomaly) + 0.020 * math.sin(2 * anomaly))
+    obliquity = rad(23.439 - 0.0000004 * n)
+    ra = math.atan2(math.cos(obliquity) * math.sin(ecl_long), math.cos(ecl_long))
+    dec = math.asin(math.sin(obliquity) * math.sin(ecl_long))
+    gmst = (280.46061837 + 360.98564736629 * n) % 360.0
+    hour_angle = rad(gmst + lon) - ra
+    sin_alt = math.sin(rad(lat)) * math.sin(dec) + math.cos(rad(lat)) * math.cos(dec) * math.cos(hour_angle)
+    elevation = math.degrees(math.asin(max(-1.0, min(1.0, sin_alt))))
+
+    # The moon: the phase angle from the elongation D and the anomalies M (sun), M' (moon).
+    t = n / 36525.0
+    d = rad((297.8501921 + 445267.1114034 * t) % 360.0)
+    m = rad((357.5291092 + 35999.0502909 * t) % 360.0)
+    mp = rad((134.9633964 + 477198.8675055 * t) % 360.0)
+    phase = rad(180.0 - math.degrees(d)
+                - 6.289 * math.sin(mp) + 2.100 * math.sin(m) - 1.274 * math.sin(2 * d - mp)
+                - 0.658 * math.sin(2 * d) - 0.214 * math.sin(2 * mp) - 0.110 * math.sin(d))
+    return elevation, (1.0 + math.cos(phase)) / 2.0
+
+
+def _astrarium_sky_texts(now: datetime.datetime, zone: str | None) -> tuple[str, str]:
+    """The datum strip's two values: elevation to a tenth of a degree (never ``-0.0``) and the
+    moon's lit percentage, rounded half up."""
+    elevation, lit = _astrarium_sky(now, zone)
+    solar = f"{elevation:.1f}"
+    return ("0.0" if solar == "-0.0" else solar), str(int(lit * 100 + 0.5))
+
+
 def _astrarium_paint_datum_strip(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -462,10 +534,11 @@ def _astrarium_paint_datum_strip(
     height: int,
     time_str: str,
     now: datetime.datetime,
+    zone: str | None = None,
 ) -> None:
     """Paint the bottom datum strip: two cells (solar elevation, lunar
-    phase) under the left-half dial, derived from the clock rather than
-    pretending to be sensor readings. The right half, under the quote, is
+    phase) under the left-half dial, the real sky at ``now`` from ``zone``'s
+    principal city (``_astrarium_sky``). The right half, under the quote, is
     deliberately left open."""
     BLACK = SPECTRA6["black"]
 
@@ -482,25 +555,12 @@ def _astrarium_paint_datum_strip(
     value_font = load_font(META_FONT_BOLD_CANDIDATES, size=14)
     unit_font = load_font(META_FONT_CANDIDATES, size=9)
 
-    try:
-        hh, mm = time_str.split(":")
-        hour24 = int(hh)
-        minute = int(mm)
-    except (ValueError, AttributeError):
-        hour24, minute = 0, 0
-    # Toy solar-elevation model (peaks at noon), not real astronomy — the
-    # furniture only needs to vary with the time of day.
-    minute_of_day = hour24 * 60 + minute
-    solar_norm = math.sin(math.pi * minute_of_day / (24 * 60))
-    solar_elevation = max(0.0, solar_norm) * 75.0
-
-    # Lunar phase: day-of-year modulo 30, from the shared ``now``.
-    doy = now.timetuple().tm_yday
-    moon_phase_pct = (doy % 30) / 30.0 * 100
+    del time_str  # kept for signature symmetry; the sky reads the shared ``now``
+    solar_text, lunar_text = _astrarium_sky_texts(now, zone)
 
     panels: list[tuple[str, str, str, tuple[int, int, int]]] = [
-        ("SOLAR ELEVATION", f"{solar_elevation:.1f}", "°", BLACK),
-        ("LUNAR PHASE", f"{int(moon_phase_pct)}", "%", BLACK),
+        ("SOLAR ELEVATION", solar_text, "°", BLACK),
+        ("LUNAR PHASE", lunar_text, "%", BLACK),
     ]
 
     inner_width = inner_right - inner_left
@@ -575,7 +635,7 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
         draw.point((div_x, y), fill=SPECTRA6["black"])
 
     # Bottom datum strip.
-    _astrarium_paint_datum_strip(image, draw, width, height, time_str, now)
+    _astrarium_paint_datum_strip(image, draw, width, height, time_str, now, clock.zone())
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 

@@ -2703,6 +2703,76 @@ class TestAstrariumFrame:
         assert img.size == (320, 192)
 
 
+
+class TestAstrariumSky:
+    """The datum strip's solar elevation and lunar phase are the real sky, placed by the
+    clock's time zone. Expected values are published events, not read back from the code."""
+
+    @staticmethod
+    def _sky(*when, zone):
+        import datetime
+
+        from idle_hours.render_quote.themes import astrarium
+        return astrarium._astrarium_sky(datetime.datetime(*when), zone)
+
+    @pytest.mark.parametrize(("when", "lit"), [
+        ((2024, 4, 8, 18, 21), 0.0),     # new moon (the total eclipse), UTC
+        ((2024, 4, 15, 19, 13), 0.5),    # first quarter
+        ((2024, 4, 23, 23, 49), 1.0),    # full moon
+        ((2026, 10, 18, 16, 12), 0.5),   # first quarter
+    ])
+    def test_moon_matches_published_phases(self, when, lit):
+        assert self._sky(*when, zone="Etc/UTC")[1] == pytest.approx(lit, abs=0.01)
+
+    def test_sun_at_the_june_solstice_noon_in_london(self):
+        # Solar noon in London on 20 June 2024 is 13:02 BST: 90° − 51.51° + 23.44°.
+        assert self._sky(2024, 6, 20, 13, 2, zone="Europe/London")[0] == pytest.approx(61.9, abs=0.3)
+
+    def test_sun_is_below_the_horizon_at_night(self):
+        assert self._sky(2026, 10, 11, 0, 0, zone="America/Los_Angeles")[0] < -50
+        assert self._sky(2026, 1, 15, 3, 0, zone="Europe/London")[0] < -30
+
+    def test_daylight_saving_moves_the_clock_not_the_sun(self):
+        # An hour later on the clock in summer is the same sun as winter's noon, give or take
+        # the season: the zone's offset is applied, not assumed.
+        winter = self._sky(2026, 1, 15, 12, 0, zone="America/New_York")[0]
+        summer_late = self._sky(2026, 7, 15, 13, 0, zone="America/New_York")[0]
+        summer_early = self._sky(2026, 7, 15, 12, 0, zone="America/New_York")[0]
+        assert winter > 25 and summer_late > summer_early
+
+    def test_a_link_is_its_canonical_zone(self):
+        assert self._sky(2026, 3, 1, 9, 0, zone="US/Pacific") == self._sky(2026, 3, 1, 9, 0, zone="America/Los_Angeles")
+        assert self._sky(2026, 3, 1, 9, 0, zone="Asia/Calcutta") == self._sky(2026, 3, 1, 9, 0, zone="Asia/Kolkata")
+
+    def test_an_unplaced_zone_stands_on_the_equator_at_its_offset(self):
+        # Etc/GMT-8 is UTC+8 and has no city: 120°E on the equator, the sun overhead near noon
+        # at the equinox.
+        assert self._sky(2024, 3, 20, 12, 0, zone="Etc/GMT-8")[0] > 85
+
+    def test_texts_never_print_minus_zero(self, monkeypatch):
+        import datetime
+
+        from idle_hours.render_quote.themes import astrarium
+        monkeypatch.setattr(astrarium, "_astrarium_sky", lambda now, zone: (-0.04, 0.005))
+        assert astrarium._astrarium_sky_texts(datetime.datetime(2026, 1, 1), None) == ("0.0", "1")
+
+    def test_zone_table_has_cities_and_links(self):
+        from idle_hours.render_quote.themes import astrarium
+        coords = astrarium._astrarium_zone_coords()
+        assert coords["America/Los_Angeles"] == pytest.approx((34.05, -118.24), abs=0.01)
+        assert coords["GB"] == coords["Europe/London"]
+        assert "UTC" not in coords
+
+    @pytest.mark.parametrize(("tz", "expected"), [
+        ("America/Chicago", "America/Chicago"),
+        (":Europe/Paris", "Europe/Paris"),
+        ("/usr/share/zoneinfo/Asia/Tokyo", "Asia/Tokyo"),
+    ])
+    def test_clock_zone_reads_tz(self, monkeypatch, tz, expected):
+        from idle_hours.render_quote import clock
+        monkeypatch.setenv("TZ", tz)
+        assert clock.zone() == expected
+
 class TestFillSwatchStipple3way:
     """``_fill_swatch_stipple_3way`` is the new ``_three_way_bayer``
     primitive ``spectra6_color_recipes.md`` references as the
