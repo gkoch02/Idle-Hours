@@ -2767,8 +2767,13 @@ class TestAstrariumSky:
         ("America/Chicago", "America/Chicago"),
         (":Europe/Paris", "Europe/Paris"),
         ("/usr/share/zoneinfo/Asia/Tokyo", "Asia/Tokyo"),
+        ("UTC", "UTC"),
+        ("GMT0", "GMT0"),
+        ("", "UTC"),
+        ("/opt/zones/custom", None),
     ])
     def test_clock_zone_reads_tz(self, monkeypatch, tz, expected):
+        """A set ``TZ`` wins over the host's ``/etc/localtime``, slash or no slash."""
         from idle_hours.render_quote import clock
         monkeypatch.setenv("TZ", tz)
         assert clock.zone() == expected

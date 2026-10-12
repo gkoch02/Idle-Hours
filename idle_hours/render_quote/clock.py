@@ -28,12 +28,19 @@ def zone() -> str | None:
     ``astrarium`` places its sky by the zone's principal city rather than asking where the
     panel is: the zone is not personal data and is close enough. Read from ``TZ``, then the
     ``/etc/localtime`` link, then ``/etc/timezone``. Frozen beside ``now`` wherever that is.
+
+    A set ``TZ`` is what ``now`` follows, so it decides the zone whatever the host says:
+    ``UTC`` or ``PST8PDT`` as given (a POSIX rule that is no zone name leaves ``astrarium``
+    on the offset ``now`` has), an empty ``TZ`` is UTC as libc reads it, and a zone file
+    outside a ``zoneinfo`` tree has no name to give.
     """
-    tz = os.environ.get("TZ", "").lstrip(":")
-    if "zoneinfo/" in tz:
-        tz = tz.split("zoneinfo/", 1)[1]
-    if "/" in tz and not tz.startswith("/"):
-        return tz
+    if "TZ" in os.environ:
+        tz = os.environ["TZ"].lstrip(":")
+        if "zoneinfo/" in tz:
+            return tz.split("zoneinfo/", 1)[1]
+        if not tz:
+            return "UTC"
+        return None if tz.startswith("/") else tz
     try:
         target = os.readlink("/etc/localtime")
         if "zoneinfo/" in target:
