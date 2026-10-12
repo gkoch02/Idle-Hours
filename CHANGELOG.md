@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `astrarium`'s datum strip now shows the real sky: the sun's elevation (below
+  zero at night) and the moon's illuminated percentage, where they used to be
+  stand-ins that peaked at 75° every noon and counted the day of the year mod
+  30. The sky is placed by the panel's time zone (its principal city from
+  tzdata), so no location is asked for.
+
 - A chapter's number no longer opens a quote ("3 At twenty minutes to two
   that afternoon…", "21 Mr. Isaacstein’s Suit-case At ten o’clock…"); the
   cleaner strips a bare Arabic chapter number as it does a Roman one, the

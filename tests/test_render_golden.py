@@ -688,8 +688,9 @@ for _theme in sorted(rq.THEMES):
 
 
 # A fixed instant for the theme that reads the wall clock. ``astrarium``
-# prints the date in its header strip and derives its solar-elevation and
-# lunar-phase datums from the day of year.
+# prints the date in its header strip and computes the sun's elevation and the
+# moon's phase for that instant, placed by the local zone (``clock.zone``), which
+# is pinned too: CI runs in UTC.
 #
 # That is a legitimate behaviour that makes an un-frozen golden expire
 # overnight, which is why the theme had no fixture before. Freezing the clock
@@ -699,18 +700,21 @@ for _theme in sorted(rq.THEMES):
 # every theme at two instants and fails if this list is wrong in either
 # direction.
 GOLDEN_NOW = datetime.datetime(2026, 4, 19, 14, 30, 0)
+GOLDEN_ZONE = "America/Los_Angeles"
 CLOCK_DEPENDENT_THEMES = frozenset({"astrarium"})
 
 
 @contextlib.contextmanager
 def _frozen_clock():
-    """Pin ``render_quote.clock.now`` (the renderer's single clock read) to ``GOLDEN_NOW``."""
-    original = rq.clock.now
+    """Pin ``render_quote.clock.now`` (the renderer's single clock read) to ``GOLDEN_NOW``,
+    and ``clock.zone`` to ``GOLDEN_ZONE``."""
+    original, original_zone = rq.clock.now, rq.clock.zone
     rq.clock.now = lambda: GOLDEN_NOW
+    rq.clock.zone = lambda: GOLDEN_ZONE
     try:
         yield
     finally:
-        rq.clock.now = original
+        rq.clock.now, rq.clock.zone = original, original_zone
 
 
 def _render_scenario(scenario: dict) -> Image.Image:

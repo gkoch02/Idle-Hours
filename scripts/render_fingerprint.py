@@ -50,6 +50,7 @@ from idle_hours import render_quote as rq  # noqa: E402
 from idle_hours.render_quote.themes import diags as diags_theme  # noqa: E402
 
 FROZEN_NOW = datetime.datetime(2026, 5, 19, 10, 0, 0)
+FROZEN_ZONE = "America/Los_Angeles"
 DIAGS_STUB_SYSTEM_INFO = {"host": "idle-hours", "ip": "192.0.2.42", "uptime": "6d 4h 12m"}
 
 QUOTES = {
@@ -90,15 +91,16 @@ def _row(display_quote: str, matched_text: str, **overrides) -> dict:
 
 @contextlib.contextmanager
 def _pinned_inputs():
-    original_now = rq.clock.now
+    original_now, original_zone = rq.clock.now, rq.clock.zone
     original_diags = diags_theme._diags_system_info
     original_photo = os.environ.pop(path_resolution.PHOTO_PATH_ENV, None)
     rq.clock.now = lambda: FROZEN_NOW
+    rq.clock.zone = lambda: FROZEN_ZONE
     diags_theme._diags_system_info = lambda: dict(DIAGS_STUB_SYSTEM_INFO)
     try:
         yield
     finally:
-        rq.clock.now = original_now
+        rq.clock.now, rq.clock.zone = original_now, original_zone
         diags_theme._diags_system_info = original_diags
         if original_photo is not None:
             os.environ[path_resolution.PHOTO_PATH_ENV] = original_photo

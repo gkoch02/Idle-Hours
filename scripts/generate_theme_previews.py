@@ -137,16 +137,19 @@ def tolerance_px(theme: str) -> int:
 # question to answer, and an unconditional freeze is one fewer thing to keep in
 # sync as themes are added.
 FROZEN_NOW = datetime.datetime(2026, 5, 19, 10, 0, 0)
+# ``astrarium``'s sky is placed by the local zone; pin it with the clock.
+FROZEN_ZONE = "America/Los_Angeles"
 
 
 @contextlib.contextmanager
 def frozen_clock():
-    original = rq.clock.now
+    original, original_zone = rq.clock.now, rq.clock.zone
     rq.clock.now = lambda: FROZEN_NOW
+    rq.clock.zone = lambda: FROZEN_ZONE
     try:
         yield
     finally:
-        rq.clock.now = original
+        rq.clock.now, rq.clock.zone = original, original_zone
 
 
 @contextlib.contextmanager
