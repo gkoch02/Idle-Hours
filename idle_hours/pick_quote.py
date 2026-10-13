@@ -569,6 +569,14 @@ SHIPPED_BAN_QUOTE_KEYS: frozenset[str] = frozenset({
     "76:2524",  # Adventures of Huckleberry Finn: a racial slur
     "60:52",  # The Scarlet Pimpernel: its table of contents, not a passage
     "72883:109",  # The Layton Court Mystery: its time is only in the chapter's title
+    "75288:4495",  # The Seven Dials Mystery: "One o’clock" is a masked member's name, not a time
+    "75288:4685",  # The Seven Dials Mystery: "one o’clock" is a masked member's name, not a time
+    "75288:4694",  # The Seven Dials Mystery: "One o’clock" is a masked member's name, not a time
+    "75288:4642",  # The Seven Dials Mystery: "Three o’clock" is a masked member's name, not a time
+    "75288:4498",  # The Seven Dials Mystery: "Five o’clock" is a masked member's name, not a time
+    "75288:4513",  # The Seven Dials Mystery: "five o’clock" is a masked member's name, not a time
+    "75288:4568",  # The Seven Dials Mystery: "five o’clock" is a masked member's name, not a time
+    "75288:4532",  # The Seven Dials Mystery: "seven o’clock" is a masked member's name, not a time
 })
 
 
