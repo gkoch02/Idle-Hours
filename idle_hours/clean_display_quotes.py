@@ -161,8 +161,8 @@ LEADING_CAPS_HEADING = re.compile(
 # byte read as Latin-1: U+0097 is the em dash Lady Audley's Secret prints 756
 # times. Mapped back to the character it stood for; the five bytes 1252 leaves
 # undefined have no meaning, and go.
-_C1_FROM_CP1252 = {
-    cp: (bytes([cp]).decode("cp1252") if cp not in (0x81, 0x8D, 0x8F, 0x90, 0x9D) else "")
+_C1_FROM_CP1252: dict[str, str] = {
+    chr(cp): (bytes([cp]).decode("cp1252") if cp not in (0x81, 0x8D, 0x8F, 0x90, 0x9D) else "")
     for cp in range(0x80, 0xA0)
 }
 GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''", **_C1_FROM_CP1252})
