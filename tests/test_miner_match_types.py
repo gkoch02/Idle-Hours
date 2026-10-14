@@ -292,10 +292,11 @@ class TestDottedTimeMatchType:
     """The railway-age dotted clock time ("the 8.13"), kept under --strict."""
 
     @pytest.mark.parametrize("text, matched, time", [
-        ("He left by the 8.13 and was in town by nine.", "the 8.13", "08:13"),
+        ("He left by the 8.15 and was in town by nine.", "the 8.15", "08:15"),
         ("A gentleman called about 11.30 to see you.", "about 11.30", "11:30"),
-        ("It was taken by the 7.47 p.m. boat train.", "the 7.47", "07:47"),
-        ("The ship sailed at 00.50 on the tide.", "at 00.50", "00:50"),
+        ("It was taken by the 7.45 p.m. boat train.", "the 7.45", "07:45"),
+        ("He reached home soon after 4.05, wet through.", "after 4.05", "04:05"),
+        ("The ship sailed at 00.45 on the tide.", "at 00.45", "00:45"),
         ("We shall be there till 17.45, I expect.", "till 17.45", "17:45"),
     ])
     def test_prefixed_dotted_time(self, text, matched, time):
@@ -308,8 +309,8 @@ class TestDottedTimeMatchType:
         assert (c.normalized_time, c.fuzzy_bucket) == ("17:45", "h5_quarter_to")
 
     def test_a_sentence_ending_full_stop_is_not_part_of_the_time(self):
-        c = _first_candidate("He left by the 8.13.", "dotted_time")
-        assert (c.matched_text, c.normalized_time) == ("the 8.13", "08:13")
+        c = _first_candidate("He left by the 8.15.", "dotted_time")
+        assert (c.matched_text, c.normalized_time) == ("the 8.15", "08:15")
 
     @pytest.mark.parametrize("text", [
         "The ratio came to 3.14 in the end.",          # no article or preposition: a number
@@ -328,7 +329,7 @@ class TestDottedTimeMatchType:
         """The unit guard is a cheap pre-filter; the real test is positive
         clock context, another dotted time included ("say arrive 12.40")."""
         assert _first_candidate("Domlio reached his home about 2.10, say arrive 12.40.", "dotted_time").normalized_time == "02:10"
-        assert _first_candidate("He went to town each morning by the 8.57 and returned at 6.50 each evening.", "dotted_time") is not None
+        assert _first_candidate("He went to town each morning by the 8.45 and returned at 6.30 each evening.", "dotted_time") is not None
         assert _first_candidate("The figure he worked out was about 2.10, which seemed low.", "dotted_time") is None
 
     def test_a_twenty_four_hour_dotted_number_needs_no_context(self):
@@ -342,9 +343,36 @@ class TestDottedTimeMatchType:
     def test_strict_keeps_dotted_time(self):
         """Unlike ``digital``, the dotted form survives --strict: it is how
         Golden Age detective fiction states most of its off-minute times."""
-        text = "He left by the 8.13."
+        text = "He left by the 8.15."
         kept = [c.match_type for c in miner.iter_candidates("t.txt", None, text, 120, 0) if c.match_type not in {"daypart", "digital"}]
         assert kept == ["dotted_time"]
+
+
+class TestDottedTimePrecision:
+    """A numeric time off the quarter-hours is a timetable minute the
+    five-minute clock cannot show, kept only when the sentence hedges it."""
+
+    @pytest.mark.parametrize("text", [
+        "Mr. Felix called about 11.05 to see you, sir.",
+        "He had reached home soon after 10.20, and had gone to bed.",
+        "He went to the Grosvenor at 6.35 or thereabouts.",
+        "It was a little before 4.10 by the station clock.",
+    ])
+    def test_a_hedged_off_quarter_time_is_kept(self, text):
+        assert _first_candidate(text, "dotted_time") is not None
+
+    @pytest.mark.parametrize("text", [
+        "He examined the safe at 10.31 a.m. that morning.",
+        "He came by the 10.55 train from Halford.",
+        "The night steamer leaves at 10.05 from the pier.",
+        "Don't let's bother about the 3.12 train, she said.",     # "about" the train, not a hedge
+        "He must have reached the rock before about 11.37 or 11.38 that night.",  # an alternative undoes it
+    ])
+    def test_an_exact_off_quarter_time_is_dropped(self, text):
+        assert _first_candidate(text, "dotted_time") is None
+
+    def test_a_quarter_hour_needs_no_hedge(self):
+        assert _first_candidate("He came by the 10.45 train from Halford.", "dotted_time").normalized_time == "10:45"
 
 
 class TestAmericanMinutesOfAfter:

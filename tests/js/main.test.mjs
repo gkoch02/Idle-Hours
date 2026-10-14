@@ -1204,14 +1204,14 @@ describe("a request that never gets an answer is reported, not swallowed", () =>
     assert.match(res.data.error, /network error: offline/);
   });
 
-  it("bakeNow reports every drop reason, including unhighlightable rows (#411)", async () => {
+  it("bakeNow reports every drop reason, including unhighlightable and too-precise rows (#411)", async () => {
     const { api, elements } = await loadMainJs({
       elementIds: ["action-log", "bake-now", "bake-status"],
       fetch: routeTable({
         "POST /api/bake": {
           body: {
             ok: true, kept: 6, input: 10,
-            drops: { no_bucket: 1, no_display_quote: 0, low_quality: 2, no_display_match: 1 },
+            drops: { no_bucket: 1, no_display_quote: 0, low_quality: 2, no_display_match: 1, too_precise: 3 },
           },
         },
       }),
@@ -1219,7 +1219,7 @@ describe("a request that never gets an answer is reported, not swallowed", () =>
     await api.bakeNow();
     assert.match(
       elements.get("bake-status").textContent,
-      /dropped 1 no-bucket \/ 0 no-quote \/ 2 low-quality \/ 1 unhighlightable\)/,
+      /dropped 1 no-bucket \/ 0 no-quote \/ 2 low-quality \/ 1 unhighlightable \/ 3 too precise\)/,
     );
   });
 

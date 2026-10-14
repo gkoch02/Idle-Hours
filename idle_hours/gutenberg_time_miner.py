@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Iterable, Iterator, Sequence
 
 from idle_hours.buckets import minute_bucket
+from idle_hours.match_span import numeric_time_is_too_precise
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -570,6 +571,8 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
         if hour > 23:
             return None
         if _numeric_time_is_a_reference(text, match):
+            return None
+        if numeric_time_is_too_precise(text, match.start("hour"), match.end("minute"), minute):
             return None
         # A twenty-four-hour dotted number ("17.45", "00.50") is a time on its
         # own; a twelve-hour one needs a clock word nearby, because the unit

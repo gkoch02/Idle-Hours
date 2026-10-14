@@ -262,6 +262,17 @@ class TestPickBest:
         best, _ = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
         assert best["source_id"] == "2"
 
+    def test_skips_a_numeric_time_too_precise_for_the_clock(self):
+        """The baker drops these too; the gate here also reaches an appliance
+        whose relocated baked DB predates the baker's."""
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", quality_score=99, match_type="dotted_time",
+                     matched_text="at 3.01", display_quote="He examined the safe at 3.01 that afternoon."),
+            make_row(fuzzy_bucket="h3_exact", source_id="2", quality_score=70),
+        ]
+        best, _ = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
+        assert best["source_id"] == "2"
+
     def test_respects_min_quality(self):
         rows = [
             make_row(fuzzy_bucket="h3_exact", quality_score=40, display_quote="Three."),
