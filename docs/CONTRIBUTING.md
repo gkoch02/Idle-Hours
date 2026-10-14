@@ -25,7 +25,7 @@ OS deployments use `python3-lgpio` and `python3-rpi-lgpio` from apt with a
 
 ```bash
 git clone https://github.com/gkoch02/IdleHours.git
-cd idle-hours
+cd IdleHours
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
