@@ -393,9 +393,20 @@ class TestNoRefresh:
         assert Path(args.raw_corpus).read_bytes() == old_raw
         assert "corpus refresh skipped" in capsys.readouterr().err
 
+    def test_failed_stamp_write_puts_both_files_back(self, tmp_path, bundle):
+        args = _state_args(tmp_path)
+        _boot(args)
+        old_raw, old_baked = Path(args.raw_corpus).read_bytes(), Path(args.baked_db).read_bytes()
+        bundle.publish(bundle.pool, {})
+        with patch.object(run_clock.atomic_io, "atomic_write_text", side_effect=OSError("No space left on device")):
+            run_clock._refresh_relocated_corpus(args)
+        assert Path(args.raw_corpus).read_bytes() == old_raw
+        assert Path(args.baked_db).read_bytes() == old_baked
+
     def test_failed_write_keeps_the_stamp_stale_and_retries(self, tmp_path, bundle, capsys):
         args = _state_args(tmp_path)
         _boot(args)
+        old_raw = Path(args.raw_corpus).read_bytes()
         bundle.publish(bundle.pool, {})
         real_write = run_clock.atomic_io.atomic_write_bytes
 
@@ -408,6 +419,9 @@ class TestNoRefresh:
             run_clock._refresh_relocated_corpus(args)
         assert "corpus refresh failed" in capsys.readouterr().err
         assert Path(args.baked_db).read_bytes() != bundle.baked.read_bytes()
+        assert Path(args.raw_corpus).read_bytes() == old_raw, (
+            "the raw corpus was left on the new release while the picker reads the old baked DB"
+        )
 
         run_clock._refresh_relocated_corpus(args)
         assert Path(args.baked_db).read_bytes() == bundle.baked.read_bytes()

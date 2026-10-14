@@ -1385,6 +1385,19 @@ def _fold_new_shipped_overrides(
     return folded
 
 
+def _restore_replaced(replaced: list[tuple[Path, bytes | None]]) -> None:
+    """Put back the files a failed refresh had already replaced, newest first."""
+    for dest, previous in reversed(replaced):
+        try:
+            if previous is None:
+                dest.unlink(missing_ok=True)
+            else:
+                atomic_io.atomic_write_bytes(dest, previous)
+        except OSError as exc:
+            kept = f"; the replaced copy is {dest.name}{CORPUS_BACKUP_SUFFIX}" if previous is not None else ""
+            _log(f"corpus refresh: could not restore {dest} ({exc!r}){kept}", err=True)
+
+
 def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
     """Rebuild a relocated raw corpus / baked DB when the bundled corpus changes.
 
@@ -1455,6 +1468,7 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
             err=True,
         )
         return
+    replaced: list[tuple[Path, bytes | None]] = []
     try:
         if sidecar == shipped:
             raw_bytes, baked_bytes = raw_bundled.read_bytes(), baked_bundled.read_bytes()
@@ -1476,7 +1490,9 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
             raw_bytes = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows).encode("utf-8")
             baked_bytes = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in baked).encode("utf-8")
             how = f"rebuilt from the bundle, {applied} rows patched from {content_path}, {stats['kept']} rows baked"
-        # Raw first, baked last, stamp after both: a failure part-way leaves the
+        # Raw first, baked last, stamp after both. A failure part-way puts back
+        # whatever was already replaced, so the picker (baked DB) and the
+        # curator (raw corpus) never run on different releases, and leaves the
         # stamp stale, so the next start redoes the whole refresh.
         for dest, payload in ((raw_dest, raw_bytes), (baked_dest, baked_bytes)):
             if dest is None:
@@ -1488,9 +1504,11 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
             if current is not None:
                 atomic_io.atomic_write_bytes(dest.with_name(dest.name + CORPUS_BACKUP_SUFFIX), current)
             atomic_io.atomic_write_bytes(dest, payload)
+            replaced.append((dest, current))
         atomic_io.atomic_write_text(stamp_path, json.dumps(new_stamp, indent=2) + "\n")
     except Exception as exc:  # noqa: BLE001 - the old corpus still works; never block startup
         _log(f"corpus refresh failed, keeping the current corpus: {exc!r}", err=True)
+        _restore_replaced(replaced)
         return
     targets = ", ".join(str(d) for d in (raw_dest, baked_dest) if d is not None)
     previous = stamp.get("bundle_digest")

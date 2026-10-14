@@ -87,8 +87,11 @@ are treated differently:
   the sidecar is never written. Each file it
   replaces is kept beside it as `<name>.prev`; a file already equal to the new
   one is not rewritten. The raw corpus is written first, the baked DB second and
-  the stamp (which also records the bundled `content_overrides.json`) last, all through `atomic_io`, so a failure part-way leaves the stamp
-  stale and the next start redoes the refresh. When the size and mtime match the
+  the stamp (which also records the bundled `content_overrides.json`) last, all
+  through `atomic_io`. A failure part-way writes back any file already replaced,
+  from the bytes read before the write, so the picker's baked DB and the
+  curator's raw corpus never come from different releases, and leaves the stamp
+  stale so the next start redoes the refresh. When the size and mtime match the
   stamp, startup skips the hash.
 - **It never blocks startup.** A failed refresh logs `corpus refresh failed`
   and keeps the current files. If the relocated `content_overrides.json` is
