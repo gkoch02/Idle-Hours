@@ -40,3 +40,46 @@ class TestHasDisplayMatch:
 
     def test_missing_fields_are_not_a_match(self):
         assert not match_span.has_display_match({})
+
+
+class TestStatesTooPreciseATime:
+    @staticmethod
+    def _row(display_quote, matched_text, match_type="dotted_time"):
+        return {"display_quote": display_quote, "matched_text": matched_text, "match_type": match_type}
+
+    @pytest.mark.parametrize(
+        ("text", "matched"),
+        [
+            ("He examined the safe at 10.31 a.m. that morning.", "at 10.31"),
+            ("He went by the 4.05 from Halford.", "the 4.05"),
+            ("Don't let's bother about the 3.12, she said.", "the 3.12"),
+            ("He reached the rock before about 11.37 or 11.38.", "about 11.37"),
+            ("He reached the rock before about 11.37, or 11.38.", "about 11.37"),
+            ("She left at about 11.37 p.m. or 11.38, he thought.", "about 11.37"),
+        ],
+    )
+    def test_an_exact_off_quarter_time_is_too_precise(self, text, matched):
+        assert match_span.states_too_precise_a_time(self._row(text, matched))
+
+    @pytest.mark.parametrize(
+        ("text", "matched"),
+        [
+            ("He came by the 10.45 from Halford.", "the 10.45"),
+            ("Mr. Felix called about 11.05 to see you.", "about 11.05"),
+            ("He had reached home soon after 10.20.", "after 10.20"),
+            ("He went to the Grosvenor at 6.35 or thereabouts.", "at 6.35"),
+            ("He went to the Grosvenor at 6.35 p.m. or thereabouts.", "at 6.35"),
+            ("He went to the Grosvenor at 6.35, or thereabouts.", "at 6.35"),
+            ("They dined at 7.20-ish, as usual.", "at 7.20"),
+            ("She came round about 7.10 that evening.", "about 7.10"),
+        ],
+    )
+    def test_a_quarter_hour_or_a_hedged_time_is_not(self, text, matched):
+        assert not match_span.states_too_precise_a_time(self._row(text, matched))
+
+    def test_judges_the_displayed_text_not_the_mined_context(self):
+        """A hedge the cleaner cut away is not one the reader sees."""
+        assert match_span.states_too_precise_a_time(self._row("10.20 struck as he came in.", "10.20", "digital"))
+
+    def test_only_numeric_match_types_are_judged(self):
+        assert not match_span.states_too_precise_a_time(self._row("At twenty-two minutes past ten.", "twenty-two minutes past ten", "minutes_past_to"))

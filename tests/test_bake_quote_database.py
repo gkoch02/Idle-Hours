@@ -46,6 +46,19 @@ class TestFilterRows:
         assert kept == [sample_row]
         assert drops["no_display_match"] == 1
 
+    @pytest.mark.parametrize(
+        ("display_quote", "matched_text", "dropped"),
+        [
+            ("He examined the safe at 10.31 a.m. that morning.", "at 10.31", True),
+            ("Mr. Felix called about 11.05 to see you.", "about 11.05", False),
+            ("He came by the 10.45 train from Halford.", "the 10.45", False),
+        ],
+    )
+    def test_drops_a_numeric_time_too_precise_for_the_clock(self, sample_row, display_quote, matched_text, dropped):
+        row = make_row(display_quote=display_quote, matched_text=matched_text, match_type="dotted_time")
+        kept, drops = bq.filter_rows([sample_row, row], min_quality=60)
+        assert (row not in kept, drops["too_precise"]) == (dropped, int(dropped))
+
     def test_keeps_a_prefix_match_the_renderer_extends(self):
         row = make_row(display_quote="It was quarter past ten, and raining.", matched_text="quarter past")
         kept, _ = bq.filter_rows([row], min_quality=60)
@@ -204,7 +217,7 @@ class TestBakeRows:
         assert stats == {
             "input": 3,
             "kept": 1,
-            "drops": {"no_bucket": 1, "no_display_quote": 0, "low_quality": 1, "no_display_match": 0},
+            "drops": {"no_bucket": 1, "no_display_quote": 0, "low_quality": 1, "no_display_match": 0, "too_precise": 0},
             "per_bucket": {"populated": 1, "max": 1, "min": 1},
         }
 

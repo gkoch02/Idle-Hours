@@ -9,7 +9,7 @@ from pathlib import Path
 
 from idle_hours.buckets import BUCKET_ORDER, rederive_buckets
 from idle_hours.jsonl_io import iter_jsonl
-from idle_hours.match_span import has_display_match
+from idle_hours.match_span import has_display_match, states_too_precise_a_time
 from idle_hours.pick_quote import (
     DEFAULT_OVERRIDES_PATH,
     _twin_texts,
@@ -116,7 +116,7 @@ def is_displayable(
         display = row["display_quote"]
         if not isinstance(display, str) or not display.strip():
             return False
-        if not has_display_match(row):
+        if not has_display_match(row) or states_too_precise_a_time(row):
             return False
     quality = row.get("quality_score")
     if quality is not None and quality < min_quality:

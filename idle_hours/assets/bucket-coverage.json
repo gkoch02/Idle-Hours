@@ -1,157 +1,157 @@
 {
   "total_rows": 7771,
-  "displayable_rows": 6691,
-  "banned_rows": 31,
+  "displayable_rows": 6414,
+  "banned_rows": 39,
   "min_quality": 60,
   "total_expected_buckets": 144,
-  "populated_bucket_count": 144,
+  "populated_bucket_count": 137,
   "raw_populated_bucket_count": 144,
-  "empty_bucket_count": 0,
-  "coverage_percent": 100.0,
+  "empty_bucket_count": 7,
+  "coverage_percent": 95.14,
   "bucket_counts": {
-    "h1_exact": 272,
+    "h1_exact": 269,
     "h1_five_past": 4,
     "h1_ten_past": 2,
-    "h1_quarter_past": 17,
-    "h1_twenty_past": 7,
+    "h1_quarter_past": 16,
+    "h1_twenty_past": 6,
     "h1_twenty_five_past": 4,
-    "h1_half_past": 60,
+    "h1_half_past": 58,
     "h1_twenty_five_to": 1,
     "h1_twenty_to": 5,
     "h1_quarter_to": 15,
-    "h1_ten_to": 7,
-    "h1_five_to": 19,
+    "h1_ten_to": 5,
+    "h1_five_to": 17,
     "h2_exact": 308,
     "h2_five_past": 6,
-    "h2_ten_past": 12,
+    "h2_ten_past": 9,
     "h2_quarter_past": 7,
-    "h2_twenty_past": 3,
+    "h2_twenty_past": 1,
     "h2_twenty_five_past": 1,
-    "h2_half_past": 75,
+    "h2_half_past": 73,
     "h2_twenty_five_to": 5,
     "h2_twenty_to": 4,
     "h2_quarter_to": 18,
     "h2_ten_to": 4,
     "h2_five_to": 22,
-    "h3_exact": 318,
+    "h3_exact": 317,
     "h3_five_past": 10,
-    "h3_ten_past": 12,
-    "h3_quarter_past": 12,
-    "h3_twenty_past": 7,
-    "h3_twenty_five_past": 3,
-    "h3_half_past": 67,
-    "h3_twenty_five_to": 3,
-    "h3_twenty_to": 5,
-    "h3_quarter_to": 23,
-    "h3_ten_to": 4,
-    "h3_five_to": 25,
+    "h3_ten_past": 7,
+    "h3_quarter_past": 10,
+    "h3_twenty_past": 6,
+    "h3_twenty_five_past": 2,
+    "h3_half_past": 65,
+    "h3_twenty_five_to": 0,
+    "h3_twenty_to": 2,
+    "h3_quarter_to": 12,
+    "h3_ten_to": 2,
+    "h3_five_to": 20,
     "h4_exact": 270,
-    "h4_five_past": 5,
-    "h4_ten_past": 1,
+    "h4_five_past": 4,
+    "h4_ten_past": 0,
     "h4_quarter_past": 15,
-    "h4_twenty_past": 3,
+    "h4_twenty_past": 2,
     "h4_twenty_five_past": 1,
-    "h4_half_past": 77,
-    "h4_twenty_five_to": 6,
-    "h4_twenty_to": 6,
+    "h4_half_past": 75,
+    "h4_twenty_five_to": 2,
+    "h4_twenty_to": 5,
     "h4_quarter_to": 15,
-    "h4_ten_to": 14,
-    "h4_five_to": 21,
-    "h5_exact": 281,
+    "h4_ten_to": 4,
+    "h4_five_to": 17,
+    "h5_exact": 278,
     "h5_five_past": 4,
-    "h5_ten_past": 3,
-    "h5_quarter_past": 19,
-    "h5_twenty_past": 13,
-    "h5_twenty_five_past": 4,
-    "h5_half_past": 90,
-    "h5_twenty_five_to": 3,
-    "h5_twenty_to": 4,
-    "h5_quarter_to": 27,
-    "h5_ten_to": 3,
-    "h5_five_to": 22,
+    "h5_ten_past": 2,
+    "h5_quarter_past": 14,
+    "h5_twenty_past": 7,
+    "h5_twenty_five_past": 1,
+    "h5_half_past": 89,
+    "h5_twenty_five_to": 0,
+    "h5_twenty_to": 0,
+    "h5_quarter_to": 26,
+    "h5_ten_to": 1,
+    "h5_five_to": 21,
     "h6_exact": 303,
     "h6_five_past": 2,
-    "h6_ten_past": 3,
+    "h6_ten_past": 2,
     "h6_quarter_past": 25,
-    "h6_twenty_past": 6,
-    "h6_twenty_five_past": 2,
+    "h6_twenty_past": 3,
+    "h6_twenty_five_past": 0,
     "h6_half_past": 127,
-    "h6_twenty_five_to": 4,
-    "h6_twenty_to": 9,
+    "h6_twenty_five_to": 2,
+    "h6_twenty_to": 4,
     "h6_quarter_to": 21,
-    "h6_ten_to": 5,
-    "h6_five_to": 10,
-    "h7_exact": 243,
+    "h6_ten_to": 2,
+    "h6_five_to": 9,
+    "h7_exact": 242,
     "h7_five_past": 11,
-    "h7_ten_past": 11,
+    "h7_ten_past": 6,
     "h7_quarter_past": 28,
-    "h7_twenty_past": 5,
-    "h7_twenty_five_past": 9,
-    "h7_half_past": 116,
-    "h7_twenty_five_to": 1,
-    "h7_twenty_to": 5,
-    "h7_quarter_to": 32,
-    "h7_ten_to": 6,
-    "h7_five_to": 25,
+    "h7_twenty_past": 3,
+    "h7_twenty_five_past": 6,
+    "h7_half_past": 113,
+    "h7_twenty_five_to": 0,
+    "h7_twenty_to": 4,
+    "h7_quarter_to": 28,
+    "h7_ten_to": 4,
+    "h7_five_to": 21,
     "h8_exact": 366,
     "h8_five_past": 8,
-    "h8_ten_past": 11,
+    "h8_ten_past": 9,
     "h8_quarter_past": 15,
-    "h8_twenty_past": 14,
-    "h8_twenty_five_past": 6,
-    "h8_half_past": 145,
-    "h8_twenty_five_to": 4,
-    "h8_twenty_to": 16,
-    "h8_quarter_to": 35,
-    "h8_ten_to": 20,
-    "h8_five_to": 35,
+    "h8_twenty_past": 8,
+    "h8_twenty_five_past": 3,
+    "h8_half_past": 144,
+    "h8_twenty_five_to": 2,
+    "h8_twenty_to": 14,
+    "h8_quarter_to": 34,
+    "h8_ten_to": 17,
+    "h8_five_to": 33,
     "h9_exact": 425,
     "h9_five_past": 7,
-    "h9_ten_past": 17,
-    "h9_quarter_past": 23,
-    "h9_twenty_past": 5,
+    "h9_ten_past": 12,
+    "h9_quarter_past": 21,
+    "h9_twenty_past": 1,
     "h9_twenty_five_past": 6,
     "h9_half_past": 164,
     "h9_twenty_five_to": 3,
-    "h9_twenty_to": 2,
-    "h9_quarter_to": 45,
+    "h9_twenty_to": 1,
+    "h9_quarter_to": 44,
     "h9_ten_to": 4,
-    "h9_five_to": 27,
+    "h9_five_to": 25,
     "h10_exact": 510,
-    "h10_five_past": 11,
+    "h10_five_past": 9,
     "h10_ten_past": 5,
-    "h10_quarter_past": 33,
-    "h10_twenty_past": 12,
-    "h10_twenty_five_past": 8,
-    "h10_half_past": 197,
-    "h10_twenty_five_to": 7,
-    "h10_twenty_to": 3,
-    "h10_quarter_to": 48,
-    "h10_ten_to": 14,
-    "h10_five_to": 31,
-    "h11_exact": 382,
+    "h10_quarter_past": 28,
+    "h10_twenty_past": 9,
+    "h10_twenty_five_past": 3,
+    "h10_half_past": 195,
+    "h10_twenty_five_to": 4,
+    "h10_twenty_to": 2,
+    "h10_quarter_to": 47,
+    "h10_ten_to": 9,
+    "h10_five_to": 29,
+    "h11_exact": 381,
     "h11_five_past": 9,
-    "h11_ten_past": 10,
+    "h11_ten_past": 9,
     "h11_quarter_past": 25,
-    "h11_twenty_past": 32,
+    "h11_twenty_past": 16,
     "h11_twenty_five_past": 3,
-    "h11_half_past": 151,
-    "h11_twenty_five_to": 9,
-    "h11_twenty_to": 6,
+    "h11_half_past": 148,
+    "h11_twenty_five_to": 5,
+    "h11_twenty_to": 2,
     "h11_quarter_to": 53,
-    "h11_ten_to": 12,
-    "h11_five_to": 17,
-    "h12_exact": 218,
+    "h11_ten_to": 10,
+    "h11_five_to": 13,
+    "h12_exact": 217,
     "h12_five_past": 8,
-    "h12_ten_past": 5,
-    "h12_quarter_past": 18,
+    "h12_ten_past": 3,
+    "h12_quarter_past": 13,
     "h12_twenty_past": 3,
-    "h12_twenty_five_past": 4,
-    "h12_half_past": 101,
-    "h12_twenty_five_to": 4,
-    "h12_twenty_to": 5,
-    "h12_quarter_to": 18,
-    "h12_ten_to": 6,
+    "h12_twenty_five_past": 2,
+    "h12_half_past": 99,
+    "h12_twenty_five_to": 0,
+    "h12_twenty_to": 1,
+    "h12_quarter_to": 17,
+    "h12_ten_to": 2,
     "h12_five_to": 27
   },
   "raw_bucket_counts": {
@@ -300,8 +300,20 @@
     "h12_ten_to": 7,
     "h12_five_to": 30
   },
-  "empty_buckets": [],
+  "empty_buckets": [
+    "h3_twenty_five_to",
+    "h4_ten_past",
+    "h5_twenty_five_to",
+    "h5_twenty_to",
+    "h6_twenty_five_past",
+    "h7_twenty_five_to",
+    "h12_twenty_five_to"
+  ],
   "sparse_buckets": [
+    {
+      "bucket": "h12_twenty_to",
+      "count": 1
+    },
     {
       "bucket": "h1_twenty_five_to",
       "count": 1
@@ -311,7 +323,7 @@
       "count": 1
     },
     {
-      "bucket": "h4_ten_past",
+      "bucket": "h2_twenty_past",
       "count": 1
     },
     {
@@ -319,11 +331,63 @@
       "count": 1
     },
     {
-      "bucket": "h7_twenty_five_to",
+      "bucket": "h5_ten_to",
       "count": 1
     },
     {
+      "bucket": "h5_twenty_five_past",
+      "count": 1
+    },
+    {
+      "bucket": "h9_twenty_past",
+      "count": 1
+    },
+    {
+      "bucket": "h9_twenty_to",
+      "count": 1
+    },
+    {
+      "bucket": "h10_twenty_to",
+      "count": 2
+    },
+    {
+      "bucket": "h11_twenty_to",
+      "count": 2
+    },
+    {
+      "bucket": "h12_ten_to",
+      "count": 2
+    },
+    {
+      "bucket": "h12_twenty_five_past",
+      "count": 2
+    },
+    {
       "bucket": "h1_ten_past",
+      "count": 2
+    },
+    {
+      "bucket": "h3_ten_to",
+      "count": 2
+    },
+    {
+      "bucket": "h3_twenty_five_past",
+      "count": 2
+    },
+    {
+      "bucket": "h3_twenty_to",
+      "count": 2
+    },
+    {
+      "bucket": "h4_twenty_five_to",
+      "count": 2
+    },
+    {
+      "bucket": "h4_twenty_past",
+      "count": 2
+    },
+    {
+      "bucket": "h5_ten_past",
       "count": 2
     },
     {
@@ -331,15 +395,23 @@
       "count": 2
     },
     {
-      "bucket": "h6_twenty_five_past",
+      "bucket": "h6_ten_past",
       "count": 2
     },
     {
-      "bucket": "h9_twenty_to",
+      "bucket": "h6_ten_to",
       "count": 2
     },
     {
-      "bucket": "h10_twenty_to",
+      "bucket": "h6_twenty_five_to",
+      "count": 2
+    },
+    {
+      "bucket": "h8_twenty_five_to",
+      "count": 2
+    },
+    {
+      "bucket": "h10_twenty_five_past",
       "count": 3
     },
     {
@@ -347,39 +419,23 @@
       "count": 3
     },
     {
+      "bucket": "h12_ten_past",
+      "count": 3
+    },
+    {
       "bucket": "h12_twenty_past",
       "count": 3
     },
     {
-      "bucket": "h2_twenty_past",
+      "bucket": "h6_twenty_past",
       "count": 3
     },
     {
-      "bucket": "h3_twenty_five_past",
+      "bucket": "h7_twenty_past",
       "count": 3
     },
     {
-      "bucket": "h3_twenty_five_to",
-      "count": 3
-    },
-    {
-      "bucket": "h4_twenty_past",
-      "count": 3
-    },
-    {
-      "bucket": "h5_ten_past",
-      "count": 3
-    },
-    {
-      "bucket": "h5_ten_to",
-      "count": 3
-    },
-    {
-      "bucket": "h5_twenty_five_to",
-      "count": 3
-    },
-    {
-      "bucket": "h6_ten_past",
+      "bucket": "h8_twenty_five_past",
       "count": 3
     },
     {
@@ -389,6 +445,10 @@
   ],
   "thin_buckets": [
     {
+      "bucket": "h12_twenty_to",
+      "count": 1
+    },
+    {
       "bucket": "h1_twenty_five_to",
       "count": 1
     },
@@ -397,7 +457,7 @@
       "count": 1
     },
     {
-      "bucket": "h4_ten_past",
+      "bucket": "h2_twenty_past",
       "count": 1
     },
     {
@@ -405,11 +465,63 @@
       "count": 1
     },
     {
-      "bucket": "h7_twenty_five_to",
+      "bucket": "h5_ten_to",
       "count": 1
     },
     {
+      "bucket": "h5_twenty_five_past",
+      "count": 1
+    },
+    {
+      "bucket": "h9_twenty_past",
+      "count": 1
+    },
+    {
+      "bucket": "h9_twenty_to",
+      "count": 1
+    },
+    {
+      "bucket": "h10_twenty_to",
+      "count": 2
+    },
+    {
+      "bucket": "h11_twenty_to",
+      "count": 2
+    },
+    {
+      "bucket": "h12_ten_to",
+      "count": 2
+    },
+    {
+      "bucket": "h12_twenty_five_past",
+      "count": 2
+    },
+    {
       "bucket": "h1_ten_past",
+      "count": 2
+    },
+    {
+      "bucket": "h3_ten_to",
+      "count": 2
+    },
+    {
+      "bucket": "h3_twenty_five_past",
+      "count": 2
+    },
+    {
+      "bucket": "h3_twenty_to",
+      "count": 2
+    },
+    {
+      "bucket": "h4_twenty_five_to",
+      "count": 2
+    },
+    {
+      "bucket": "h4_twenty_past",
+      "count": 2
+    },
+    {
+      "bucket": "h5_ten_past",
       "count": 2
     },
     {
@@ -417,11 +529,19 @@
       "count": 2
     },
     {
-      "bucket": "h6_twenty_five_past",
+      "bucket": "h6_ten_past",
       "count": 2
     },
     {
-      "bucket": "h9_twenty_to",
+      "bucket": "h6_ten_to",
+      "count": 2
+    },
+    {
+      "bucket": "h6_twenty_five_to",
+      "count": 2
+    },
+    {
+      "bucket": "h8_twenty_five_to",
       "count": 2
     }
   ],
@@ -436,7 +556,7 @@
     },
     {
       "bucket": "h11_exact",
-      "count": 382
+      "count": 381
     },
     {
       "bucket": "h8_exact",
@@ -444,7 +564,7 @@
     },
     {
       "bucket": "h3_exact",
-      "count": 318
+      "count": 317
     },
     {
       "bucket": "h2_exact",
@@ -456,27 +576,27 @@
     },
     {
       "bucket": "h5_exact",
-      "count": 281
-    },
-    {
-      "bucket": "h1_exact",
-      "count": 272
+      "count": 278
     },
     {
       "bucket": "h4_exact",
       "count": 270
     },
     {
+      "bucket": "h1_exact",
+      "count": 269
+    },
+    {
       "bucket": "h7_exact",
-      "count": 243
+      "count": 242
     },
     {
       "bucket": "h12_exact",
-      "count": 218
+      "count": 217
     },
     {
       "bucket": "h10_half_past",
-      "count": 197
+      "count": 195
     },
     {
       "bucket": "h9_half_past",
@@ -484,11 +604,11 @@
     },
     {
       "bucket": "h11_half_past",
-      "count": 151
+      "count": 148
     },
     {
       "bucket": "h8_half_past",
-      "count": 145
+      "count": 144
     },
     {
       "bucket": "h6_half_past",
@@ -496,31 +616,31 @@
     },
     {
       "bucket": "h7_half_past",
-      "count": 116
+      "count": 113
     },
     {
       "bucket": "h12_half_past",
-      "count": 101
+      "count": 99
     },
     {
       "bucket": "h5_half_past",
-      "count": 90
+      "count": 89
     },
     {
       "bucket": "h4_half_past",
-      "count": 77
-    },
-    {
-      "bucket": "h2_half_past",
       "count": 75
     },
     {
+      "bucket": "h2_half_past",
+      "count": 73
+    },
+    {
       "bucket": "h3_half_past",
-      "count": 67
+      "count": 65
     },
     {
       "bucket": "h1_half_past",
-      "count": 60
+      "count": 58
     },
     {
       "bucket": "h11_quarter_to",
@@ -553,23 +673,6 @@
         "quote_text": "clock struck midnight, the slow, deep strokes reverberating heavily.",
         "matched_text": "struck midnight",
         "source_id": "22173"
-      }
-    ],
-    "h12_ten_to": [
-      {
-        "quote_text": "At 00.50 GMT on December 9th 1921 Godley identified signals from",
-        "matched_text": "At 00.50",
-        "source_id": "66"
-      },
-      {
-        "quote_text": "train, the 12.50 from London?",
-        "matched_text": "the 12.50",
-        "source_id": "1155"
-      },
-      {
-        "quote_text": "time it wanted but ten minutes of one o’clock, and we began to look out",
-        "matched_text": "ten minutes of one",
-        "source_id": "1400"
       }
     ],
     "h1_exact": [
@@ -637,11 +740,6 @@
     ],
     "h1_twenty_past": [
       {
-        "quote_text": "I can catch the 1.20",
-        "matched_text": "the 1.20",
-        "source_id": "10373"
-      },
-      {
         "quote_text": "Sure enough, at twenty minutes past one the door of the reception-room",
         "matched_text": "twenty minutes past one",
         "source_id": "44"
@@ -650,6 +748,11 @@
         "quote_text": "about 1.20 p.",
         "matched_text": "about 1.20",
         "source_id": "59854"
+      },
+      {
+        "quote_text": "happened just previous to twenty minutes past one.",
+        "matched_text": "twenty minutes past one",
+        "source_id": "73771"
       }
     ],
     "h1_twenty_five_past": [
@@ -671,19 +774,19 @@
     ],
     "h1_half_past": [
       {
-        "quote_text": "‘Arrest the Arab who is in train due at 1.29.",
-        "matched_text": "at 1.29",
-        "source_id": "5164"
-      },
-      {
-        "quote_text": "‘The train is due at Bedford at 1.29--send your wire there.",
-        "matched_text": "at 1.29",
-        "source_id": "5164"
-      },
-      {
         "quote_text": "half-past one; at dawn of day they were in Dublin; and they lost no",
         "matched_text": "half-past one",
         "source_id": "103"
+      },
+      {
+        "quote_text": "\"But at half-past one he had had enough of the player, who always lost",
+        "matched_text": "half-past one",
+        "source_id": "10556"
+      },
+      {
+        "quote_text": "Finally, at half-past one in the morning, after a run of",
+        "matched_text": "half-past one",
+        "source_id": "10556"
       }
     ],
     "h1_twenty_five_to": [
@@ -751,14 +854,14 @@
         "source_id": "6753"
       },
       {
-        "quote_text": "afternoon travelled westwards by the 1.55 P.",
-        "matched_text": "the 1.55",
-        "source_id": "72771"
-      },
-      {
         "quote_text": "He emerged into Praed Street at about five minutes to two, and began",
         "matched_text": "five minutes to two",
         "source_id": "72926"
+      },
+      {
+        "quote_text": "It was exactly five minutes to two o'clock—“at two o'clock",
+        "matched_text": "five minutes to two",
+        "source_id": "75146"
       }
     ],
     "h2_exact": [
@@ -831,16 +934,6 @@
     ],
     "h2_twenty_past": [
       {
-        "quote_text": "Greyes and Miss Fritten had missed the 2.18 to Town, and as there",
-        "matched_text": "the 2.18",
-        "source_id": "1477"
-      },
-      {
-        "quote_text": "Where would a traveller by the 2.20 p.",
-        "matched_text": "the 2.20",
-        "source_id": "59854"
-      },
-      {
         "quote_text": "She looked at her watch, and it was twenty minutes past two.",
         "matched_text": "twenty minutes past two",
         "source_id": "98"
@@ -855,17 +948,17 @@
     ],
     "h2_half_past": [
       {
-        "quote_text": "There was one at 2.29 which,",
-        "matched_text": "at 2.29",
-        "source_id": "72235"
-      },
-      {
         "quote_text": "Altogether it was well beyond half-past two when he went out of the",
         "matched_text": "half-past two",
         "source_id": "10373"
       },
       {
         "quote_text": "Church, Marylebone, strike half-past two.",
+        "matched_text": "half-past two",
+        "source_id": "10556"
+      },
+      {
+        "quote_text": "half-past two Aaron Cohen was already dead.",
         "matched_text": "half-past two",
         "source_id": "10556"
       }
@@ -1008,11 +1101,6 @@
     ],
     "h3_quarter_past": [
       {
-        "quote_text": "“There's the 3.14 up,” said Perks.",
-        "matched_text": "the 3.14",
-        "source_id": "1874"
-      },
-      {
         "quote_text": "\"The testator had called for me at my office at a quarter past three,",
         "matched_text": "quarter past three",
         "source_id": "10476"
@@ -1021,6 +1109,11 @@
         "quote_text": "quarter past three on Wednesday, December 10th, with a bag full of",
         "matched_text": "quarter past three",
         "source_id": "10556"
+      },
+      {
+        "quote_text": "The clock struck a quarter past three.",
+        "matched_text": "quarter past three",
+        "source_id": "135"
       }
     ],
     "h3_twenty_past": [
@@ -1030,14 +1123,14 @@
         "source_id": "71351"
       },
       {
-        "quote_text": "to the station at the hour of the 3.19's transit, and proudly introduced",
-        "matched_text": "the 3.19",
-        "source_id": "1874"
-      },
-      {
         "quote_text": "It was twenty minutes past three.",
         "matched_text": "twenty minutes past three",
         "source_id": "5247"
+      },
+      {
+        "quote_text": "The end came at twenty minutes past three—I ken the",
+        "matched_text": "twenty minutes past three",
+        "source_id": "560"
       }
     ],
     "h3_twenty_five_past": [
@@ -1050,11 +1143,6 @@
         "quote_text": "“You saw Neville Shandon last at about 3.25 p.",
         "matched_text": "about 3.25",
         "source_id": "71351"
-      },
-      {
-        "quote_text": "hurrying to catch the 3.25 train from St Pancras.",
-        "matched_text": "the 3.25",
-        "source_id": "72235"
       }
     ],
     "h3_half_past": [
@@ -1074,23 +1162,6 @@
         "source_id": "10556"
       }
     ],
-    "h3_twenty_five_to": [
-      {
-        "quote_text": "But the sergeant found the car at 3.35 and it was then cold.",
-        "matched_text": "at 3.35",
-        "source_id": "72771"
-      },
-      {
-        "quote_text": "Neville Shandon could not have reached the Maze before 3.37 p.m.; and",
-        "matched_text": "before 3.37",
-        "source_id": "71351"
-      },
-      {
-        "quote_text": "That means that Neville Shandon could have reached the Maze at 3.37;",
-        "matched_text": "at 3.37",
-        "source_id": "71351"
-      }
-    ],
     "h3_twenty_to": [
       {
         "quote_text": "\"Exactly twenty minutes to four,\" said Percy, consulting his watch.",
@@ -1098,14 +1169,9 @@
         "source_id": "33389"
       },
       {
-        "quote_text": "together from Paddington Station at 3.40 this afternoon.",
-        "matched_text": "at 3.40",
-        "source_id": "54109"
-      },
-      {
-        "quote_text": "“Lady Eileen, she come down by the 3.40, and two gentlemen with her,",
-        "matched_text": "the 3.40",
-        "source_id": "65238"
+        "quote_text": "“Twenty minutes to four.",
+        "matched_text": "Twenty minutes to four",
+        "source_id": "77600"
       }
     ],
     "h3_quarter_to": [
@@ -1135,28 +1201,23 @@
         "quote_text": "at the foot of the moor-path at ten minutes to four, and, dismissing",
         "matched_text": "ten minutes to four",
         "source_id": "70432"
-      },
-      {
-        "quote_text": "after Neville’s body was found by Torrance at 3.52 p.",
-        "matched_text": "at 3.52",
-        "source_id": "71351"
       }
     ],
     "h3_five_to": [
       {
-        "quote_text": "at 3.53 p.",
-        "matched_text": "at 3.53",
-        "source_id": "1872"
+        "quote_text": "It was now but five minutes to four, so we",
+        "matched_text": "five minutes to four",
+        "source_id": "13882"
       },
       {
-        "quote_text": "is proof positive that, in the first place, the murder took place at 3.54, and, in the second place, the murderer tried to pretend it",
-        "matched_text": "at 3.54",
-        "source_id": "72585"
+        "quote_text": "It was exactly five minutes to four when Virginia Revel, rendered",
+        "matched_text": "five minutes to four",
+        "source_id": "65238"
       },
       {
-        "quote_text": "why it was an hour fast was that the murderer, at 3.54 on Tuesday",
-        "matched_text": "at 3.54",
-        "source_id": "72585"
+        "quote_text": "nearly five minutes to four.",
+        "matched_text": "five minutes to four",
+        "source_id": "72883"
       }
     ],
     "h4_exact": [
@@ -1193,13 +1254,6 @@
         "source_id": "81"
       }
     ],
-    "h4_ten_past": [
-      {
-        "quote_text": "later they left Yeovil behind and at 4.10, nearly three hours after",
-        "matched_text": "at 4.10",
-        "source_id": "72235"
-      }
-    ],
     "h4_quarter_past": [
       {
         "quote_text": "twenty-third at about 4.15 P.",
@@ -1227,11 +1281,6 @@
         "quote_text": "Twenty minutes past four!",
         "matched_text": "Twenty minutes past four",
         "source_id": "23885"
-      },
-      {
-        "quote_text": "At 4.20 he came upon Ernest squatting by",
-        "matched_text": "At 4.20",
-        "source_id": "71351"
       }
     ],
     "h4_twenty_five_past": [
@@ -1260,19 +1309,14 @@
     ],
     "h4_twenty_five_to": [
       {
-        "quote_text": "The conductor of the 4.33 express was",
-        "matched_text": "the 4.33",
-        "source_id": "86"
-      },
-      {
-        "quote_text": "office, got her packet, and found herself at exactly 4:35 walking",
-        "matched_text": "4:35",
-        "source_id": "1661"
-      },
-      {
         "quote_text": "It must have been about 4.35 when there was another shifting of chairs within.",
         "matched_text": "about 4.35",
         "source_id": "2360"
+      },
+      {
+        "quote_text": "Twenty-five minutes of five!",
+        "matched_text": "Twenty-five minutes of five",
+        "source_id": "23885"
       }
     ],
     "h4_twenty_to": [
@@ -1311,11 +1355,6 @@
     ],
     "h4_ten_to": [
       {
-        "quote_text": "an occasional runner, and at 4.50 a.",
-        "matched_text": "at 4.50",
-        "source_id": "16660"
-      },
-      {
         "quote_text": "Ten minutes to five.",
         "matched_text": "Ten minutes to five",
         "source_id": "23885"
@@ -1324,14 +1363,14 @@
         "quote_text": "“Ten minutes to five!",
         "matched_text": "Ten minutes to five",
         "source_id": "4014"
+      },
+      {
+        "quote_text": "It wanted ten minutes to five as the car pulled up at the docks, and",
+        "matched_text": "ten minutes to five",
+        "source_id": "72235"
       }
     ],
     "h4_five_to": [
-      {
-        "quote_text": "It had stopped at 4.54.",
-        "matched_text": "at 4.54",
-        "source_id": "72585"
-      },
       {
         "quote_text": "just passing here at six minutes to five.",
         "matched_text": "six minutes to five",
@@ -1341,6 +1380,11 @@
         "quote_text": "“Six minutes to five.",
         "matched_text": "Six minutes to five",
         "source_id": "72585"
+      },
+      {
+        "quote_text": "The train arrived at Paddington punctually at five minutes to five.",
+        "matched_text": "five minutes to five",
+        "source_id": "72926"
       }
     ],
     "h5_exact": [
@@ -1384,11 +1428,6 @@
         "source_id": "57088"
       },
       {
-        "quote_text": "As the three officials travelled down to Brooklands by the 5.10 train",
-        "matched_text": "the 5.10",
-        "source_id": "75318"
-      },
-      {
         "quote_text": "Spade returned to his office at ten minutes past five that evening.",
         "matched_text": "ten minutes past five",
         "source_id": "77600"
@@ -1396,19 +1435,19 @@
     ],
     "h5_quarter_past": [
       {
-        "quote_text": "morning, returning by the 5:14 from Cannon Street every night.",
-        "matched_text": "5:14",
-        "source_id": "1661"
-      },
-      {
-        "quote_text": "At 5.14 the",
-        "matched_text": "At 5.14",
-        "source_id": "54109"
-      },
-      {
         "quote_text": "this morning with her husband by the 5:15 train from Charing Cross for",
         "matched_text": "5:15",
         "source_id": "1661"
+      },
+      {
+        "quote_text": "below their house watching the 5.15 steam away from the station along",
+        "matched_text": "the 5.15",
+        "source_id": "1874"
+      },
+      {
+        "quote_text": "quarter-past five, and persuaded them to let him teach them cycling",
+        "matched_text": "quarter-past five",
+        "source_id": "2183"
       }
     ],
     "h5_twenty_past": [
@@ -1433,24 +1472,9 @@
         "quote_text": "said that the afternoon train reached London at twenty-five minutes past five, which would give me thirty-five minutes to take a taxi to my flat,",
         "matched_text": "twenty-five minutes past five",
         "source_id": "20546"
-      },
-      {
-        "quote_text": "had come in, and saying she wanted a few hours’ rest before catching the 5.26 to London, had engaged a bedroom on a quiet floor until that hour.",
-        "matched_text": "the 5.26",
-        "source_id": "65553"
-      },
-      {
-        "quote_text": "therefore have travelled up by an afternoon train, probably the 5.26 or",
-        "matched_text": "the 5.26",
-        "source_id": "65553"
       }
     ],
     "h5_half_past": [
-      {
-        "quote_text": "That would only bring you into Paris at 5.29—five",
-        "matched_text": "at 5.29",
-        "source_id": "72235"
-      },
       {
         "quote_text": "We left the Zoo at half past five and went home and had",
         "matched_text": "half past five",
@@ -1460,40 +1484,11 @@
         "quote_text": "half-past five.",
         "matched_text": "half-past five",
         "source_id": "1155"
-      }
-    ],
-    "h5_twenty_five_to": [
-      {
-        "quote_text": "the 5.35 to Brighton, dined there, and then slipping out of the hotel,",
-        "matched_text": "the 5.35",
-        "source_id": "2013"
       },
       {
-        "quote_text": "tea with him, and saw him off by the 5.35 from Victoria.",
-        "matched_text": "the 5.35",
-        "source_id": "58820"
-      },
-      {
-        "quote_text": "on Thursday, and he could not have arrived back before 5.35 on Friday",
-        "matched_text": "before 5.35",
-        "source_id": "59854"
-      }
-    ],
-    "h5_twenty_to": [
-      {
-        "quote_text": "They left King’s Cross by the 5.40 p.",
-        "matched_text": "the 5.40",
-        "source_id": "2013"
-      },
-      {
-        "quote_text": "that it would arrive at 5.40 on the following afternoon and depart",
-        "matched_text": "at 5.40",
-        "source_id": "61168"
-      },
-      {
-        "quote_text": "shot as likely as not, by the 5.40, and the foreign gentleman’s valet.",
-        "matched_text": "the 5.40",
-        "source_id": "65238"
+        "quote_text": "About half past five o'clock we arrived at a",
+        "matched_text": "half past five",
+        "source_id": "119"
       }
     ],
     "h5_quarter_to": [
@@ -1515,19 +1510,9 @@
     ],
     "h5_ten_to": [
       {
-        "quote_text": "Catch 5.49 train.",
-        "matched_text": "Catch 5.49",
-        "source_id": "65238"
-      },
-      {
         "quote_text": "clock pointed to ten minutes to six.",
         "matched_text": "ten minutes to six",
         "source_id": "72926"
-      },
-      {
-        "quote_text": "he had caught the 5.52 to Ilford.",
-        "matched_text": "the 5.52",
-        "source_id": "65553"
       }
     ],
     "h5_five_to": [
@@ -1542,9 +1527,9 @@
         "source_id": "73155"
       },
       {
-        "quote_text": "at 5.55 and as soon as it was dark the work of the exhumation began.",
-        "matched_text": "at 5.55",
-        "source_id": "75318"
+        "quote_text": "It was nearly six o’clock.",
+        "matched_text": "nearly six o’clock",
+        "source_id": "1155"
       }
     ],
     "h6_exact": [
@@ -1586,11 +1571,6 @@
         "quote_text": "pointed to ten minutes past six at the moment.",
         "matched_text": "ten minutes past six",
         "source_id": "126"
-      },
-      {
-        "quote_text": "goods station at 6.10 p.",
-        "matched_text": "at 6.10",
-        "source_id": "59854"
       }
     ],
     "h6_quarter_past": [
@@ -1612,31 +1592,19 @@
     ],
     "h6_twenty_past": [
       {
-        "quote_text": "At 6.20 he could stand it no longer, and at risk of meeting Archer,",
-        "matched_text": "At 6.20",
-        "source_id": "2013"
-      },
-      {
         "quote_text": "“At twenty minutes past six o’clock, the barometer showed an",
         "matched_text": "twenty minutes past six",
         "source_id": "2147"
       },
       {
-        "quote_text": "p. m. at the latest, probably by 6.20 p. m.",
-        "matched_text": "by 6.20",
-        "source_id": "75318"
-      }
-    ],
-    "h6_twenty_five_past": [
-      {
-        "quote_text": "15—clock at 6.25—slipped out of the window",
-        "matched_text": "at 6.25",
+        "quote_text": "York’s Steps by about 6.20 p.",
+        "matched_text": "about 6.20",
         "source_id": "75318"
       },
       {
-        "quote_text": "Wraile must have been in position near the Admiralty Arch by 6.25",
-        "matched_text": "by 6.25",
-        "source_id": "75318"
+        "quote_text": "to be brought round, and was at the \"Cart and Horses\" by twenty past six.",
+        "matched_text": "twenty past six",
+        "source_id": "9808"
       }
     ],
     "h6_half_past": [
@@ -1658,36 +1626,31 @@
     ],
     "h6_twenty_five_to": [
       {
-        "quote_text": "“Reached Turin by Mont Cenis, Friday, October 4th, at 6.35 a.m.",
-        "matched_text": "at 6.35",
-        "source_id": "103"
-      },
-      {
-        "quote_text": "Merriman thanked him, and later on the two friends took the 6.35 train",
-        "matched_text": "the 6.35",
-        "source_id": "2013"
-      },
-      {
         "quote_text": "turned to the ornamental clock that pointed to twenty-five minutes to seven.",
         "matched_text": "twenty-five minutes to seven",
         "source_id": "44385"
+      },
+      {
+        "quote_text": "I went to the Grosvenor at 6.35 or",
+        "matched_text": "at 6.35",
+        "source_id": "72816"
       }
     ],
     "h6_twenty_to": [
       {
-        "quote_text": "duty at 6.38 p.",
-        "matched_text": "at 6.38",
-        "source_id": "75669"
-      },
-      {
-        "quote_text": "This telegram was received at 6.40.",
-        "matched_text": "at 6.40",
-        "source_id": "54109"
-      },
-      {
         "quote_text": "But about twenty minutes to seven, as",
         "matched_text": "twenty minutes to seven",
         "source_id": "558"
+      },
+      {
+        "quote_text": "“The usual time, about twenty minutes to seven.",
+        "matched_text": "twenty minutes to seven",
+        "source_id": "72771"
+      },
+      {
+        "quote_text": "\"I should reckon it was about twenty minutes to seven, sir, or just a",
+        "matched_text": "twenty minutes to seven",
+        "source_id": "72855"
       }
     ],
     "h6_quarter_to": [
@@ -1714,14 +1677,9 @@
         "source_id": "2776"
       },
       {
-        "quote_text": "At 6.50 a second message was",
-        "matched_text": "At 6.50",
-        "source_id": "54109"
-      },
-      {
-        "quote_text": "journey to Manchester was resumed, and Rugby was reached at 6.50, the",
-        "matched_text": "at 6.50",
-        "source_id": "54109"
+        "quote_text": "and ten to seven, as near as I can recollect.",
+        "matched_text": "ten to seven",
+        "source_id": "72855"
       }
     ],
     "h6_five_to": [
@@ -1811,11 +1769,6 @@
     ],
     "h7_twenty_past": [
       {
-        "quote_text": "“Reached Paris, Thursday, October 3rd, at 7.20 a.m.",
-        "matched_text": "at 7.20",
-        "source_id": "103"
-      },
-      {
         "quote_text": "on the clock, which was verging on twenty minutes past seven, and she",
         "matched_text": "twenty minutes past seven",
         "source_id": "20546"
@@ -1824,6 +1777,11 @@
         "quote_text": "And so at about twenty minutes past seven the _maître d’hôtel_ was",
         "matched_text": "twenty minutes past seven",
         "source_id": "49935"
+      },
+      {
+        "quote_text": "At twenty minutes past seven he was driving his car",
+        "matched_text": "twenty minutes past seven",
+        "source_id": "72462"
       }
     ],
     "h7_twenty_five_past": [
@@ -1860,13 +1818,6 @@
         "source_id": "103"
       }
     ],
-    "h7_twenty_five_to": [
-      {
-        "quote_text": "“To catch the 7.35 up train.",
-        "matched_text": "the 7.35",
-        "source_id": "75669"
-      }
-    ],
     "h7_twenty_to": [
       {
         "quote_text": "Twenty-one minutes to eight!",
@@ -1886,11 +1837,6 @@
     ],
     "h7_quarter_to": [
       {
-        "quote_text": "last night, leaving Norden at 7.43 and reaching Esens at 8.",
-        "matched_text": "at 7.43",
-        "source_id": "2360"
-      },
-      {
         "quote_text": "“There will call upon you to-night, at a quarter to eight o’clock,” it",
         "matched_text": "quarter to eight",
         "source_id": "1661"
@@ -1899,14 +1845,14 @@
         "quote_text": "to give me the chance of preventing him from catching the 7.45 for",
         "matched_text": "the 7.45",
         "source_id": "1695"
+      },
+      {
+        "quote_text": "About a quarter to eight a man appeared where the lane from the road",
+        "matched_text": "quarter to eight",
+        "source_id": "2013"
       }
     ],
     "h7_ten_to": [
-      {
-        "quote_text": "he had time for a bath and breakfast before catching the 7.50 a.",
-        "matched_text": "the 7.50",
-        "source_id": "2013"
-      },
       {
         "quote_text": "“But don’t be late, Count, if I may venture to ask; about ten minutes to eight, please.",
         "matched_text": "ten minutes to eight",
@@ -1916,6 +1862,11 @@
         "quote_text": "‘About ten minutes to eight.",
         "matched_text": "ten minutes to eight",
         "source_id": "72235"
+      },
+      {
+        "quote_text": "By ten minutes to eight he had",
+        "matched_text": "ten minutes to eight",
+        "source_id": "72462"
       }
     ],
     "h7_five_to": [
@@ -1930,9 +1881,9 @@
         "source_id": "5247"
       },
       {
-        "quote_text": "2 had left at 7.55 with one passenger and two outside",
-        "matched_text": "at 7.55",
-        "source_id": "65553"
+        "quote_text": "The storm of rain and wind descended upon them towards eight o’clock.",
+        "matched_text": "towards eight o’clock",
+        "source_id": "103"
       }
     ],
     "h8_exact": [
@@ -2022,19 +1973,19 @@
     ],
     "h8_twenty_five_past": [
       {
-        "quote_text": "his mistake only meant that he would reach there at 8.24 a.",
-        "matched_text": "at 8.24",
-        "source_id": "72235"
-      },
-      {
-        "quote_text": "\"Shall leave for Woldhurst by 8.25 from Charing Cross.",
-        "matched_text": "by 8.25",
-        "source_id": "13882"
-      },
-      {
         "quote_text": "twenty-five minutes past eight a second shock took place, this time",
         "matched_text": "twenty-five minutes past eight",
         "source_id": "164"
+      },
+      {
+        "quote_text": "“Five-and-twenty minutes past eight!",
+        "matched_text": "Five-and-twenty minutes past eight",
+        "source_id": "4014"
+      },
+      {
+        "quote_text": "“Five and twenty minutes past eight, Winnie.",
+        "matched_text": "Five and twenty minutes past eight",
+        "source_id": "974"
       }
     ],
     "h8_half_past": [
@@ -2055,11 +2006,6 @@
       }
     ],
     "h8_twenty_five_to": [
-      {
-        "quote_text": "just able to catch the last train, the 8.34 which would land us in town",
-        "matched_text": "the 8.34",
-        "source_id": "70114"
-      },
       {
         "quote_text": "thirty-five minutes past eight.",
         "matched_text": "thirty-five minutes past eight",
@@ -2180,48 +2126,38 @@
         "source_id": "36"
       },
       {
-        "quote_text": "caught the 9.10 p.",
-        "matched_text": "the 9.10",
-        "source_id": "10556"
+        "quote_text": "At ten minutes past nine, exactly, the door opened, and a thick-set,",
+        "matched_text": "ten minutes past nine",
+        "source_id": "2028"
       },
       {
-        "quote_text": "her seat in a first-class carriage of the 9.10 train, some minutes",
-        "matched_text": "the 9.10",
-        "source_id": "10556"
+        "quote_text": "indicates ten minutes past nine.",
+        "matched_text": "ten minutes past nine",
+        "source_id": "34732"
       }
     ],
     "h9_quarter_past": [
       {
-        "quote_text": "Wittmund at 9.13.",
-        "matched_text": "at 9.13",
-        "source_id": "2360"
-      },
-      {
-        "quote_text": "\"It was put through at 9.13 P.",
-        "matched_text": "at 9.13",
-        "source_id": "72855"
-      },
-      {
         "quote_text": "At thirteen minutes past nine he composed his face into a dour truculence, an expression to which",
         "matched_text": "thirteen minutes past nine",
         "source_id": "9808"
+      },
+      {
+        "quote_text": "fellows late for the 9.15 move less nippily.",
+        "matched_text": "the 9.15",
+        "source_id": "10554"
+      },
+      {
+        "quote_text": "about 9.15.",
+        "matched_text": "about 9.15",
+        "source_id": "10556"
       }
     ],
     "h9_twenty_past": [
       {
-        "quote_text": "left Selby at 9.19, fifty-eight minutes after the Doncaster train",
-        "matched_text": "at 9.19",
-        "source_id": "2013"
-      },
-      {
-        "quote_text": "\"Yes, at 9.20 in West Street; that would give Edward Skinner time to",
-        "matched_text": "at 9.20",
-        "source_id": "10556"
-      },
-      {
-        "quote_text": "it's marked 'received at 9.20'--that means the time it was received at",
-        "matched_text": "at 9.20",
-        "source_id": "20912"
+        "quote_text": "rang the bell at twenty minutes past nine, and I opened the door to him",
+        "matched_text": "twenty minutes past nine",
+        "source_id": "58820"
       }
     ],
     "h9_twenty_five_past": [
@@ -2276,11 +2212,6 @@
       }
     ],
     "h9_twenty_to": [
-      {
-        "quote_text": "Willis was not dissatisfied with their progress when at 9.38,",
-        "matched_text": "at 9.38",
-        "source_id": "2013"
-      },
       {
         "quote_text": "Nevertheless, at twenty minutes to ten o’clock, Oak came out of his house, and",
         "matched_text": "twenty minutes to ten",
@@ -2408,11 +2339,6 @@
     ],
     "h10_twenty_past": [
       {
-        "quote_text": "the north which comes in at 10.19 and leaves at 10.",
-        "matched_text": "at 10.19",
-        "source_id": "69087"
-      },
-      {
         "quote_text": "Therefore Sir Horace was shot about 10.20; certainly before",
         "matched_text": "about 10.20",
         "source_id": "10082"
@@ -2421,23 +2347,28 @@
         "quote_text": "It was nearly twenty minutes past ten.",
         "matched_text": "twenty minutes past ten",
         "source_id": "2028"
+      },
+      {
+        "quote_text": "Twenty past ten.",
+        "matched_text": "Twenty past ten",
+        "source_id": "72462"
       }
     ],
     "h10_twenty_five_past": [
       {
-        "quote_text": "A note was handed to me at the station at 10.23 a.",
-        "matched_text": "at 10.23",
-        "source_id": "11128"
+        "quote_text": "At thirty-five minutes past ten, Captain Nemo quitted the helm, and,",
+        "matched_text": "thirty-five minutes past ten",
+        "source_id": "164"
       },
       {
-        "quote_text": "19 and leaves at 10.23.",
-        "matched_text": "at 10.23",
-        "source_id": "69087"
+        "quote_text": "\"At twenty-five minutes past ten,\" replied the clerk shortly.",
+        "matched_text": "twenty-five minutes past ten",
+        "source_id": "4745"
       },
       {
-        "quote_text": "And at 10.23 the",
-        "matched_text": "at 10.23",
-        "source_id": "69087"
+        "quote_text": "“About twenty-five minutes after ten, monsieur.",
+        "matched_text": "twenty-five minutes after ten",
+        "source_id": "58866"
       }
     ],
     "h10_half_past": [
@@ -2469,17 +2400,12 @@
         "source_id": "164"
       },
       {
-        "quote_text": "at 10.35, and going down to Paragon Station, got on board.",
-        "matched_text": "at 10.35",
-        "source_id": "2013"
+        "quote_text": "At twenty-five minutes to eleven, Helen Cumberly came running down the steps of the hotel and",
+        "matched_text": "twenty-five minutes to eleven",
+        "source_id": "2028"
       }
     ],
     "h10_twenty_to": [
-      {
-        "quote_text": "car for the 10.40, by the way.",
-        "matched_text": "the 10.40",
-        "source_id": "65238"
-      },
       {
         "quote_text": "Mainwaring heard the girl get into bed at about 10.40.",
         "matched_text": "about 10.40",
@@ -2520,9 +2446,9 @@
         "source_id": "164"
       },
       {
-        "quote_text": "22 from Leer and the south, and one at 10.50 from the north.",
-        "matched_text": "at 10.50",
-        "source_id": "2360"
+        "quote_text": "At ten minutes to eleven the drama was still going strong, with",
+        "matched_text": "ten minutes to eleven",
+        "source_id": "31361"
       }
     ],
     "h10_five_to": [
@@ -2537,9 +2463,9 @@
         "source_id": "24"
       },
       {
-        "quote_text": "an appointment for two o’clock, then, taking the 10.55 a.",
-        "matched_text": "the 10.55",
-        "source_id": "72235"
+        "quote_text": "It is fifty-five minutes past ten; we have been gone about eight minutes; and if our initiatory speed",
+        "matched_text": "fifty-five minutes past ten",
+        "source_id": "83"
       }
     ],
     "h11_exact": [
@@ -2612,19 +2538,19 @@
     ],
     "h11_twenty_past": [
       {
-        "quote_text": "accord at 11.19, before he was shot at all.",
-        "matched_text": "at 11.19",
-        "source_id": "73126"
+        "quote_text": "The time was about 11.20.",
+        "matched_text": "about 11.20",
+        "source_id": "10082"
       },
       {
-        "quote_text": "because he couldn't have heard the shot at 11.19, being so far away.",
-        "matched_text": "at 11.19",
-        "source_id": "73126"
+        "quote_text": "twenty minutes past eleven, by my watch, when the preparations were",
+        "matched_text": "twenty minutes past eleven",
+        "source_id": "155"
       },
       {
-        "quote_text": "“First, Staveley had banged his wrist and stopped his watch at 11.19.",
-        "matched_text": "at 11.19",
-        "source_id": "73126"
+        "quote_text": "This was about twenty minutes after eleven.",
+        "matched_text": "twenty minutes after eleven",
+        "source_id": "2358"
       }
     ],
     "h11_twenty_five_past": [
@@ -2651,14 +2577,14 @@
         "source_id": "103"
       },
       {
-        "quote_text": "take the 11.29 to get from the station to the place where they were, or",
-        "matched_text": "the 11.29",
-        "source_id": "1874"
+        "quote_text": "At exactly half-past eleven Mr.",
+        "matched_text": "half-past eleven",
+        "source_id": "103"
       },
       {
-        "quote_text": "“The 11.29 down hasn't gone by yet.",
-        "matched_text": "The 11.29",
-        "source_id": "1874"
+        "quote_text": "At half-past eleven, then, Passepartout found himself alone in the",
+        "matched_text": "half-past eleven",
+        "source_id": "103"
       }
     ],
     "h11_twenty_five_to": [
@@ -2673,9 +2599,9 @@
         "source_id": "1661"
       },
       {
-        "quote_text": "He therefore took the 11.35",
-        "matched_text": "the 11.35",
-        "source_id": "71073"
+        "quote_text": "It was the second shot, about 11.35, that he heard.",
+        "matched_text": "about 11.35",
+        "source_id": "73126"
       }
     ],
     "h11_twenty_to": [
@@ -2685,14 +2611,9 @@
         "source_id": "174"
       },
       {
-        "quote_text": "A car stopped outside the park at 11.40 last night.",
-        "matched_text": "at 11.40",
-        "source_id": "65238"
-      },
-      {
-        "quote_text": "That night French took the 11.40 sleeping car express from King’s",
-        "matched_text": "the 11.40",
-        "source_id": "71073"
+        "quote_text": "It was now twenty minutes to twelve.",
+        "matched_text": "twenty minutes to twelve",
+        "source_id": "75288"
       }
     ],
     "h11_quarter_to": [
@@ -2731,19 +2652,19 @@
     ],
     "h11_five_to": [
       {
-        "quote_text": "” asked Bobbie, but already the 11.54 was",
-        "matched_text": "the 11.54",
-        "source_id": "1874"
+        "quote_text": "neighbouring clock showed the time to be five minutes to twelve.",
+        "matched_text": "five minutes to twelve",
+        "source_id": "1155"
       },
       {
-        "quote_text": "Only three people got out of the 11.54.",
-        "matched_text": "the 11.54",
-        "source_id": "1874"
+        "quote_text": "It wanted five minutes to twelve, when the",
+        "matched_text": "five minutes to twelve",
+        "source_id": "155"
       },
       {
-        "quote_text": "Perks did not appear until the 11.54 was signalled, and then he, like",
-        "matched_text": "the 11.54",
-        "source_id": "1874"
+        "quote_text": "It was five minutes to twelve.",
+        "matched_text": "five minutes to twelve",
+        "source_id": "72235"
       }
     ],
     "h12_five_past": [
@@ -2782,19 +2703,19 @@
     ],
     "h12_quarter_past": [
       {
-        "quote_text": "“It has stopped at 12.13.",
-        "matched_text": "at 12.13",
-        "source_id": "59478"
-      },
-      {
-        "quote_text": "“The boat train to Holyhead stops at Chester at 12.14.",
-        "matched_text": "at 12.14",
-        "source_id": "1155"
-      },
-      {
         "quote_text": "\"It would be about a quarter past twelve, sir.",
         "matched_text": "quarter past twelve",
         "source_id": "10082"
+      },
+      {
+        "quote_text": "in here about a quarter past twelve yesterday morning, and booked",
+        "matched_text": "quarter past twelve",
+        "source_id": "10373"
+      },
+      {
+        "quote_text": "I shall not give it up till a quarter after twelve.",
+        "matched_text": "quarter after twelve",
+        "source_id": "121"
       }
     ],
     "h12_twenty_past": [
@@ -2824,70 +2745,33 @@
         "quote_text": "\"It is now twenty-five minutes past twelve.",
         "matched_text": "twenty-five minutes past twelve",
         "source_id": "173"
-      },
-      {
-        "quote_text": "At 12.25 they reached King’s Cross.",
-        "matched_text": "At 12.25",
-        "source_id": "2013"
       }
     ],
     "h12_half_past": [
       {
-        "quote_text": "00 and reaches Grantham at 12.28, ten minutes before the 10.",
-        "matched_text": "at 12.28",
-        "source_id": "72235"
-      },
-      {
-        "quote_text": "for Grantham, arriving at 12.28.",
-        "matched_text": "at 12.28",
-        "source_id": "72235"
-      },
-      {
         "quote_text": "\"It's almost half-past twelve now.",
         "matched_text": "half-past twelve",
         "source_id": "10082"
-      }
-    ],
-    "h12_twenty_five_to": [
-      {
-        "quote_text": "It gets to Lisbon at 12.33",
-        "matched_text": "at 12.33",
-        "source_id": "72235"
       },
       {
-        "quote_text": "He declined, saying he was going to Orléans by the 12.35 from the",
-        "matched_text": "the 12.35",
-        "source_id": "59854"
+        "quote_text": "At half-past twelve the train stopped at Benares.",
+        "matched_text": "half-past twelve",
+        "source_id": "103"
       },
       {
-        "quote_text": "Your friend went by the 12.35",
-        "matched_text": "the 12.35",
-        "source_id": "59854"
+        "quote_text": "At half-past twelve the train stopped at Burhampoor where Passepartout",
+        "matched_text": "half-past twelve",
+        "source_id": "103"
       }
     ],
     "h12_twenty_to": [
       {
-        "quote_text": "Can you catch the 12.40?",
-        "matched_text": "the 12.40",
-        "source_id": "10082"
-      },
-      {
-        "quote_text": "\"The next train leaves at 12.40,\" he informed her.",
-        "matched_text": "at 12.40",
-        "source_id": "10082"
-      },
-      {
-        "quote_text": "Davenheim took the 12.40 train from Victoria to Chingside, where his palatial country",
-        "matched_text": "the 12.40",
-        "source_id": "61262"
+        "quote_text": "It was twenty minutes to one--just an hour",
+        "matched_text": "twenty minutes to one",
+        "source_id": "75288"
       }
     ],
     "h12_quarter_to": [
-      {
-        "quote_text": "the same station ten minutes later, proceeding at 12.43.",
-        "matched_text": "at 12.43",
-        "source_id": "72235"
-      },
       {
         "quote_text": "“He will be home, sir, at a quarter to one.",
         "matched_text": "quarter to one",
@@ -2897,6 +2781,23 @@
         "quote_text": "be in the carriage by ten; so, about a quarter before one on Wednesday,",
         "matched_text": "quarter before one",
         "source_id": "121"
+      },
+      {
+        "quote_text": "At a quarter to one, dirty and dishevelled, cut and bleeding, he said: \"I",
+        "matched_text": "quarter to one",
+        "source_id": "2183"
+      }
+    ],
+    "h12_ten_to": [
+      {
+        "quote_text": "time it wanted but ten minutes of one o’clock, and we began to look out",
+        "matched_text": "ten minutes of one",
+        "source_id": "1400"
+      },
+      {
+        "quote_text": "ten minutes to one.",
+        "matched_text": "ten minutes to one",
+        "source_id": "75288"
       }
     ],
     "h12_five_to": [

@@ -30,7 +30,7 @@ from pathlib import Path
 from idle_hours import atomic_io, pick_quote
 from idle_hours.buckets import bucket_for_time
 from idle_hours.jsonl_io import iter_jsonl
-from idle_hours.match_span import has_display_match
+from idle_hours.match_span import has_display_match, states_too_precise_a_time
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -132,7 +132,7 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
 
     Drop reasons are mutually exclusive; a row is only counted under the first
     reason that applies, in the order checked: no/invalid bucket → no
-    display_quote → low quality → no display match.
+    display_quote → low quality → no display match → too precise a time.
 
     ``fuzzy_bucket`` is validated against :func:`pick_quote.valid_bucket_names`
     rather than just truthy-checked: the raw-corpus picker silently ignores
@@ -143,7 +143,7 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
     """
     valid = pick_quote.valid_bucket_names()
     kept: list[dict] = []
-    drops = {"no_bucket": 0, "no_display_quote": 0, "low_quality": 0, "no_display_match": 0}
+    drops = {"no_bucket": 0, "no_display_quote": 0, "low_quality": 0, "no_display_match": 0, "too_precise": 0}
     for row in rows:
         bucket = row.get("fuzzy_bucket")
         if not bucket or bucket not in valid:
@@ -159,6 +159,9 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
             continue
         if not has_display_match(row):
             drops["no_display_match"] += 1
+            continue
+        if states_too_precise_a_time(row):
+            drops["too_precise"] += 1
             continue
         kept.append(row)
     return kept, drops
@@ -270,7 +273,8 @@ def main() -> int:
         f"(dropped {drops['no_bucket']} no-bucket, "
         f"{drops['no_display_quote']} no-display-quote, "
         f"{drops['low_quality']} below quality {args.min_quality}, "
-        f"{drops['no_display_match']} with no display match)",
+        f"{drops['no_display_match']} with no display match, "
+        f"{drops['too_precise']} with too precise a time)",
         file=sys.stdout,
     )
     print(

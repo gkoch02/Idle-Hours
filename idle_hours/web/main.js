@@ -902,7 +902,7 @@ async function bakeNow() {
     `baked ${data.kept} rows from ${data.input} input (overrides applied: ${data.applied_overrides}` +
     (data.reverted_overrides ? `, reverted: ${data.reverted_overrides}` : "") + ", " +
     `dropped ${drops.no_bucket} no-bucket / ${drops.no_display_quote} no-quote / ${drops.low_quality} low-quality / ` +
-    `${drops.no_display_match} unhighlightable). ` +
+    `${drops.no_display_match} unhighlightable / ${drops.too_precise} too precise). ` +
     `Next tick will pick up the new database.`,
     "ok",
   );

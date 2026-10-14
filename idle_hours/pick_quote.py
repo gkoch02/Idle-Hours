@@ -23,7 +23,7 @@ from idle_hours.buckets import (
     rederive_buckets,
 )
 from idle_hours.jsonl_io import iter_jsonl
-from idle_hours.match_span import has_display_match
+from idle_hours.match_span import has_display_match, states_too_precise_a_time
 
 DEFAULT_HISTORY_PATH = "~/.idle-hours/history.jsonl"
 # Sixty days, not a week. A bucket comes round twice a day (the twelve-hour
@@ -577,6 +577,7 @@ SHIPPED_BAN_QUOTE_KEYS: frozenset[str] = frozenset({
     "75288:4513",  # The Seven Dials Mystery: "five o’clock" is a masked member's name, not a time
     "75288:4568",  # The Seven Dials Mystery: "five o’clock" is a masked member's name, not a time
     "75288:4532",  # The Seven Dials Mystery: "seven o’clock" is a masked member's name, not a time
+    "200:20048",  # The Project Gutenberg Encyclopedia, Volume 1: "about 0.08 volt" is a voltage, not a time
 })
 
 
@@ -1088,6 +1089,9 @@ def pick_best(
             and (row.get("quality_score") is None or row.get("quality_score", 0) >= min_quality)
             # The baker drops these too; skipping them here keeps raw and baked picks equal (issue #411).
             and has_display_match(row)
+            # Also dropped by the baker; the gate here also reaches an existing
+            # appliance, whose relocated baked DB an upgrade never rewrites.
+            and not states_too_precise_a_time(row)
         ]
         if not candidates:
             continue
