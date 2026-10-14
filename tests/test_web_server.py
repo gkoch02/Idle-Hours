@@ -1557,7 +1557,7 @@ class TestErrorBranches:
 
 # ============================================================================
 # Phase 4 observability — structured web telemetry
-# (github.com/gkoch02/idle-hours issue #55)
+# (github.com/gkoch02/IdleHours issue #55)
 # ============================================================================
 
 

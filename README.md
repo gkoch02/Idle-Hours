@@ -4,7 +4,7 @@
 
 # Idle Hours
 
-[![CI](https://github.com/gkoch02/Idle-Hours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/Idle-Hours/actions/workflows/ci.yml)
+[![CI](https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml)
 
 Idle Hours is a literary clock: every few minutes it shows a sentence from a public-domain novel that names the current time, with the time phrase picked out in bold. Behind it is a pipeline that mines Project Gutenberg for phrases like "a quarter past seven", cleans and scores them, and bakes over two thousand quotes into a database ranked for each five-minute slot of the twelve-hour clock. A Raspberry Pi renders the pick for a six-colour eInk panel and runs unattended as a systemd appliance, with a small web UI for curating the corpus.
 
@@ -752,7 +752,7 @@ python -c 'import lgpio, RPi.GPIO; print("GPIO backend: ok")'
 
 ```bash
 source ~/.virtualenvs/pimoroni/bin/activate
-git clone git@github.com:gkoch02/Idle-Hours.git ~/IdleHours
+git clone git@github.com:gkoch02/IdleHours.git ~/IdleHours
 cd ~/IdleHours
 pip install -e '.[pi]'
 idle-hours run --once

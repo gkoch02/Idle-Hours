@@ -11,7 +11,7 @@ runs the sync command.
 First time (creates the ruleset):
 
 ```bash
-gh api --method POST /repos/gkoch02/Idle-Hours/rulesets \
+gh api --method POST /repos/gkoch02/IdleHours/rulesets \
   --input .github/rulesets/main-branch.json
 ```
 
@@ -19,17 +19,17 @@ Subsequent edits (replaces the existing ruleset in place). Note the ruleset is
 addressed by numeric id, not by name, so look it up first:
 
 ```bash
-RULESET_ID=$(gh api /repos/gkoch02/Idle-Hours/rulesets \
+RULESET_ID=$(gh api /repos/gkoch02/IdleHours/rulesets \
   --jq '.[] | select(.name=="Protect main") | .id')
 
-gh api --method PUT "/repos/gkoch02/Idle-Hours/rulesets/$RULESET_ID" \
+gh api --method PUT "/repos/gkoch02/IdleHours/rulesets/$RULESET_ID" \
   --input .github/rulesets/main-branch.json
 ```
 
 Verify afterwards — this should list the same contexts as the JSON:
 
 ```bash
-gh api "/repos/gkoch02/Idle-Hours/rulesets/$RULESET_ID" \
+gh api "/repos/gkoch02/IdleHours/rulesets/$RULESET_ID" \
   --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
 ```
 
@@ -47,7 +47,7 @@ exist *precisely because the `test` matrix structurally cannot catch what they
 catch* unable to block anything:
 
 - **`golden-render`** — the only guard on the 63 committed PNG fixtures. Run
-  [32632086003](https://github.com/gkoch02/Idle-Hours/actions/runs/32632086003),
+  [32632086003](https://github.com/gkoch02/IdleHours/actions/runs/32632086003),
   the merge commit for #217, went red on `main` with `golden-render` failing,
   while the PR's own run was fully green.
 - **`web-ui-js`** — the only thing that actually runs the curator UI's

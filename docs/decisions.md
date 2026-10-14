@@ -2,7 +2,7 @@
 
 What Idle Hours deliberately does not do, and why. Each entry links to where the full reasoning lives.
 
-- **The `digital` matcher's in-prose defect stays unfixed** ([#159](https://github.com/gkoch02/Idle-Hours/issues/159), closed won't-fix). The bug is in a code path `--strict` never runs, and the committed corpus was never built from digital matches. A fix would need a non-strict re-mine to have any effect.
+- **The `digital` matcher's in-prose defect stays unfixed** ([#159](https://github.com/gkoch02/IdleHours/issues/159), closed won't-fix). The bug is in a code path `--strict` never runs, and the committed corpus was never built from digital matches. A fix would need a non-strict re-mine to have any effect.
 - **No minutes-less "ten past two" pattern.** "Ten to one" is betting odds as often as it is a time, so the false positives would outweigh the gain ([`CLAUDE.md`](../CLAUDE.md), Match Types).
 - **The hanging opening quote mark stays at a fixed x.** A version that fitted the mark into the gutter was tried and reverted: the shrunken marks lost the gesture. The mark running under the first word on wider measures is a style choice, not a bug.
 - **Hand fixes go in a sidecar, not in repair scripts.** Per-row fixes live in [`content_overrides.json`](../idle_hours/assets/content_overrides.json) and are re-applied at the end of every pipeline run, so a re-mine cannot silently undo them. Many overrides for the same reason count as a bug in the upstream stage, to be fixed there.

@@ -578,7 +578,7 @@ class TestBackoffNotCountedAsRender:
 class TestActionSummarisation:
     """Phase 4 observability — operator actions, press-drops, web auth
     failures, and quiet-window transitions surface as counters in the
-    summary. See github.com/gkoch02/idle-hours issue #55.
+    summary. See github.com/gkoch02/IdleHours issue #55.
     """
 
     def test_actions_broken_down_by_type(self):

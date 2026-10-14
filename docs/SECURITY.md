@@ -15,9 +15,9 @@ there are no long-lived release branches.
 **Please do not open a public GitHub issue for security reports.**
 
 Use GitHub's private vulnerability reporting to file a report against
-`gkoch02/idle-hours`:
+`gkoch02/IdleHours`:
 
-- https://github.com/gkoch02/idle-hours/security/advisories/new
+- https://github.com/gkoch02/IdleHours/security/advisories/new
 
 Include:
 
