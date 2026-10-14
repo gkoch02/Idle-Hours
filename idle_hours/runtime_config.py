@@ -86,6 +86,7 @@ CONFIG_SCHEMA: dict[str, object] = {
     "content_overrides": str,
     "raw_corpus": str,
     "baked_db": str,
+    "freeze_corpus": bool,
 }
 
 # Flags that exist on the CLI but are intentionally refused in the config

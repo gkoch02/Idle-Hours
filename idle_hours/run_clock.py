@@ -6,7 +6,9 @@ import argparse
 import contextlib
 import datetime as dt
 import errno
+import hashlib
 import importlib.util
+import json
 import os
 import shlex
 import signal
@@ -15,12 +17,14 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 
 from idle_hours import (
     apply_content_overrides,
     atomic_io,
+    bake_quote_database,
+    bucket_coverage,
     pidfile,
     runtime_actions,
     runtime_config,
@@ -34,6 +38,8 @@ from idle_hours import (
     theme_names,
 )
 from idle_hours import pick_quote as pick_quote_module
+from idle_hours.buckets import rederive_buckets
+from idle_hours.jsonl_io import iter_jsonl
 from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
@@ -479,6 +485,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Rewritten in place by the curator UI's POST /api/bake, so it must "
             "live on a writable path under a sandboxed unit. Unset uses the "
             "bundled copy inside the installed package."
+        ),
+    )
+    parser.add_argument(
+        "--freeze-corpus",
+        action="store_true",
+        help=(
+            "Keep a relocated --raw-corpus / --baked-db as they are across upgrades. "
+            "By default, when the installed package ships a different corpus, the "
+            "relocated pair is rebuilt from it at startup with --content-overrides "
+            "re-applied. For an operator who maintains their own corpus."
         ),
     )
     parser.add_argument(
@@ -1223,13 +1239,9 @@ def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
     errors: list[str] = []
     for attr, bundled in _SEEDED_CORPUS_PATHS:
         value = getattr(args, attr)
-        if not value:
-            continue
-        dest = Path(value).expanduser()
-        # Default (still pointing at the bundled asset) — nothing to seed.
-        if dest == bundled or dest.resolve() == bundled.resolve():
-            continue
-        if dest.exists():
+        dest = _relocated(args, attr, bundled)
+        # Unset, or still pointing at the bundled asset: nothing to seed.
+        if dest is None or dest.exists():
             continue
         if not bundled.exists():
             # Nothing to copy from. Not fatal on its own: the corpus guard in
@@ -1254,6 +1266,281 @@ def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
                 f"{bundled}: {exc!r}"
             )
     return errors
+
+
+# Written beside the relocated corpus; records which bundle it was built from.
+CORPUS_STAMP_NAME = "corpus-seed.json"
+# Kept beside each refreshed corpus file: the copy it replaced.
+CORPUS_BACKUP_SUFFIX = ".prev"
+
+
+def _relocated(args: argparse.Namespace, attr: str, bundled: Path) -> Path | None:
+    """The configured path for ``attr`` when it is not the bundled copy, else None."""
+    value = getattr(args, attr)
+    if not value:
+        return None
+    dest = Path(value).expanduser()
+    if dest == bundled or dest.resolve() == bundled.resolve():
+        return None
+    return dest
+
+
+def _file_signature(path: Path) -> list[int]:
+    st = path.stat()
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _bundle_digest(raw: Path, baked: Path) -> str:
+    """sha256 over the bundled raw corpus and baked DB, in that order.
+
+    Both go in: the raw corpus changes with a corpus expansion or a cleaner
+    fix, the baked DB also changes when only the baker or the picker's
+    displayability gates do.
+    """
+    digest = hashlib.sha256()
+    for path in (raw, baked):
+        digest.update(path.name.encode() + b"\0")
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_corpus_stamp(path: Path) -> dict:
+    try:
+        stamp = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return stamp if isinstance(stamp, dict) else {}
+
+
+def _load_operator_content_overrides(path: Path) -> dict | None:
+    """The operator's content overrides, or None when they can't be trusted.
+
+    ``apply_content_overrides.load_overrides`` fails open to ``{}``, which is
+    right for a bake the operator asked for but wrong here: re-applying an
+    empty sidecar restores every overridden row from ``override_originals``,
+    so a truncated sidecar would silently undo every content fix at upgrade
+    time. A refresh skips instead and retries on the next start.
+    """
+    if not path.exists():
+        return None
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _keys_applied_in(raw_path: Path) -> set[str] | None:
+    """Override keys whose rows in ``raw_path`` still carry their ledger.
+
+    Stands in for the previous bundle's sidecar on an install that predates
+    the stamp: the relocated raw corpus was seeded from that bundle with every
+    shipped override applied and recorded in ``override_originals``, so a key
+    with a ledger there and none in the operator's sidecar is one they deleted
+    (and haven't baked since). A deletion that was baked took the ledger with
+    it and can't be told from a fix new to this bundle. None when the file
+    can't be read.
+    """
+    try:
+        return {
+            key for row in iter_jsonl(raw_path)
+            if row.get(apply_content_overrides.ORIGINALS_FIELD)
+            and (key := apply_content_overrides.row_key(row)) is not None
+        }
+    except OSError:
+        return None
+
+
+def _fold_new_shipped_overrides(
+    rows: list[dict], sidecar: dict, shipped: dict, previous_shipped: Collection[str] | None,
+) -> list[dict]:
+    """Make content fixes the operator's sidecar has never seen part of the corpus.
+
+    The bundled raw corpus carries every shipped override with its
+    ``override_originals`` ledger. Re-applying the operator's sidecar, which
+    is the previous release's copy plus their edits, would read a key it
+    lacks as a deleted override and restore the old text, and so would every
+    later ``POST /api/bake``. A key the operator never had (absent from their
+    sidecar and from the bundle they were last refreshed from) is a new fix,
+    so its rows drop the ledger: the fix becomes the row's text, as a cleaner
+    fix would be, and no re-apply can revert it. A key the operator deleted
+    keeps its ledger and is reverted as before. ``previous_shipped`` is the
+    bundled sidecar recorded at the last refresh, or for an install refreshed
+    for the first time the keys :func:`_keys_applied_in` finds in its corpus;
+    with neither, every key the operator lacks counts as new.
+    """
+    fold = {
+        key for key in shipped
+        if key not in sidecar and (previous_shipped is None or key not in previous_shipped)
+    }
+    if not fold:
+        return rows
+    folded = []
+    for row in rows:
+        if apply_content_overrides.row_key(row) in fold:
+            row = {k: v for k, v in row.items() if k not in (apply_content_overrides.ORIGINALS_FIELD, "override_applied")}
+        folded.append(row)
+    return folded
+
+
+def _restore_replaced(replaced: list[tuple[Path, bytes | None]]) -> None:
+    """Put back the files a failed refresh had already replaced, newest first."""
+    for dest, previous in reversed(replaced):
+        try:
+            if previous is None:
+                dest.unlink(missing_ok=True)
+            else:
+                atomic_io.atomic_write_bytes(dest, previous)
+        except OSError as exc:
+            kept = f"; the replaced copy is {dest.name}{CORPUS_BACKUP_SUFFIX}" if previous is not None else ""
+            _log(f"corpus refresh: could not restore {dest} ({exc!r}){kept}", err=True)
+
+
+def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
+    """Rebuild a relocated raw corpus / baked DB when the bundled corpus changes.
+
+    ``_seed_writable_corpus_paths`` creates the relocated files once, so on its
+    own an upgraded appliance would keep the corpus it was first seeded with:
+    corpus expansions and cleaner fixes would never reach it. This compares a
+    digest of the bundled corpus with the one recorded in
+    :data:`CORPUS_STAMP_NAME` and, when they differ (or there is no stamp),
+    rebuilds both files from the bundle.
+
+    The operator's own files are kept: the two sidecars are never written, and
+    the rebuilt raw corpus is the bundled one with the operator's
+    ``content_overrides`` re-applied, then baked the way ``POST /api/bake``
+    bakes, so a curator's edits survive. When the operator's content overrides
+    match the bundled ones the bundled files already are that result and are
+    copied byte for byte; content fixes new to this bundle are folded in by
+    :func:`_fold_new_shipped_overrides`. The file each rebuild replaces is kept
+    beside it as ``<name>.prev``.
+
+    Never fatal: on any failure the old files stay in place, the stamp is not
+    written, and the next start tries again. ``--freeze-corpus`` turns it off.
+    """
+    raw_bundled = Path(pick_quote_module.DEFAULT_INPUT_PATH)
+    baked_bundled = Path(pick_quote_module.DEFAULT_DATABASE_PATH)
+    raw_dest = _relocated(args, "raw_corpus", raw_bundled)
+    baked_dest = _relocated(args, "baked_db", baked_bundled)
+    anchor = baked_dest if baked_dest is not None else raw_dest
+    if anchor is None or args.freeze_corpus:
+        return
+    if not raw_bundled.exists() or not baked_bundled.exists():
+        return
+    stamp_path = anchor.parent / CORPUS_STAMP_NAME
+    stamp = _read_corpus_stamp(stamp_path)
+    signatures = {"raw_corpus": _file_signature(raw_bundled), "baked_db": _file_signature(baked_bundled)}
+    dests_present = all(d.exists() for d in (raw_dest, baked_dest) if d is not None)
+    # Fast path: the installed bundle is the very files the stamp was taken
+    # from, so there is no need to hash 25 MB on an SD card at every start.
+    if dests_present and stamp.get("bundle_files") == signatures:
+        return
+    try:
+        digest = _bundle_digest(raw_bundled, baked_bundled)
+    except OSError as exc:
+        _log(f"corpus refresh: cannot read the bundled corpus: {exc!r}", err=True)
+        return
+    new_stamp = {
+        "bundle_digest": digest,
+        "bundle_files": signatures,
+        "refreshed_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    }
+    if dests_present and stamp.get("bundle_digest") == digest:
+        # Same corpus, reinstalled (new mtimes): re-stamp so the fast path hits.
+        if "content_overrides" in stamp:
+            new_stamp["content_overrides"] = stamp["content_overrides"]
+        with contextlib.suppress(OSError):
+            atomic_io.atomic_write_text(stamp_path, json.dumps(new_stamp, indent=2) + "\n")
+        return
+
+    content_bundled = apply_content_overrides.DEFAULT_OVERRIDES_PATH
+    content_path = Path(args.content_overrides).expanduser() if args.content_overrides else content_bundled
+    sidecar = _load_operator_content_overrides(content_path)
+    shipped = _load_operator_content_overrides(content_bundled) or {}
+    new_stamp["content_overrides"] = shipped
+    if sidecar is None:
+        _log(
+            f"corpus refresh skipped: content overrides {content_path} are missing or not a "
+            "JSON object, and re-applying them as empty would undo every content fix; "
+            "keeping the current corpus",
+            err=True,
+        )
+        return
+    replaced: list[tuple[Path, bytes | None]] = []
+    try:
+        if sidecar == shipped:
+            raw_bytes, baked_bytes = raw_bundled.read_bytes(), baked_bundled.read_bytes()
+            how = "copied from the bundle"
+        else:
+            recorded = stamp.get("content_overrides")
+            previous_shipped: Collection[str] | None
+            if isinstance(recorded, dict):
+                previous_shipped = recorded
+            else:
+                applied_keys = _keys_applied_in(raw_dest) if raw_dest is not None and raw_dest.exists() else None
+                previous_shipped = None if applied_keys is None else applied_keys | set(sidecar)
+            rows = _fold_new_shipped_overrides(list(iter_jsonl(raw_bundled)), sidecar, shipped, previous_shipped)
+            rows, applied = apply_content_overrides.apply_overrides(
+                rows, sidecar, overrides_path=str(content_path),
+            )
+            rederive_buckets(rows)
+            baked, stats = bake_quote_database.bake_rows(rows, min_quality=bucket_coverage.DEFAULT_MIN_QUALITY)
+            raw_bytes = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows).encode("utf-8")
+            baked_bytes = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in baked).encode("utf-8")
+            how = f"rebuilt from the bundle, {applied} rows patched from {content_path}, {stats['kept']} rows baked"
+        # Raw first, baked last, stamp after both. A failure part-way puts back
+        # whatever was already replaced, so the picker (baked DB) and the
+        # curator (raw corpus) never run on different releases, and leaves the
+        # stamp stale, so the next start redoes the whole refresh.
+        for dest, payload in ((raw_dest, raw_bytes), (baked_dest, baked_bytes)):
+            if dest is None:
+                continue
+            current = dest.read_bytes() if dest.exists() else None
+            if current == payload:
+                # A first boot has just seeded this very file: no rewrite, no backup.
+                continue
+            if current is not None:
+                atomic_io.atomic_write_bytes(dest.with_name(dest.name + CORPUS_BACKUP_SUFFIX), current)
+            atomic_io.atomic_write_bytes(dest, payload)
+            replaced.append((dest, current))
+        atomic_io.atomic_write_text(stamp_path, json.dumps(new_stamp, indent=2) + "\n")
+    except Exception as exc:  # noqa: BLE001 - the old corpus still works; never block startup
+        _log(f"corpus refresh failed, keeping the current corpus: {exc!r}", err=True)
+        _restore_replaced(replaced)
+        return
+    targets = ", ".join(str(d) for d in (raw_dest, baked_dest) if d is not None)
+    previous = stamp.get("bundle_digest")
+    _log(
+        f"corpus refreshed ({how}): {targets}; bundle {digest[:12]}"
+        + (f", was {previous[:12]}" if isinstance(previous, str) else ", no earlier stamp")
+    )
+
+
+def _refresh_corpus_once_locked(args: argparse.Namespace) -> None:
+    """Run the corpus refresh for ``--once``, which holds no pidfile of its own.
+
+    A running loop already holds the lock and refreshed at its own start, so
+    a one-shot render beside it must not rewrite the files it reads: take the
+    lock just for the refresh, and skip it when the lock is held or can't be
+    taken.
+    """
+    if args.skip_preflight:
+        return
+    try:
+        handle = pidfile.acquire_pidfile(args.pidfile)
+    except pidfile.PidfileLockedError:
+        _log("corpus refresh skipped: another instance holds the pidfile")
+        return
+    except OSError as exc:
+        _log(f"corpus refresh skipped: cannot take the pidfile {args.pidfile!r}: {exc!r}", err=True)
+        return
+    try:
+        _refresh_relocated_corpus(args)
+    finally:
+        if handle is not None:
+            handle.release()
 
 
 def _warn_legacy_render_script(args: argparse.Namespace) -> None:
@@ -1342,6 +1629,7 @@ def main() -> int:
     _run_preflight(args)
 
     if args.once:
+        _refresh_corpus_once_locked(args)
         # Install signal handlers for the --once path too so a mid-render
         # SIGTERM / SIGINT doesn't truncate whatever atomic_io is currently
         # writing (the PNG, the history ledger, telemetry). The handler sets
@@ -1408,6 +1696,11 @@ def main() -> int:
         # a transient fault would freeze the panel until a human intervened.
         _log(f"cannot acquire pidfile {args.pidfile!r} (transient?): {exc!r}", err=True)
         return 1
+
+    # Only now, holding the single-instance lock: a second launch must not
+    # rewrite the corpus a running loop (or its curator UI) is using.
+    if not args.skip_preflight:
+        _refresh_relocated_corpus(args)
 
     persisted = runtime_store.load_runtime_state(args.state_path, telemetry_path=telemetry_path)
     state = RuntimeState(args.theme, persisted=persisted)

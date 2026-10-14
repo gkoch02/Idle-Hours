@@ -264,3 +264,59 @@ upgrading, previously-configured bans start taking effect**, so a bucket may
 begin showing a different quote than it did before. That is the intended
 behaviour finally working; if a newly-surfaced quote isn't to your taste, ban
 it from the Now tab.
+
+## Corpus refresh on upgrade
+
+**Who this affects:** appliances that relocated `raw_corpus` and `baked_db`
+into `/var/lib/idle-hours/` (the shipped `config.toml.example` does).
+
+**Before.** Startup copied the bundled corpus to those paths once, on first
+boot, and never again. An upgraded appliance kept the corpus it was first
+installed with: new quotes, cleaner fixes and re-bakes in later releases never
+reached it. Only fixes made in code (shipped bans, the picker's filters) did.
+
+**Now.** Startup records which bundled corpus the state dir was built from, in
+`/var/lib/idle-hours/corpus-seed.json`. When an upgrade ships a different one,
+the first start after it rebuilds `candidates-attributed.jsonl` and
+`quote_database.jsonl` from the new bundle, re-applies your
+`content_overrides.json`, and bakes. The journal says so:
+
+```
+corpus refreshed (rebuilt from the bundle, 3 rows patched from /var/lib/idle-hours/content_overrides.json, 12034 rows baked): …
+```
+
+On an install seeded before this release there is no stamp yet, so the first
+start after upgrading refreshes once.
+
+**What is kept.**
+
+- `selection_overrides.json` and `content_overrides.json` are never written.
+  Your bans, boosts and per-row edits stay as they are.
+- Per-row edits made in the curator UI live in `content_overrides.json`;
+  **Bake now** writes them into the raw corpus as well, and the refresh puts
+  them back the same way, so the rebuilt corpus carries them.
+- Content fixes the project ships in a later release reach the corpus even
+  though your `content_overrides.json` doesn't list them: they become part of
+  the row's text, so **Bake now** keeps them. A shipped fix you deleted from
+  your file stays deleted. If a release changes or drops a shipped override
+  your file still holds, your file's version stays in effect. One exception
+  on the first refresh of an install from before this release: a shipped fix
+  you deleted *and* baked since can't be told from a new one, and comes back.
+  Delete it again (or override the text) and bake.
+- The files a refresh replaces are kept as
+  `candidates-attributed.jsonl.prev` and `quote_database.jsonl.prev`.
+
+**When it does nothing.** If `content_overrides.json` is missing or isn't a
+JSON object, the refresh is skipped (`corpus refresh skipped` in the journal)
+and the current corpus stays: re-applying it as empty would undo every content
+fix. Repair the file and restart. Any other failure logs `corpus refresh
+failed`, keeps the current corpus, and is retried at the next start. Neither
+stops the clock. The refresh runs after the service takes its pidfile, so a
+second copy started beside a running one leaves the corpus alone.
+`--skip-preflight` skips the refresh along with the other start-up checks.
+
+**Keeping your own corpus.** If you build your own corpus into the state dir,
+add `freeze_corpus = true` to `/var/lib/idle-hours/config.toml` and the
+relocated pair is left alone. To return to a file from before the last
+refresh, stop the service, copy the `.prev` file over it, and set
+`freeze_corpus = true`, or the next start rebuilds it again.

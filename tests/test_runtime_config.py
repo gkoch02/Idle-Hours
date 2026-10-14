@@ -76,6 +76,7 @@ class TestLoadConfigHappyPath:
             'content_overrides = "/var/lib/idle-hours/content_overrides.json"',
             'raw_corpus = "/var/lib/idle-hours/candidates-attributed.jsonl"',
             'baked_db = "/var/lib/idle-hours/quote_database.jsonl"',
+            "freeze_corpus = true",
         ]
         p = tmp_path / "cfg.toml"
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")
