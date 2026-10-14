@@ -16,6 +16,8 @@ these entries under the new dated version heading.
   left empty when numeric times too precise for the clock were dropped.
   The cleaner now keeps a quote inside one scene rather than across a
   "* * *" break, and keeps a quote short enough for the fixed-grid themes.
+  A numbered section opening a quote ("BAXTER SUSPECTS § 1 The five
+  o’clock train…") is cut, as a chapter heading is.
 
 - A quote no longer states a time more precisely than the clock: a bare
   "at 10.31 a.m." or "the 10.55 from Halford" is dropped, since the clock

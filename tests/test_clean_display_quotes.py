@@ -905,3 +905,16 @@ class TestC1ControlCharacters:
 
     def test_an_undefined_byte_goes(self):
         assert cdq.clean_edges("It was ten\x81 o'clock.") == "It was ten o'clock."
+
+
+class TestLeadingSectionSign:
+    @pytest.mark.parametrize("text, expected", [
+        ("BAXTER SUSPECTS § 1 The five o’clock train began to move.", "The five o’clock train began to move."),
+        ("§ 6 The hands of the clock were pointing to half-past five.", "The hands of the clock were pointing to half-past five."),
+    ])
+    def test_a_numbered_section_and_its_heading_go(self, text, expected):
+        assert cdq.clean_edges(text) == expected
+
+    def test_a_section_sign_inside_a_sentence_stays(self):
+        text = "He cited § 4 of the Act at five o’clock."
+        assert cdq.clean_edges(text) == text
