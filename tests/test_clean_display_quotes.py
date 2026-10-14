@@ -897,3 +897,11 @@ class TestSpacedAmPm:
             "It left at 3.00 p.m. that afternoon; the agent saw them.",
             "The next day was wet.",
         ]
+
+
+class TestC1ControlCharacters:
+    def test_a_windows_1252_em_dash_read_as_latin_1_becomes_one(self):
+        assert cdq.clean_edges("It was ten o'clock\x97not a minute later.") == "It was ten o'clock\u2014not a minute later."
+
+    def test_an_undefined_byte_goes(self):
+        assert cdq.clean_edges("It was ten\x81 o'clock.") == "It was ten o'clock."

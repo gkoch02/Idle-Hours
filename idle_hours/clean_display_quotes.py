@@ -157,7 +157,15 @@ LEADING_CAPS_HEADING = re.compile(
 # latitude ("20° 7′ north"); forty of the bundled body faces have no glyph for
 # them and render tofu (issue #308). The apostrophe and closing double quote
 # are the typographic stand-ins every book face carries.
-GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''"})
+# A C1 control character (U+0080-U+009F) in a Gutenberg text is a Windows-1252
+# byte read as Latin-1: U+0097 is the em dash Lady Audley's Secret prints 756
+# times. Mapped back to the character it stood for; the five bytes 1252 leaves
+# undefined have no meaning, and go.
+_C1_FROM_CP1252 = {
+    cp: (bytes([cp]).decode("cp1252") if cp not in (0x81, 0x8D, 0x8F, 0x90, 0x9D) else "")
+    for cp in range(0x80, 0xA0)
+}
+GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''", **_C1_FROM_CP1252})
 
 # The tail of a bracketed aside the miner's window cut into: a stage direction
 # ("Looks at his watch] It's about time…"), an "Illustration]" or "Footnote: …]"

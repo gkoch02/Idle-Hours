@@ -258,6 +258,14 @@ class TestBakedDatabaseInvariants:
         unhighlightable = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if not has_display_match(r)]
         assert unhighlightable == []
 
+    def test_no_control_characters(self, baked_rows):
+        # U+0097 is a Windows-1252 em dash read as Latin-1: a missing glyph on the panel.
+        import re
+
+        control = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+        offenders = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if control.search(r["display_quote"])]
+        assert offenders == []
+
     def test_no_row_is_longer_than_the_fixed_grid_themes_hold(self, baked_rows):
         from idle_hours.clean_display_quotes import EXPANSION_MAX_CHARS
 
