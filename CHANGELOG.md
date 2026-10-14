@@ -18,6 +18,14 @@ these entries under the new dated version heading.
   `freeze_corpus = true` keeps a corpus you maintain yourself. See
   `docs/UPGRADE.md` ("Corpus refresh on upgrade").
 
+- About 5,500 new quotes from 200 more Gutenberg books (Trollope, Braddon,
+  Hardy, Wells, Wodehouse, Oppenheim, Christie, Hall Caine and more), chosen
+  from the public-domain titles The Literary Clock found clock times in.
+  Every five-minute slot now has a quote of its own, including the seven
+  left empty when numeric times too precise for the clock were dropped.
+  The cleaner now keeps a quote inside one scene rather than across a
+  "* * *" break, and keeps a quote short enough for the fixed-grid themes.
+
 - A quote no longer states a time more precisely than the clock: a bare
   "at 10.31 a.m." or "the 10.55 from Halford" is dropped, since the clock
   moves in five-minute steps. Numeric times on the quarter-hours stay, as do

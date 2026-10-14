@@ -157,7 +157,15 @@ LEADING_CAPS_HEADING = re.compile(
 # latitude ("20° 7′ north"); forty of the bundled body faces have no glyph for
 # them and render tofu (issue #308). The apostrophe and closing double quote
 # are the typographic stand-ins every book face carries.
-GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''"})
+# A C1 control character (U+0080-U+009F) in a Gutenberg text is a Windows-1252
+# byte read as Latin-1: U+0097 is the em dash Lady Audley's Secret prints 756
+# times. Mapped back to the character it stood for; the five bytes 1252 leaves
+# undefined have no meaning, and go.
+_C1_FROM_CP1252: dict[str, str] = {
+    chr(cp): (bytes([cp]).decode("cp1252") if cp not in (0x81, 0x8D, 0x8F, 0x90, 0x9D) else "")
+    for cp in range(0x80, 0xA0)
+}
+GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''", **_C1_FROM_CP1252})
 
 # The tail of a bracketed aside the miner's window cut into: a stage direction
 # ("Looks at his watch] It's about time…"), an "Illustration]" or "Footnote: …]"
@@ -180,8 +188,9 @@ TRAILING_SPEAKER_CUE = re.compile(
 # scenes, the asterisked chapter number some editions print ("*II* At twelve
 # o'clock…"), or a list's bullet ("* Some services…").
 LEADING_ASTERISKS = re.compile(r"^(?:\*[IVXLC\d]*\*?\s*)+(?=\S)")
-# A section break anywhere: the excerpt runs across two scenes. Penalised by the
-# quality filter rather than cut, since which side to keep depends on the phrase.
+# A section break anywhere: the excerpt runs across two scenes. Not cut, since
+# which side to keep depends on the phrase: ``best_display_quote`` prefers a run
+# on the phrase's side, and the quality filter penalises one with no choice.
 SECTION_BREAK = re.compile(r"\*\s*\*")
 
 # Spaced dots at the edges: the tail of an author's ". . ." the miner's window
@@ -584,6 +593,14 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
     # Sparse buckets where every candidate bleeds a heading still render something.
     clean_non_fragments = [c for c in non_fragments if not INTERIOR_HEADING.search(c)]
     pool = clean_non_fragments or non_fragments
+    # Likewise a run that stays inside one scene: a "* * * * *" break is cut
+    # only at the excerpt's edge, so a run across it shows both scenes.
+    one_scene = [c for c in pool if not SECTION_BREAK.search(clean_edges(c))]
+    pool = one_scene or pool
+    # And one the panel's longest layouts can hold. The whole field is a
+    # candidate beside the runs, and nothing else caps its length.
+    fitting = [c for c in pool if len(c) <= EXPANSION_MAX_CHARS]
+    pool = fitting or pool
     # Then prefer a run whose quotation marks pair up (issue #297):
     # ``split_sentences`` splits inside dialogue, so a run can start with the
     # tail of a speech whose opening mark sits in the previous sentence, or

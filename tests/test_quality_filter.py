@@ -85,10 +85,12 @@ class TestLengthPenalties:
         s, flags = score(text)
         assert "long" in flags
 
-    def test_too_long_deducts_20(self):
+    def test_too_long_falls_under_the_bake_floor(self):
+        # Past 260 characters the fixed-grid themes cannot hold it.
         text = "A" * 261 + "."
         s, flags = score(text)
         assert "too_long" in flags
+        assert s < 60
 
 
 # ---------------------------------------------------------------------------
