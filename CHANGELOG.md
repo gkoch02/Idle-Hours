@@ -9,6 +9,13 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- A quote no longer states a time more precisely than the clock: a bare
+  "at 10.31 a.m." or "the 10.55 from Halford" is dropped, since the clock
+  moves in five-minute steps. Numeric times on the quarter-hours stay, as do
+  hedged ones ("about 11.05", "soon after 10.20", "6.35 or thereabouts").
+  The picker applies the rule too, so a panel that already has a corpus
+  stops showing them after the upgrade.
+
 - `astrarium`'s datum strip now shows the real sky: the sun's elevation (below
   zero at night) and the moon's illuminated percentage, where they used to be
   stand-ins that peaked at 75° every noon and counted the day of the year mod

@@ -18,7 +18,7 @@ import pytest
 
 from idle_hours import pick_quote
 from idle_hours.buckets import BUCKET_ORDER, bucket_for_time, minute_bucket
-from idle_hours.match_span import has_display_match
+from idle_hours.match_span import has_display_match, states_too_precise_a_time
 
 # Resolve through the package's own default-path constants rather than a
 # hand-built repo-relative path: a previous revision pointed at the
@@ -257,6 +257,11 @@ class TestBakedDatabaseInvariants:
         # Issue #411: "struck three-quarters" or "twenty-three o'clock" is not a time.
         unhighlightable = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if not has_display_match(r)]
         assert unhighlightable == []
+
+    def test_no_row_states_a_time_more_precisely_than_the_clock(self, baked_rows):
+        # A bare "at 10.31" is a timetable minute; the clock moves in five-minute steps.
+        too_precise = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if states_too_precise_a_time(r)]
+        assert too_precise == []
 
     def test_every_row_has_inferred_quote_minute(self, baked_rows):
         for row in baked_rows:
