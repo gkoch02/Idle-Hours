@@ -75,6 +75,10 @@ on a pull request (a path filter, a label, a non-fork head) would really run and
 could really fail. `tests/test_ci_required_checks.py` therefore classifies every
 job by hand rather than excusing conditional ones automatically.
 
+## Pull requests
+
+Every change to `main` goes through a pull request. No approval is needed, but every review thread must be resolved before the merge, Codex's included. Without this rule a commit that had already passed CI on a branch could be pushed to `main` directly.
+
 ## `strict_required_status_checks_policy`
 
 Currently `false`: a pull request may merge without being up to date with
