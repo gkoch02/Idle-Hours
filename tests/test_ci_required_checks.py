@@ -227,3 +227,8 @@ class TestRequiredStatusChecks:
     def test_ruleset_keeps_deletion_and_force_push_protection(self):
         rule_types = {rule["type"] for rule in json.loads(RULESET_PATH.read_text(encoding="utf-8"))["rules"]}
         assert {"deletion", "non_fast_forward"} <= rule_types
+
+    def test_ruleset_requires_a_pull_request_with_resolved_threads(self):
+        rules = json.loads(RULESET_PATH.read_text(encoding="utf-8"))["rules"]
+        [pr] = [rule for rule in rules if rule["type"] == "pull_request"]
+        assert pr["parameters"]["required_review_thread_resolution"] is True
