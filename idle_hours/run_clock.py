@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 
 from idle_hours import (
@@ -1332,8 +1332,29 @@ def _load_operator_content_overrides(path: Path) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _keys_applied_in(raw_path: Path) -> set[str] | None:
+    """Override keys whose rows in ``raw_path`` still carry their ledger.
+
+    Stands in for the previous bundle's sidecar on an install that predates
+    the stamp: the relocated raw corpus was seeded from that bundle with every
+    shipped override applied and recorded in ``override_originals``, so a key
+    with a ledger there and none in the operator's sidecar is one they deleted
+    (and haven't baked since). A deletion that was baked took the ledger with
+    it and can't be told from a fix new to this bundle. None when the file
+    can't be read.
+    """
+    try:
+        return {
+            key for row in iter_jsonl(raw_path)
+            if row.get(apply_content_overrides.ORIGINALS_FIELD)
+            and (key := apply_content_overrides.row_key(row)) is not None
+        }
+    except OSError:
+        return None
+
+
 def _fold_new_shipped_overrides(
-    rows: list[dict], sidecar: dict, shipped: dict, previous_shipped: dict | None,
+    rows: list[dict], sidecar: dict, shipped: dict, previous_shipped: Collection[str] | None,
 ) -> list[dict]:
     """Make content fixes the operator's sidecar has never seen part of the corpus.
 
@@ -1345,9 +1366,10 @@ def _fold_new_shipped_overrides(
     sidecar and from the bundle they were last refreshed from) is a new fix,
     so its rows drop the ledger: the fix becomes the row's text, as a cleaner
     fix would be, and no re-apply can revert it. A key the operator deleted
-    keeps its ledger and is reverted as before. With no record of the previous
-    bundle (an install refreshed for the first time), every key the operator
-    lacks counts as new.
+    keeps its ledger and is reverted as before. ``previous_shipped`` is the
+    bundled sidecar recorded at the last refresh, or for an install refreshed
+    for the first time the keys :func:`_keys_applied_in` finds in its corpus;
+    with neither, every key the operator lacks counts as new.
     """
     fold = {
         key for key in shipped
@@ -1438,11 +1460,14 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
             raw_bytes, baked_bytes = raw_bundled.read_bytes(), baked_bundled.read_bytes()
             how = "copied from the bundle"
         else:
-            previous_shipped = stamp.get("content_overrides")
-            rows = _fold_new_shipped_overrides(
-                list(iter_jsonl(raw_bundled)), sidecar, shipped,
-                previous_shipped if isinstance(previous_shipped, dict) else None,
-            )
+            recorded = stamp.get("content_overrides")
+            previous_shipped: Collection[str] | None
+            if isinstance(recorded, dict):
+                previous_shipped = recorded
+            else:
+                applied_keys = _keys_applied_in(raw_dest) if raw_dest is not None and raw_dest.exists() else None
+                previous_shipped = None if applied_keys is None else applied_keys | set(sidecar)
+            rows = _fold_new_shipped_overrides(list(iter_jsonl(raw_bundled)), sidecar, shipped, previous_shipped)
             rows, applied = apply_content_overrides.apply_overrides(
                 rows, sidecar, overrides_path=str(content_path),
             )

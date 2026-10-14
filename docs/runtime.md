@@ -77,8 +77,12 @@ are treated differently:
   the fix becomes the row's text, as a cleaner fix would, and neither this
   re-apply nor a later "Bake now" reverts it. A shipped key the operator
   deleted was in the recorded sidecar, keeps its ledger, and stays reverted.
-  Before the first refresh there is no record, so every key the operator lacks
-  counts as new. A shipped override that a release changes or drops while the
+  An install from before the stamp has no record, so `_keys_applied_in` reads
+  one off its existing relocated raw corpus: it was seeded with every shipped
+  override applied and ledgered, so a key with a ledger there that the
+  operator's file lacks was deleted. A deletion that was also baked took the
+  ledger with it and can't be told from a new fix; that one override comes back
+  on the first refresh. A shipped override that a release changes or drops while the
   operator's file still holds the old entry keeps the operator's entry, because
   the sidecar is never written. Each file it
   replaces is kept beside it as `<name>.prev`; a file already equal to the new

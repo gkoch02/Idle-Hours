@@ -247,6 +247,24 @@ class TestShippedOverridesAcrossUpgrades:
         raw = {_key(r): r for r in iter_jsonl(Path(args.raw_corpus))}
         assert raw[_key(target)]["display_quote"] == original
 
+    def test_install_without_a_stamp_keeps_a_deletion_and_takes_a_new_fix(self, tmp_path, bundle):
+        """With no recorded bundle, the ledgers in the operator's old corpus say
+        which shipped keys they had, so a deleted one is not read as new."""
+        args = _state_args(tmp_path)
+        deleted, added = bundle.pool[7], bundle.pool[8]
+        bundle.publish(bundle.pool[:30], {_key(deleted): {"display_quote": deleted["display_quote"] + " (shipped fix)"}})
+        _boot(args)
+        (tmp_path / "state" / run_clock.CORPUS_STAMP_NAME).unlink()  # seeded before stamps existed
+        Path(args.content_overrides).write_text("{}", encoding="utf-8")  # the operator drops it, no bake yet
+        bundle.publish(bundle.pool, {
+            _key(deleted): {"display_quote": deleted["display_quote"] + " (shipped fix)"},
+            _key(added): {"display_quote": added["display_quote"] + " (new fix)"},
+        })
+        run_clock._refresh_relocated_corpus(args)
+        raw = {_key(r): r for r in iter_jsonl(Path(args.raw_corpus))}
+        assert raw[_key(deleted)]["display_quote"] == deleted["display_quote"]
+        assert raw[_key(added)]["display_quote"] == added["display_quote"] + " (new fix)"
+
     def test_stamp_records_the_shipped_overrides(self, tmp_path, bundle):
         args, shipped, fixed = self._upgrade_adding_a_fix(tmp_path, bundle)
         stamp = json.loads((tmp_path / "state" / run_clock.CORPUS_STAMP_NAME).read_text())

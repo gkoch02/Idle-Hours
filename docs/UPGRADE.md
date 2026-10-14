@@ -299,7 +299,10 @@ start after upgrading refreshes once.
   though your `content_overrides.json` doesn't list them: they become part of
   the row's text, so **Bake now** keeps them. A shipped fix you deleted from
   your file stays deleted. If a release changes or drops a shipped override
-  your file still holds, your file's version stays in effect.
+  your file still holds, your file's version stays in effect. One exception
+  on the first refresh of an install from before this release: a shipped fix
+  you deleted *and* baked since can't be told from a new one, and comes back.
+  Delete it again (or override the text) and bake.
 - The files a refresh replaces are kept as
   `candidates-attributed.jsonl.prev` and `quote_database.jsonl.prev`.
 
