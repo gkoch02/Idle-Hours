@@ -468,6 +468,13 @@ def drop_stray_underscores(text: str) -> str:
     return "".join(out)
 
 
+# A numbered section opening the excerpt, with any heading in capitals before
+# it: Wodehouse's "BAXTER SUSPECTS § 1 The five o'clock train…", "§ 6 The
+# hands of the clock…". A new sentence must follow, so a citation opening the
+# prose ("§ 4 of the Act applies…") stays.
+LEADING_SECTION_SIGN = re.compile(r"^(?:[A-Z][A-Z’'.,\-]*(?:\s+[A-Z][A-Z’'.,\-]*)*\s+)?§\s*\d+\.?\s+(?=[A-Z“‘\"'])")
+
+
 def strip_heading_prefix(text: str) -> str:
     """Iteratively strip leading HEADING_PREFIX matches without touching quote
     marks or other content-bearing punctuation. Used for interior sentences in
@@ -480,6 +487,7 @@ def strip_heading_prefix(text: str) -> str:
     while True:
         stripped = HEADING_PREFIX.sub("", text).strip()
         stripped = LEADING_CAPS_HEADING.sub("", stripped).strip()
+        stripped = LEADING_SECTION_SIGN.sub("", stripped).strip()
         if stripped == text:
             break
         text = stripped
