@@ -9,6 +9,15 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- An upgraded appliance now gets the new corpus. A raw corpus and baked DB
+  relocated to `/var/lib/idle-hours/` used to be copied from the package once
+  and kept forever, so new quotes and corpus fixes never reached an existing
+  Pi. When an upgrade ships a different corpus, the first start rebuilds both
+  from it with your `content_overrides.json` re-applied, and keeps the old
+  files as `*.prev`. Your selection and content overrides are never written.
+  `freeze_corpus = true` keeps a corpus you maintain yourself. See
+  `docs/UPGRADE.md` ("Corpus refresh on upgrade").
+
 - `astrarium`'s datum strip now shows the real sky: the sun's elevation (below
   zero at night) and the moon's illuminated percentage, where they used to be
   stand-ins that peaked at 75° every noon and counted the day of the year mod

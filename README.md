@@ -529,7 +529,7 @@ systemctl status --no-pager idle-hours.service     # confirm it came back up
 > baked_db          = "/var/lib/idle-hours/quote_database.jsonl"
 > ```
 >
-> `config.toml.example` ships these pre-filled. On the next start, `run_clock` copies each bundled file to any of those paths that doesn't exist yet — so the committed bans, boosts, and per-row content fixes migrate across with no manual step, and existing files are never overwritten. Both the runtime picker and the curator UI read these same paths, so a ban applied in the UI takes effect on the panel at the next bucket change. Don't add the package directory to `ReadWritePaths=` instead — writing into `site-packages` defeats the sandbox and is clobbered on the next upgrade.
+> `config.toml.example` ships these pre-filled. On the next start, `run_clock` copies each bundled file to any of those paths that doesn't exist yet — so the committed bans, boosts, and per-row content fixes migrate across with no manual step. The two sidecars are never overwritten after that. The raw corpus and baked DB follow the installed package: when an upgrade ships a different corpus, startup rebuilds them from it with your content overrides re-applied (set `freeze_corpus = true` to keep your own; see `docs/UPGRADE.md`). Both the runtime picker and the curator UI read these same paths, so a ban applied in the UI takes effect on the panel at the next bucket change. Don't add the package directory to `ReadWritePaths=` instead — writing into `site-packages` defeats the sandbox and is clobbered on the next upgrade.
 
 **Reaching a loopback-bound UI from another machine.** Keep the `127.0.0.1:8080` bind (no token needed) and SSH-tunnel into the Pi from your laptop:
 

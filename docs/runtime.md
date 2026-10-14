@@ -46,6 +46,43 @@ After the v2.x package restructure, three resolution rules apply:
   into site-packages is never what an operator wants), inputs prefer CWD
   but accept the bundled fallback for portability.
 
+**Relocated corpus files across upgrades.** The four corpus paths
+(`--overrides`, `--content-overrides`, `--raw-corpus`, `--baked-db`) default to
+the bundled copies; the appliance preset moves them to `/var/lib/idle-hours/`.
+At pre-flight, `run_clock._seed_writable_corpus_paths` copies the bundled file
+to any relocated path that does not exist yet. After that the two kinds of file
+are treated differently:
+
+- **The sidecars are the operator's.** `selection_overrides.json` and
+  `content_overrides.json` are seeded once and never written by startup again,
+  whatever an upgrade ships. A ban the project must apply everywhere goes in
+  `pick_quote.SHIPPED_BAN_QUOTE_KEYS`, not the bundled sidecar.
+- **The corpus follows the package.** `_refresh_relocated_corpus` keeps
+  `corpus-seed.json` beside the relocated baked DB (or raw corpus, if only that
+  is relocated), recording a sha256 of the bundled raw corpus and baked DB and
+  their size and mtime. When the bundle's digest differs from the stamp, or
+  there is no stamp (an install seeded before it existed), it rebuilds the
+  relocated pair: the bundled raw corpus with the relocated
+  `content_overrides.json` re-applied, re-bucketed and baked at the floor
+  `POST /api/bake` uses, so a curator's edits survive and the result is what a
+  "Bake now" would give. If those overrides equal the bundled ones, the bundled
+  files already are that result and are copied byte for byte
+  (`TestShippedBundleIsSelfConsistent` holds the bundle to it). Each file it
+  replaces is kept beside it as `<name>.prev`; a file already equal to the new
+  one is not rewritten. The raw corpus is written first, the baked DB second and
+  the stamp last, all through `atomic_io`, so a failure part-way leaves the stamp
+  stale and the next start redoes the refresh. When the size and mtime match the
+  stamp, startup skips the hash.
+- **It never blocks startup.** A failed refresh logs `corpus refresh failed`
+  and keeps the current files. If the relocated `content_overrides.json` is
+  missing or not a JSON object, the refresh is skipped with `corpus refresh
+  skipped`: `load_overrides` would read it as empty, and re-applying an empty
+  sidecar restores every overridden row from `override_originals`.
+- **Opting out.** `--freeze-corpus` (config `freeze_corpus = true`) skips the
+  refresh, for an operator who builds their own corpus into the state dir.
+  Seeding a missing file still happens. Like seeding, the refresh runs only at
+  pre-flight, so `--skip-preflight` skips it too.
+
 `scripts/run_batch2.sh` reads its Gutenberg IDs from
 `scripts/gutenberg_batch_ids.txt`; the script resolves to the repo root and writes to `output/` regardless of the
 caller's CWD.
@@ -135,7 +172,7 @@ Note the deliberate `os.open(..., 0o666)` rather than `tempfile.mkstemp`: mkstem
 
 **Single-instance pidfile (`--pidfile`).** `~/.idle-hours/run_clock.pid` (default) is locked via `fcntl.flock(LOCK_EX | LOCK_NB)` at main-loop startup. A second `run_clock` detecting the held lock logs the existing pid and exits 1 — overlapping `systemctl restart` cycles (or a botched boot that races a slow-to-die predecessor) otherwise have two processes writing to `state.json` / `history.jsonl` / the telemetry sibling concurrently, which `atomic_io`'s tmp-rename pattern does not protect against (it guards against crashes, not concurrent writers — see "Atomic writes" below for what it does and doesn't promise there). A stale pidfile (locked by nothing, or pointing to a dead pid) is reclaimed transparently so the appliance can recover from a `SIGKILL` / power loss without manual intervention. Pass an empty string to disable the lock. The `--once` path deliberately skips the pidfile — a one-shot cron invocation should never block on a running loop instance.
 
-**Pre-flight path checks.** `main()` validates that `--render-script`, `--display-script`, `--quiet-image`, and `--startup-image` exist on disk before the loop starts (or the one-shot frame renders). The default `--render-script "auto"` is the bundled renderer, launched as `python -m idle_hours.render_quote` (issue #335), so preflight checks it with `importlib.util.find_spec` instead of a file test. The pre-#335 value `"render_quote.py"` is still treated as the bundled renderer (unless a `./render_quote.py` exists in the working directory) and draws a one-line deprecation note at startup. A missing path raises `SystemExit` with `runtime_config.EXIT_CONFIG_ERROR` (42) and a multi-line message listing every offending flag, so a typoed path in the systemd unit file fails fast in the journal instead of surfacing hours later on first bucket change or first quiet-hours entry; a missing `--config` file exits 42 the same way. The 42 pairs with `RestartPreventExitStatus=42` in the sample unit so a terminal configuration error halts the service instead of flapping against `Restart=always` (pidfile contention deliberately stays exit 1 — a racing restart should retry). `--skip-preflight` bypasses the check entirely for unusual setups (CI smoke tests that don't ship the display script, dev hosts that intentionally point at an empty image, etc).
+**Pre-flight path checks.** `main()` validates that `--render-script`, `--display-script`, `--quiet-image`, and `--startup-image` exist on disk before the loop starts (or the one-shot frame renders). The default `--render-script "auto"` is the bundled renderer, launched as `python -m idle_hours.render_quote` (issue #335), so preflight checks it with `importlib.util.find_spec` instead of a file test. The pre-#335 value `"render_quote.py"` is still treated as the bundled renderer (unless a `./render_quote.py` exists in the working directory) and draws a one-line deprecation note at startup. A missing path raises `SystemExit` with `runtime_config.EXIT_CONFIG_ERROR` (42) and a multi-line message listing every offending flag, so a typoed path in the systemd unit file fails fast in the journal instead of surfacing hours later on first bucket change or first quiet-hours entry; a missing `--config` file exits 42 the same way. The 42 pairs with `RestartPreventExitStatus=42` in the sample unit so a terminal configuration error halts the service instead of flapping against `Restart=always` (pidfile contention deliberately stays exit 1 — a racing restart should retry). Before the checks it seeds and refreshes the relocated corpus files ("Default paths" above). `--skip-preflight` bypasses all of it for unusual setups (CI smoke tests that don't ship the display script, dev hosts that intentionally point at an empty image, etc).
 
 **Graceful shutdown (`SIGTERM` / `SIGINT`).** `_install_signal_handlers` binds both signals to a handler that flips `state.stop_requested` (a `threading.Event`). The main loop checks the flag at the top of each iteration and waits on it via `_loop_sleep` between ticks, so a `systemctl restart idle-hours.service` is observed within one tick instead of being escalated to `SIGKILL` mid-render. On loop exit `_shutdown` runs in a `finally`: first it cancels any pending timers (the button-C restore), then it blocks on `state.render_lock` for up to `SHUTDOWN_DRAIN_SECONDS` (a render plus a display push at their subprocess timeouts) so any in-flight render finishes, and it **holds the render lock across ingress teardown** (`stop_web_server` + `gpiozero.Button.close`) so any late web POST or button callback that reaches `_button_render_gate` sees the lock held and drops with a `"busy"` response — without this, a press arriving in the teardown window could kick off a fresh render and reintroduce SIGKILL-mid-render risk under systemd's `TimeoutStopSec`. The lock is released only before the final state persist (which doesn't touch the render path). Every step is wrapped in `contextlib.suppress` — shutdown is best-effort so one teardown failure doesn't block the others. The finally also releases the pidfile lock so a replacement instance can start without operator intervention. The drain only helps if systemd lets the children live that long: the sample unit sets `KillMode=mixed`, so `SIGTERM` reaches the loop alone and the render and display subprocesses finish under it (the default `control-group` mode signals them too, and a restart landing mid-push left the panel half-refreshed and logged a display error), and `TimeoutStopSec` sits above the drain window, fenced by `tests/test_pi_deployment_contract.py`. `--once` also installs the signal handler (against a throwaway `RuntimeState`) so `atomic_io`'s write→fsync→replace sequence can complete even when systemd sends `SIGTERM` mid-render; a signal observed during the one-shot render produces exit code `143` (canonical SIGTERM exit) so cron / systemd one-shot units can distinguish "rendered cleanly" from "rendered then told to shut down."
 

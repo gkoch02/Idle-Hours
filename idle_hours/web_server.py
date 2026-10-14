@@ -1967,7 +1967,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         is in flight. Semantics: docs/web_ui.md ("``POST /api/bake``
         semantics").
         """
-        from idle_hours import bake_quote_database
+        from idle_hours import bake_quote_database, bucket_coverage
         from idle_hours.jsonl_io import iter_jsonl
         ctx = self._ctx()
         state = ctx.state
@@ -2004,7 +2004,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                     ctx.raw_corpus_path,
                     (json.dumps(row, ensure_ascii=False) for row in rows),
                 )
-            baked, stats = bake_quote_database.bake_rows(rows, min_quality=60)
+            baked, stats = bake_quote_database.bake_rows(rows, min_quality=bucket_coverage.DEFAULT_MIN_QUALITY)
             atomic_io.atomic_write_lines(
                 ctx.baked_db_path,
                 (json.dumps(row, ensure_ascii=False) for row in baked),
