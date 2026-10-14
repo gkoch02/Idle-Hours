@@ -321,6 +321,7 @@ class TestDottedTimeMatchType:
         "It is written in verse 8.13 of the epistle.",
         "A sofad is about 1.17 Earth inches wide, he said.",   # a measure the unit list cannot name
         "The field yielded about 2.30 to the acre, which pleased him.",
+        "In one minute the E.M.F. had gone up by about 0.08 volt, &c.",   # a voltage
     ])
     def test_numbers_prices_and_references_are_not_times(self, text):
         assert _first_candidate(text, "dotted_time") is None

@@ -101,7 +101,8 @@ TIME_PATTERNS = [
             r"\b(?P<prefix>the|at|by|till|until|about|before|after|past|from|catch|caught|take|took|miss|missed)"
             r"\s+(?P<hour>[01]?\d|2[0-3])\.(?P<minute>[0-5]\d)(?!\d)(?!\.\d)"
             r"(?!\s*(?:per|%|feet|foot|inches|inch|miles?|pounds?|francs?|dollars?|cents?|shillings?|marks?|lire|"
-            r"a\s+share|million|thousand|hundred|metres?|meters?|yards?|tons?|years?|kilo|degrees?|seconds?))",
+            r"a\s+share|million|thousand|hundred|metres?|meters?|yards?|tons?|years?|kilo|degrees?|seconds?|"
+            r"volts?|amp(?:ere)?s?|ohms?|grains?|gram(?:me)?s?|ounces?|gallons?|acres?|knots?))",
             re.IGNORECASE,
         ),
     ),
