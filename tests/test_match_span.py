@@ -54,6 +54,8 @@ class TestStatesTooPreciseATime:
             ("He went by the 4.05 from Halford.", "the 4.05"),
             ("Don't let's bother about the 3.12, she said.", "the 3.12"),
             ("He reached the rock before about 11.37 or 11.38.", "about 11.37"),
+            ("He reached the rock before about 11.37, or 11.38.", "about 11.37"),
+            ("She left at about 11.37 p.m. or 11.38, he thought.", "about 11.37"),
         ],
     )
     def test_an_exact_off_quarter_time_is_too_precise(self, text, matched):
@@ -66,6 +68,9 @@ class TestStatesTooPreciseATime:
             ("Mr. Felix called about 11.05 to see you.", "about 11.05"),
             ("He had reached home soon after 10.20.", "after 10.20"),
             ("He went to the Grosvenor at 6.35 or thereabouts.", "at 6.35"),
+            ("He went to the Grosvenor at 6.35 p.m. or thereabouts.", "at 6.35"),
+            ("He went to the Grosvenor at 6.35, or thereabouts.", "at 6.35"),
+            ("They dined at 7.20-ish, as usual.", "at 7.20"),
             ("She came round about 7.10 that evening.", "about 7.10"),
         ],
     )
