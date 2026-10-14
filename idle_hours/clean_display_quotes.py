@@ -470,8 +470,9 @@ def drop_stray_underscores(text: str) -> str:
 
 # A numbered section opening the excerpt, with any heading in capitals before
 # it: Wodehouse's "BAXTER SUSPECTS § 1 The five o'clock train…", "§ 6 The
-# hands of the clock…". A section sign is never prose there.
-LEADING_SECTION_SIGN = re.compile(r"^(?:[A-Z][A-Z’'.,\-]*(?:\s+[A-Z][A-Z’'.,\-]*)*\s+)?§\s*\d+\.?\s+(?=\S)")
+# hands of the clock…". A new sentence must follow, so a citation opening the
+# prose ("§ 4 of the Act applies…") stays.
+LEADING_SECTION_SIGN = re.compile(r"^(?:[A-Z][A-Z’'.,\-]*(?:\s+[A-Z][A-Z’'.,\-]*)*\s+)?§\s*\d+\.?\s+(?=[A-Z“‘\"'])")
 
 
 def strip_heading_prefix(text: str) -> str:

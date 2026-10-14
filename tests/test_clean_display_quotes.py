@@ -915,6 +915,9 @@ class TestLeadingSectionSign:
     def test_a_numbered_section_and_its_heading_go(self, text, expected):
         assert cdq.clean_edges(text) == expected
 
-    def test_a_section_sign_inside_a_sentence_stays(self):
-        text = "He cited § 4 of the Act at five o’clock."
+    @pytest.mark.parametrize("text", [
+        "He cited § 4 of the Act at five o’clock.",
+        "§ 4 of the Act applies at five o’clock.",
+    ])
+    def test_a_section_cited_in_prose_stays(self, text):
         assert cdq.clean_edges(text) == text
