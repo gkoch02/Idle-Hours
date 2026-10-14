@@ -10,7 +10,7 @@ If your Pi already has the Pimoroni Inky stack working in a virtualenv, this is 
 
 ```bash
 source ~/.virtualenvs/pimoroni/bin/activate
-git clone git@github.com:gkoch02/idle-hours.git ~/IdleHours
+git clone git@github.com:gkoch02/IdleHours.git ~/IdleHours
 cd ~/IdleHours
 pip install -e '.[pi]'
 
@@ -291,7 +291,7 @@ sudo apt install -y fonts-noto-core fonts-dejavu-core
 Clone the project:
 
 ```bash
-git clone git@github.com:gkoch02/idle-hours.git ~/IdleHours
+git clone git@github.com:gkoch02/IdleHours.git ~/IdleHours
 cd ~/IdleHours
 pip install -e '.[pi]'
 ```

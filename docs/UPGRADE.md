@@ -52,7 +52,7 @@ sudo systemctl stop litclock.service
 sudo systemctl disable litclock.service
 
 # 2. Pull the renamed code. Either rename the working tree or re-clone.
-#    The CI badge and clone URLs in the docs now reference gkoch02/idle-hours;
+#    The CI badge and clone URLs in the docs now reference gkoch02/IdleHours;
 #    GitHub redirects the old slug for ~12 months, so either form resolves.
 cd ~
 git -C LitClock pull
