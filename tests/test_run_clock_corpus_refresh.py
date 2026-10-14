@@ -122,10 +122,13 @@ class TestFirstBoot:
         _boot(_state_args(tmp_path))
         assert not list((tmp_path / "state").glob("*" + run_clock.CORPUS_BACKUP_SUFFIX))
 
-    def test_preflight_runs_the_refresh(self, tmp_path, bundle):
+    def test_preflight_seeds_but_does_not_refresh(self, tmp_path, bundle):
+        """The refresh waits for the pidfile; pre-flight runs before it is taken."""
         args = _state_args(tmp_path, skip_preflight=False)
-        run_clock._run_preflight(args)
-        assert (tmp_path / "state" / run_clock.CORPUS_STAMP_NAME).exists()
+        with patch.object(run_clock, "_refresh_relocated_corpus") as refresh:
+            run_clock._run_preflight(args)
+        refresh.assert_not_called()
+        assert Path(args.baked_db).exists()
 
 
 class TestUpgrade:
@@ -194,6 +197,129 @@ class TestUpgrade:
         _boot(args)
         assert Path(args.baked_db).read_bytes() == bundle.baked.read_bytes()
         assert (state / run_clock.CORPUS_STAMP_NAME).exists()
+
+
+class TestShippedOverridesAcrossUpgrades:
+    """The operator's sidecar is the previous release's copy plus their edits;
+    content fixes shipped since must not be read as deletions."""
+
+    def _curator_bake(self, args) -> list[dict]:
+        """What POST /api/bake does to the refreshed raw corpus."""
+        sidecar = json.loads(Path(args.content_overrides).read_text(encoding="utf-8"))
+        rows, _ = apply_content_overrides.apply_overrides(list(iter_jsonl(Path(args.raw_corpus))), sidecar)
+        return rows
+
+    def _upgrade_adding_a_fix(self, tmp_path, bundle, *, operator_edit: bool = True):
+        args = _state_args(tmp_path)
+        _boot(args)
+        if operator_edit:
+            mine = bundle.pool[3]
+            Path(args.content_overrides).write_text(
+                json.dumps({_key(mine): {"display_quote": mine["display_quote"] + " (curated)"}}), encoding="utf-8")
+        shipped = bundle.pool[7]
+        fixed = shipped["display_quote"] + " (shipped fix)"
+        bundle.publish(bundle.pool, {_key(shipped): {"display_quote": fixed}})
+        run_clock._refresh_relocated_corpus(args)
+        return args, shipped, fixed
+
+    def test_new_shipped_fix_reaches_the_refreshed_corpus(self, tmp_path, bundle):
+        args, shipped, fixed = self._upgrade_adding_a_fix(tmp_path, bundle)
+        raw = {_key(r): r for r in iter_jsonl(Path(args.raw_corpus))}
+        assert raw[_key(shipped)]["display_quote"] == fixed
+        baked = [r for r in iter_jsonl(Path(args.baked_db)) if _key(r) == _key(shipped)]
+        assert baked and baked[0]["display_quote"] == fixed
+
+    def test_new_shipped_fix_survives_a_later_curator_bake(self, tmp_path, bundle):
+        args, shipped, fixed = self._upgrade_adding_a_fix(tmp_path, bundle)
+        rows = {_key(r): r for r in self._curator_bake(args)}
+        assert rows[_key(shipped)]["display_quote"] == fixed
+        assert rows[_key(bundle.pool[3])]["display_quote"].endswith(" (curated)")
+
+    def test_a_shipped_fix_the_operator_deleted_stays_deleted(self, tmp_path, bundle):
+        args = _state_args(tmp_path)
+        target = bundle.pool[7]
+        original = target["display_quote"]
+        bundle.publish(bundle.pool[:30], {_key(target): {"display_quote": original + " (shipped fix)"}})
+        _boot(args)
+        Path(args.content_overrides).write_text("{}", encoding="utf-8")  # the operator drops it
+        bundle.publish(bundle.pool, {_key(target): {"display_quote": original + " (shipped fix)"}})
+        run_clock._refresh_relocated_corpus(args)
+        raw = {_key(r): r for r in iter_jsonl(Path(args.raw_corpus))}
+        assert raw[_key(target)]["display_quote"] == original
+
+    def test_stamp_records_the_shipped_overrides(self, tmp_path, bundle):
+        args, shipped, fixed = self._upgrade_adding_a_fix(tmp_path, bundle)
+        stamp = json.loads((tmp_path / "state" / run_clock.CORPUS_STAMP_NAME).read_text())
+        assert stamp["content_overrides"] == {_key(shipped): {"display_quote": fixed}}
+
+    def test_restamp_keeps_the_shipped_overrides(self, tmp_path, bundle):
+        args, shipped, fixed = self._upgrade_adding_a_fix(tmp_path, bundle)
+        stat = bundle.raw.stat()
+        os.utime(bundle.raw, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        run_clock._refresh_relocated_corpus(args)
+        stamp = json.loads((tmp_path / "state" / run_clock.CORPUS_STAMP_NAME).read_text())
+        assert stamp["content_overrides"] == {_key(shipped): {"display_quote": fixed}}
+
+
+class TestRefreshRunsUnderThePidfile:
+    def _main(self, tmp_path, *, acquire):
+        events: list[str] = []
+        argv = [
+            "run_clock", "--buttons-off", "--quiet-off", "--shutdown-command", "",
+            "--output", str(tmp_path / "current.png"), "--state-path", str(tmp_path / "state.json"),
+            "--history-path", "", "--telemetry-path", "", "--pidfile", str(tmp_path / "run_clock.pid"),
+        ]
+        with patch("sys.argv", argv), \
+             patch.object(run_clock, "_run_preflight"), \
+             patch.object(run_clock.pidfile, "acquire_pidfile", side_effect=acquire(events)), \
+             patch.object(run_clock, "_refresh_relocated_corpus", side_effect=lambda a: events.append("refresh")), \
+             patch.object(run_clock, "_maybe_start_buttons"), \
+             patch.object(run_clock, "_maybe_start_web_server"), \
+             patch.object(run_clock, "_install_signal_handlers"), \
+             patch.object(run_clock.sd_notify, "notify_ready"), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="12:00"), \
+             patch("idle_hours.runtime_render.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("1", 2, "q", "m")), \
+             patch("idle_hours.runtime_render.render_now"), \
+             patch.object(run_clock, "_loop_sleep", side_effect=KeyboardInterrupt):
+            try:
+                result = run_clock.main()
+            except KeyboardInterrupt:
+                result = None
+        return events, result
+
+    def test_loop_refreshes_only_after_taking_the_lock(self, tmp_path):
+        def acquire(events):
+            return lambda path: events.append("lock")
+        events, _ = self._main(tmp_path, acquire=acquire)
+        assert events[:2] == ["lock", "refresh"]
+
+    def test_a_locked_out_second_instance_never_refreshes(self, tmp_path):
+        def acquire(events):
+            def locked(path):
+                raise run_clock.pidfile.PidfileLockedError(Path(path), 4242)
+            return locked
+        events, result = self._main(tmp_path, acquire=acquire)
+        assert result == 1
+        assert "refresh" not in events
+
+    def test_once_beside_a_running_loop_skips_the_refresh(self, tmp_path, capsys):
+        args = make_args(tmp_path, skip_preflight=False)
+        held = run_clock.pidfile.acquire_pidfile(args.pidfile)
+        try:
+            with patch.object(run_clock, "_refresh_relocated_corpus") as refresh:
+                run_clock._refresh_corpus_once_locked(args)
+        finally:
+            held.release()
+        refresh.assert_not_called()
+        assert "another instance holds the pidfile" in capsys.readouterr().out
+
+    def test_once_alone_refreshes_and_releases_the_lock(self, tmp_path):
+        args = make_args(tmp_path, skip_preflight=False)
+        with patch.object(run_clock, "_refresh_relocated_corpus") as refresh:
+            run_clock._refresh_corpus_once_locked(args)
+        refresh.assert_called_once()
+        run_clock.pidfile.acquire_pidfile(args.pidfile).release()
 
 
 class TestNoRefresh:

@@ -1332,6 +1332,37 @@ def _load_operator_content_overrides(path: Path) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _fold_new_shipped_overrides(
+    rows: list[dict], sidecar: dict, shipped: dict, previous_shipped: dict | None,
+) -> list[dict]:
+    """Make content fixes the operator's sidecar has never seen part of the corpus.
+
+    The bundled raw corpus carries every shipped override with its
+    ``override_originals`` ledger. Re-applying the operator's sidecar, which
+    is the previous release's copy plus their edits, would read a key it
+    lacks as a deleted override and restore the old text, and so would every
+    later ``POST /api/bake``. A key the operator never had (absent from their
+    sidecar and from the bundle they were last refreshed from) is a new fix,
+    so its rows drop the ledger: the fix becomes the row's text, as a cleaner
+    fix would be, and no re-apply can revert it. A key the operator deleted
+    keeps its ledger and is reverted as before. With no record of the previous
+    bundle (an install refreshed for the first time), every key the operator
+    lacks counts as new.
+    """
+    fold = {
+        key for key in shipped
+        if key not in sidecar and (previous_shipped is None or key not in previous_shipped)
+    }
+    if not fold:
+        return rows
+    folded = []
+    for row in rows:
+        if apply_content_overrides.row_key(row) in fold:
+            row = {k: v for k, v in row.items() if k not in (apply_content_overrides.ORIGINALS_FIELD, "override_applied")}
+        folded.append(row)
+    return folded
+
+
 def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
     """Rebuild a relocated raw corpus / baked DB when the bundled corpus changes.
 
@@ -1347,8 +1378,9 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
     ``content_overrides`` re-applied, then baked the way ``POST /api/bake``
     bakes, so a curator's edits survive. When the operator's content overrides
     match the bundled ones the bundled files already are that result and are
-    copied byte for byte. The file each rebuild replaces is kept beside it as
-    ``<name>.prev``.
+    copied byte for byte; content fixes new to this bundle are folded in by
+    :func:`_fold_new_shipped_overrides`. The file each rebuild replaces is kept
+    beside it as ``<name>.prev``.
 
     Never fatal: on any failure the old files stay in place, the stamp is not
     written, and the next start tries again. ``--freeze-corpus`` turns it off.
@@ -1382,6 +1414,8 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
     }
     if dests_present and stamp.get("bundle_digest") == digest:
         # Same corpus, reinstalled (new mtimes): re-stamp so the fast path hits.
+        if "content_overrides" in stamp:
+            new_stamp["content_overrides"] = stamp["content_overrides"]
         with contextlib.suppress(OSError):
             atomic_io.atomic_write_text(stamp_path, json.dumps(new_stamp, indent=2) + "\n")
         return
@@ -1389,6 +1423,8 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
     content_bundled = apply_content_overrides.DEFAULT_OVERRIDES_PATH
     content_path = Path(args.content_overrides).expanduser() if args.content_overrides else content_bundled
     sidecar = _load_operator_content_overrides(content_path)
+    shipped = _load_operator_content_overrides(content_bundled) or {}
+    new_stamp["content_overrides"] = shipped
     if sidecar is None:
         _log(
             f"corpus refresh skipped: content overrides {content_path} are missing or not a "
@@ -1398,12 +1434,17 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
         )
         return
     try:
-        if sidecar == _load_operator_content_overrides(content_bundled):
+        if sidecar == shipped:
             raw_bytes, baked_bytes = raw_bundled.read_bytes(), baked_bundled.read_bytes()
             how = "copied from the bundle"
         else:
+            previous_shipped = stamp.get("content_overrides")
+            rows = _fold_new_shipped_overrides(
+                list(iter_jsonl(raw_bundled)), sidecar, shipped,
+                previous_shipped if isinstance(previous_shipped, dict) else None,
+            )
             rows, applied = apply_content_overrides.apply_overrides(
-                list(iter_jsonl(raw_bundled)), sidecar, overrides_path=str(content_path),
+                rows, sidecar, overrides_path=str(content_path),
             )
             rederive_buckets(rows)
             baked, stats = bake_quote_database.bake_rows(rows, min_quality=bucket_coverage.DEFAULT_MIN_QUALITY)
@@ -1432,6 +1473,31 @@ def _refresh_relocated_corpus(args: argparse.Namespace) -> None:
         f"corpus refreshed ({how}): {targets}; bundle {digest[:12]}"
         + (f", was {previous[:12]}" if isinstance(previous, str) else ", no earlier stamp")
     )
+
+
+def _refresh_corpus_once_locked(args: argparse.Namespace) -> None:
+    """Run the corpus refresh for ``--once``, which holds no pidfile of its own.
+
+    A running loop already holds the lock and refreshed at its own start, so
+    a one-shot render beside it must not rewrite the files it reads: take the
+    lock just for the refresh, and skip it when the lock is held or can't be
+    taken.
+    """
+    if args.skip_preflight:
+        return
+    try:
+        handle = pidfile.acquire_pidfile(args.pidfile)
+    except pidfile.PidfileLockedError:
+        _log("corpus refresh skipped: another instance holds the pidfile")
+        return
+    except OSError as exc:
+        _log(f"corpus refresh skipped: cannot take the pidfile {args.pidfile!r}: {exc!r}", err=True)
+        return
+    try:
+        _refresh_relocated_corpus(args)
+    finally:
+        if handle is not None:
+            handle.release()
 
 
 def _warn_legacy_render_script(args: argparse.Namespace) -> None:
@@ -1467,8 +1533,6 @@ def _run_preflight(args: argparse.Namespace) -> None:
     # Seed BEFORE validating: a relocated corpus path is legitimately absent on
     # first boot, and the seeding step is what makes it present.
     errors = _seed_writable_corpus_paths(args)
-    if not errors:
-        _refresh_relocated_corpus(args)
     errors += _preflight_paths(args)
     if errors:
         message = "pre-flight path checks failed:\n  " + "\n  ".join(errors)
@@ -1522,6 +1586,7 @@ def main() -> int:
     _run_preflight(args)
 
     if args.once:
+        _refresh_corpus_once_locked(args)
         # Install signal handlers for the --once path too so a mid-render
         # SIGTERM / SIGINT doesn't truncate whatever atomic_io is currently
         # writing (the PNG, the history ledger, telemetry). The handler sets
@@ -1588,6 +1653,11 @@ def main() -> int:
         # a transient fault would freeze the panel until a human intervened.
         _log(f"cannot acquire pidfile {args.pidfile!r} (transient?): {exc!r}", err=True)
         return 1
+
+    # Only now, holding the single-instance lock: a second launch must not
+    # rewrite the corpus a running loop (or its curator UI) is using.
+    if not args.skip_preflight:
+        _refresh_relocated_corpus(args)
 
     persisted = runtime_store.load_runtime_state(args.state_path, telemetry_path=telemetry_path)
     state = RuntimeState(args.theme, persisted=persisted)

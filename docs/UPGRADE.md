@@ -295,6 +295,11 @@ start after upgrading refreshes once.
 - Per-row edits made in the curator UI live in `content_overrides.json`;
   **Bake now** writes them into the raw corpus as well, and the refresh puts
   them back the same way, so the rebuilt corpus carries them.
+- Content fixes the project ships in a later release reach the corpus even
+  though your `content_overrides.json` doesn't list them: they become part of
+  the row's text, so **Bake now** keeps them. A shipped fix you deleted from
+  your file stays deleted. If a release changes or drops a shipped override
+  your file still holds, your file's version stays in effect.
 - The files a refresh replaces are kept as
   `candidates-attributed.jsonl.prev` and `quote_database.jsonl.prev`.
 
@@ -303,8 +308,9 @@ JSON object, the refresh is skipped (`corpus refresh skipped` in the journal)
 and the current corpus stays: re-applying it as empty would undo every content
 fix. Repair the file and restart. Any other failure logs `corpus refresh
 failed`, keeps the current corpus, and is retried at the next start. Neither
-stops the clock. `--skip-preflight` skips the refresh along with the other
-start-up checks.
+stops the clock. The refresh runs after the service takes its pidfile, so a
+second copy started beside a running one leaves the corpus alone.
+`--skip-preflight` skips the refresh along with the other start-up checks.
 
 **Keeping your own corpus.** If you build your own corpus into the state dir,
 add `freeze_corpus = true` to `/var/lib/idle-hours/config.toml` and the
