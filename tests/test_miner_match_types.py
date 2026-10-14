@@ -333,6 +333,18 @@ class TestDottedTimeMatchType:
         assert _first_candidate("He went to town each morning by the 8.45 and returned at 6.30 each evening.", "dotted_time") is not None
         assert _first_candidate("The figure he worked out was about 2.10, which seemed low.", "dotted_time") is None
 
+    @pytest.mark.parametrize("text, time", [
+        ("The train leaves at 8.30 tonight from the junction.", "08:30"),
+        ("The train leaves at 8.30 amply supplied with coal.", "08:30"),
+        ("At 8.30 grammar lessons began, and the morning dragged.", "08:30"),
+    ])
+    def test_a_unit_word_must_be_whole(self, text, time):
+        """The unit guard rejects "8.30 tons", not "8.30 tonight"."""
+        assert _first_candidate(text, "dotted_time").normalized_time == time
+
+    def test_kilo_still_rejects_its_compounds(self):
+        assert _first_candidate("The train ran about 8.30 kilometres before it stopped.", "dotted_time") is None
+
     def test_a_twenty_four_hour_dotted_number_needs_no_context(self):
         assert _first_candidate("We shall be there till 17.45, I expect.", "dotted_time").normalized_time == "17:45"
         assert _first_candidate("The figure came to 00.50 in the end.", "dotted_time") is None   # no prefix word
