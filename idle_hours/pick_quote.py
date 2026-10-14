@@ -577,6 +577,7 @@ SHIPPED_BAN_QUOTE_KEYS: frozenset[str] = frozenset({
     "75288:4513",  # The Seven Dials Mystery: "five o’clock" is a masked member's name, not a time
     "75288:4568",  # The Seven Dials Mystery: "five o’clock" is a masked member's name, not a time
     "75288:4532",  # The Seven Dials Mystery: "seven o’clock" is a masked member's name, not a time
+    "200:20048",  # The Project Gutenberg Encyclopedia, Volume 1: "about 0.08 volt" is a voltage, not a time
 })
 
 
