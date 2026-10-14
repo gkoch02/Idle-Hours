@@ -142,6 +142,8 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 **Full reference: [`docs/web_ui.md`](docs/web_ui.md)**: every endpoint, the security model, the connection limits, bake/ban/overrides semantics, and the UI layout.
 
+**Maintenance-only.** Fix breakage and security issues; no performance, feature or polish work until someone actually uses it (`docs/web_ui.md`, "Status").
+
 Off by default. `--web-bind HOST:PORT` starts a `ThreadingHTTPServer` on a daemon thread **inside `run_clock`**, sharing `RuntimeState` and its locks. In-process is non-negotiable, because mutating POSTs go through the same `_button_render_gate` as the buttons. A startup failure is logged, not fatal. Static UI is plain HTML/JS/CSS with no build step.
 
 **Security model.** Loopback binds skip auth. Any other bind **requires** `--web-token` / `--web-token-file` (hot-reloaded on mtime). A configured token gates every POST, every JSON GET, `/current.png` and `/api/preview`, via the `X-Idle-Hours-Token` header only. Only the static shell (and `/metrics` unless `--web-metrics-token`) stays open. On every bind, independent of the token: POSTs require `Content-Type: application/json` (415), `Origin` must match `Host` (403), and `Host` must be allowed for the bind (403, the DNS-rebinding guard; extend with `--web-allowed-host`). Unknown routes 404 before the auth check.

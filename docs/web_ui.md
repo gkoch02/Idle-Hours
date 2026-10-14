@@ -3,6 +3,21 @@
 Full reference for the optional curator HTTP UI: endpoints, security model,
 and curation semantics. Moved out of `CLAUDE.md` (which keeps a summary).
 
+## Status: maintenance-only
+
+The curator UI is frozen. It has no active users; it stays because it is
+built, tested and off by default, not because it is on a roadmap. Until
+someone actually runs it:
+
+- **In scope:** fixing breakage (a red test or CI job, a change elsewhere that
+  breaks an endpoint) and security issues.
+- **Out of scope:** performance work, new endpoints or features, and UX
+  polish. Close such issues with a pointer here (e.g. #421, memoising
+  `/api/coverage`).
+
+Lift the freeze when a real operator uses the UI and reports what they need;
+let that report, not this backlog, decide what gets built.
+
 ## Curator Web UI (`web_server.py`, `idle_hours/web/`)
 
 Optional in-process HTTP surface for browsing telemetry / coverage / candidates and curating the corpus end-to-end without SSHing into the appliance. As of v2 the UI is the full curation seat: it edits both override sidecars, re-bakes the runtime database, runs full-text search across the corpus, renders side-by-side theme previews, and surfaces empty/sparse buckets with phrase suggestions for the harvester. **Off by default** — only starts when `run_clock.py --web-bind HOST:PORT` is passed. Served from a `ThreadingHTTPServer` on a daemon background thread so the main render loop doesn't share an event loop with HTTP, but the two threads share `state.render_lock` / `state.lock` / `state.ledger_lock` via the same `RuntimeState` instance. **In-process is non-negotiable**: every mutating POST routes through the same `_button_render_gate` (non-blocking `render_lock.acquire`) that GPIO button handlers use, and atomic state/override writes are only safe when one process owns the file.
