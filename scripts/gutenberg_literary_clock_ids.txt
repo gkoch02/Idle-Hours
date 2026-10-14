@@ -1,0 +1,210 @@
+# Reading list from The Literary Clock (literaryclock.com/library): the
+# public-domain books its curators found clock times in, matched to Gutenberg
+# by title and author. Only the book list is taken; every quote is mined here
+# from the Gutenberg text. Fills the off-minute buckets left empty when numeric
+# times more precise than the clock were dropped.
+# Run via: bash scripts/run_dawn_expansion.sh scripts/gutenberg_literary_clock_ids.txt
+#
+30427  # Ashwell: The Lost Kafoozalum
+1357  # Balzac: Madame Firmiani
+26149  # Barbour: Left Guard Gilbert
+13897  # Barbour: The Adventure Club Afloat
+37209  # Barbour: The Turner Twins
+29752  # Barr: An Orkney Maid
+25921  # Bartimeus: The Long Trick
+34957  # Bazin: The children of Alsace
+4644  # Bede: The Adventures of Mr. Verdant Green
+6116  # Bennet: Out of the Primitive
+40168  # Bennett: The Old Adam: A Story of Adventure
+21249  # Bennett: Clayhanger
+12773  # Bennett: Mr. Prohack
+44559  # Blavatsky: Nightmare Tales
+35503  # Bonner: The Girl at Central
+1028  # Brontë: The Professor
+1260  # Brontë: Jane Eyre: An Autobiography
+331  # Burroughs: The Mucker
+44150  # Butler: The Jack-Knife Man
+25570  # Caine: The Manxman : a novel
+25572  # Caine: Capt'n Davy's Honeymoon
+12405  # Castlemon: Frank, the Young Naturalist
+22071  # Chase: Marjorie Dean, College Sophomore
+19746  # Chesnutt: The Colonel's Dream
+78220  # Christie: Murder at the vicarage
+20485  # Clouston: The Lunatic at Large
+21067  # Collingwood: Overdue: The Story of a Missing Ship
+1626  # Collins: After Dark
+583  # Collins: The Woman in White
+2305  # Conrad: A Set of Six
+8994  # Coolidge: What Katy Did
+14526  # Crawford: The Little City of Hope: A Christmas Story
+45485  # Dean: The Sky Trail
+1465  # Dickens: The Wreck of the Golden Mary
+766  # Dickens: David Copperfield
+7816  # Disraeli: The Voyage of Captain Popanilla
+600  # Dostoyevsky: Notes from the Underground
+2638  # Dostoyevsky: The Idiot
+355  # Doyle: The Parasite: A Story
+41881  # Dumas: The Corsican Brothers
+1184  # Dumas: The Count of Monte Cristo
+550  # Eliot: Silas Marner
+1321  # Eliot: The Waste Land
+43079  # Ellis: The Boy Patrol on Guard
+30985  # Ernst: The Mark of the Knife
+21361  # Fenn: Patience Wins: War in the Works
+350  # Ferber: Fanny Herself
+10552  # Fitzhugh: Roy Blakeley: His Story
+20119  # Fleming: Ambrotox and Limping Dick
+25424  # Fletcher: In the Mayor's Parlour
+25388  # Fletcher: The Herapath Property
+18545  # France: A Mummer's Tale
+17793  # Freeman: The Debtor: A Novel
+44307  # Fuller: A. D. 2000
+32044  # Fullerton: Jimmy Kirkland and the Plot for a Pennant
+2914  # Galsworthy: The Mob: A Play in Four Acts
+2192  # Galsworthy: The Dark Flower
+41844  # Gibbs: The Golden Bough
+39387  # Gilson: Submarine U93
+12450  # Glyn: The Reason Why
+24764  # Griffith: The World Peril of 1910
+1832  # Groner: The Case of the Lamp That Went Out
+1026  # Grossmith: The Diary of a Nobody
+711  # Haggard: Allan Quatermain
+32198  # Hanshew: Cleek of Scotland Yard: Detective Stories
+28264  # Hanshew: Cleek, the Master Detective
+3044  # Hardy: Desperate Remedies
+29471  # Harrison: The Velvet Glove
+17241  # Hauptmann: Atlantis
+22358  # Hecht: Erik Dorn
+1646  # Henry: Roads of Destiny
+40897  # Hering: The Burglars' Club: A Romance in Twelve Chronicles
+34320  # Hoover: Project Daedalus
+2098  # Hornung: A Thief in the Night: A Book of Raffles' Adventures
+5720  # Housman: A Shropshire Lad
+1480  # Hughes: Tom Brown's School Days
+32338  # Hugo: Toilers of the sea
+4223  # Hume: The Mystery of a Hansom Cab
+29166  # Ingram: The Flying Mercury
+33277  # Jenkins: John Dene of Toronto: A Comedy of Whitehall
+19043  # Jepson: The Terrible Twins
+855  # Jerome: Clocks
+2814  # Joyce: Dubliners
+4217  # Joyce: A Portrait of the Artist as a Young Man
+7849  # Kafka: The Trial
+20308  # Kennedy: White Ashes
+21465  # Kingston: Hurricane Hurry
+2186  # Kipling: "Captains Courageous": A Story of the Grand Banks
+6043  # Kyd: The Spanish Tragedie
+31663  # Lafferty: The Six Fingers of Time
+217  # Lawrence: Sons and Lovers
+34795  # Leblanc: The Golden Triangle: The Return of Arsène Lupin
+28093  # Leblanc: The Confessions of Arsène Lupin
+13058  # Leblanc: The Teeth of the Tiger
+34758  # Leblanc: 813
+26610  # Lewis: The Trail of the Hawk: A Comedy of the Seriousness of Life
+3281  # Lincoln: Cy Whittaker's Place
+73233  # Lovecraft: The haunter of the dark
+50133  # Lovecraft: The Dunwich horror
+72966  # Lovecraft: The horror at Red Hook
+11581  # Lowndes: From out the Vasty Deep
+37294  # Lowndes: The Red Cross Barge
+16078  # MacGill: The Amateur Army
+27682  # MacKaye: The Panchronicon
+43608  # Markham: The Great Frozen Sea: A Personal Narrative of the Voyage of 
+40451  # Marsh: Under One Flag
+13567  # Mason: Clementina
+6014  # McCutcheon: West Wind Drift
+6044  # McCutcheon: Quill's Window
+14818  # McCutcheon: The Daughter of Anderson Crow
+31241  # McFee: Aliens
+36211  # McNeile: Men, Women and Guns
+8939  # Merriman: With Edged Tools
+73011  # Milne: The house at Pooh Corner
+14153  # Mitchell: Westways: A Village Chronicle
+11373  # Moffett: Through the Wall
+33185  # Moscheles: Fragments of an Autobiography
+22324  # Nichols: Pushed and the Return Push
+13123  # Oppenheim: The Great Prince Shan
+13738  # Palmer: The Last Shot
+39826  # Pangborn: The Trial of Callista Blake
+26905  # Parker: Northern Lights
+28595  # Pemberton: The Man Who Drove the Car
+36105  # Perry: Hope Benham: A Story for Girls
+1065  # Poe: The Raven
+1450  # Porter: Pollyanna
+22328  # Raine: Oh, You Tex!
+3702  # Reade: Foul Play
+21035  # Reed: The Adventures of a Three-Guinea Watch
+1923  # Reeve: The Poisoned Pen
+6635  # Rice: A Romance of Billy-Goat Hill
+26194  # Robertson: The Grain Ship
+21879  # Rohmer: The Sins of Séverac Bablon
+271  # Sewell: Black Beauty
+5199  # Shackleton: South: The Story of Shackleton's Last Expedition, 1914-1917
+1533  # Shakespeare: Macbeth
+1122  # Shakespeare: Hamlet
+1121  # Shakespeare: As You Like It
+11229  # Shiel: The Purple Cloud
+6993  # Shiel: The Lord of the Sea
+11876  # Sinclair: The Three Sisters
+20898  # Smith: The Galaxy Primes
+34398  # Snaith: Mrs. Fitz
+36089  # Speed: Back at School with the Tucker Twins
+40178  # Speed: The Carter Girls' Mysterious Neighbors
+39832  # Steel: In the Permanent Way
+44747  # Stendhal: The Red and the Black: A Chronicle of 1830
+20127  # Stephens: Here are Ladies
+1079  # Sterne: The life and opinions of Tristram Shandy, gentleman
+345  # Stoker: Dracula
+37039  # Strindberg: The Red Room
+42184  # Stringer: The Silver Poppy
+7265  # Thackeray: The History of Pendennis
+599  # Thackeray: Vanity Fair
+41139  # Thorne: The Drunkard
+1399  # Tolstoy: Anna Karenina
+28123  # Townley: The Scarlet Feather
+35691  # Tracy: The Late Tenant
+37346  # Train: Mortmain
+3608  # Tressell: The Ragged Trousered Philanthropists
+5140  # Trollope: He Knew He Was Right
+5118  # Trollope: The American Senator
+19987  # Twain: Chapters from My Autobiography
+3180  # Twain: A Double Barrelled Detective Story
+50109  # Twain: The Mysterious Stranger: A Romance
+9779  # Vance: The Black Bag
+29671  # Vance: Nobody
+29599  # Venable: Homesick
+18857  # Verne: A Journey to the Centre of the Earth
+11556  # Verne: Facing the Flag
+16355  # Voigt: Combed Out
+42714  # Wells: The Luminous Face
+45622  # Wells: The Curved Blades
+11640  # Wells: Love and Mr. Lewisham
+13034  # Weston: Mary Minds Her Business
+39215  # Weyman: The New Rector
+69768  # Wilder: The bridge of San Luis Rey
+42357  # Williamson: The Adventure of Princess Sylvia
+21998  # Williamson: The Lion's Mouse
+60067  # Wodehouse: Leave it to Psmith
+6836  # Wodehouse: Three Men and a Maid
+34587  # Wood: Mrs. Halliburton's Troubles
+71865  # Woolf: Mrs. Dalloway
+27684  # Yates: Anthony Lyveden
+27079  # Yates: Jonah and Co.
+17469  # Yates: Berry and Co.
+13695  # Zola: A Love Episode
+15900  # Zola: His Masterpiece
+#
+# Probe batch (2026-10-13): books outside that list whose strict mine
+# hit the thinnest buckets.
+1699  # Oppenheim: The Vanished Messenger
+9795  # Le Queux: The Four Faces: A Mystery
+9834  # Fletcher: The Talleyrand Maxim
+1069  # Zola: Four Short Stories By Emile Zola
+11579  # Scott: Scott's Last Expedition, Volume I Being the journals of Capt
+3322  # Wood: East Lynne
+9102  # Braddon: Run to Earth: A Novel
+9189  # Braddon: Henry Dunbar: A Novel
+9192  # Wood: The Channings: A Story
+8954  # Braddon: Lady Audley's Secret
+9052  # Braddon: The Golden Calf
+9297  # Fletcher: The Orange-Yellow Diamond

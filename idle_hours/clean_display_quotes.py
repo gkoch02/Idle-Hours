@@ -180,8 +180,9 @@ TRAILING_SPEAKER_CUE = re.compile(
 # scenes, the asterisked chapter number some editions print ("*II* At twelve
 # o'clock…"), or a list's bullet ("* Some services…").
 LEADING_ASTERISKS = re.compile(r"^(?:\*[IVXLC\d]*\*?\s*)+(?=\S)")
-# A section break anywhere: the excerpt runs across two scenes. Penalised by the
-# quality filter rather than cut, since which side to keep depends on the phrase.
+# A section break anywhere: the excerpt runs across two scenes. Not cut, since
+# which side to keep depends on the phrase: ``best_display_quote`` prefers a run
+# on the phrase's side, and the quality filter penalises one with no choice.
 SECTION_BREAK = re.compile(r"\*\s*\*")
 
 # Spaced dots at the edges: the tail of an author's ". . ." the miner's window
@@ -584,6 +585,14 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
     # Sparse buckets where every candidate bleeds a heading still render something.
     clean_non_fragments = [c for c in non_fragments if not INTERIOR_HEADING.search(c)]
     pool = clean_non_fragments or non_fragments
+    # Likewise a run that stays inside one scene: a "* * * * *" break is cut
+    # only at the excerpt's edge, so a run across it shows both scenes.
+    one_scene = [c for c in pool if not SECTION_BREAK.search(clean_edges(c))]
+    pool = one_scene or pool
+    # And one the panel's longest layouts can hold. The whole field is a
+    # candidate beside the runs, and nothing else caps its length.
+    fitting = [c for c in pool if len(c) <= EXPANSION_MAX_CHARS]
+    pool = fitting or pool
     # Then prefer a run whose quotation marks pair up (issue #297):
     # ``split_sentences`` splits inside dialogue, so a run can start with the
     # tail of a speech whose opening mark sits in the previous sentence, or

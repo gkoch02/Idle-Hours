@@ -411,6 +411,28 @@ class TestExpandedStatusStamping:
         assert "Chapter XI" not in text
         assert "one o'clock" in text
 
+    def test_prefers_a_run_that_stays_inside_one_scene(self):
+        # "…she said, smiling. * * * * * By half-past ten the next morning…": the
+        # phrase's own scene wins over a run that also shows the one before it.
+        context = (
+            "“She has a mouth in a million,” she said, smiling. * * * * * "
+            "By half-past ten the next morning we were well on the road to Rouen."
+        )
+        row = self._row(quote_text=context, context_text=context, matched_text="half-past ten")
+        text, _, _ = cdq.best_display_quote(row)
+        assert "*" not in text
+        assert text.startswith("By half-past ten")
+
+    def test_prefers_a_candidate_within_the_length_limit(self):
+        # A speech that closes only after 260 characters: the whole field is the
+        # one balanced candidate, and won before the length limit came first.
+        tail = " ".join(["The horses stamped and blew in the cold air of the yard."] * 5)
+        speech = "“At ten o’clock the carriage came round to the door. " + tail + "”"
+        row = self._row(quote_text=speech, context_text=speech, matched_text="ten o’clock")
+        text, _, _ = cdq.best_display_quote(row)
+        assert "ten o’clock" in text
+        assert len(text) <= cdq.EXPANSION_MAX_CHARS
+
     def test_interior_heading_filter_falls_back_when_only_heading_candidates(self):
         # Sparse-bucket safety: if every non-fragment candidate contains an
         # interior heading, we still return something (rather than punting to

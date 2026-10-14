@@ -105,7 +105,8 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
         score -= 8
         reasons.append("short")
     elif length > EXPANSION_MAX_CHARS:
-        score -= 20
+        # Past what the fixed-grid themes can hold: kept off the panel.
+        score -= 45
         reasons.append("too_long")
     elif length > 200:
         score -= 8

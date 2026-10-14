@@ -258,6 +258,12 @@ class TestBakedDatabaseInvariants:
         unhighlightable = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if not has_display_match(r)]
         assert unhighlightable == []
 
+    def test_no_row_is_longer_than_the_fixed_grid_themes_hold(self, baked_rows):
+        from idle_hours.clean_display_quotes import EXPANSION_MAX_CHARS
+
+        too_long = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if len(r["display_quote"]) > EXPANSION_MAX_CHARS]
+        assert too_long == []
+
     def test_no_row_states_a_time_more_precisely_than_the_clock(self, baked_rows):
         # A bare "at 10.31" is a timetable minute; the clock moves in five-minute steps.
         too_precise = [f"{r['source_id']}:{r['line_number']}" for r in baked_rows if states_too_precise_a_time(r)]
@@ -385,9 +391,11 @@ class TestQuotationBalance:
     displayable rows. The cleaner now keeps a paired edge mark, prefers a
     balanced run, and drops an unpaired edge mark from the winner; what is
     left is a quotation that genuinely runs past the miner's window, and
-    ``quality_filter`` ranks those down. The ceiling here is loose so a
-    harvest can add a few, and tight enough that the old behaviour (300+
-    rows) can never return unnoticed."""
+    ``quality_filter`` ranks those down, most of them a speech running over
+    several paragraphs, each opened with a mark the last never closed. The
+    ceiling (2 %) leaves room for that convention, which runs at about 1 %
+    of a harvest, and is tight enough that the old behaviour (~13 %) can
+    never return unnoticed."""
 
     def test_no_baked_row_starts_with_a_closing_mark(self, baked_rows):
         # An apostrophe eliding a word's head ("’Twas", "’em") is not a closing mark.
@@ -409,7 +417,7 @@ class TestQuotationBalance:
     def test_unbalanced_double_quotes_are_rare_in_the_baked_db(self, baked_rows):
         from idle_hours.clean_display_quotes import unbalanced_quotes
         offenders = [r for r in baked_rows if unbalanced_quotes(r.get("display_quote") or "")]
-        assert len(offenders) <= max(25, len(baked_rows) // 100), len(offenders)
+        assert len(offenders) <= max(25, len(baked_rows) // 50), len(offenders)
         # …and every one of them carries the penalty the scorer promises.
         for r in offenders:
             assert "unbalanced_quotes" in r.get("quality_flags", []), (r["source_id"], r["line_number"])
