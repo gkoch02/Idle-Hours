@@ -969,3 +969,70 @@ class TestGoldenStructure:
         assert diff / total > 0.5, (
             f"default and dark themes produced near-identical output ({diff}/{total} pixels differ)"
         )
+
+
+# Two times that differ in the hour (12-hour and 24-hour), the minute and the
+# half of the day, so any time surface draws something different at each.
+_FURNITURE_TIMES = ("03:10", "14:40")
+
+
+@pytest.mark.parametrize("theme", sorted(rq.THEMES))
+def test_time_surface_roster_is_accurate(theme, monkeypatch):
+    """``theme_names.TIME_SURFACE_THEMES`` lists exactly the themes that draw the time.
+
+    Idle Weather leaves the listed themes out of its rotation, so an unlisted
+    theme puts a stale clock on a weather panel, and a needlessly listed one
+    costs Idle Weather a theme. The wall clock and the diags uptime strip are
+    pinned, so only ``time_str`` changes between the two renders.
+    """
+    from idle_hours.theme_names import TIME_SURFACE_THEMES
+
+    monkeypatch.setattr(
+        "idle_hours.render_quote.themes.diags._diags_system_info",
+        lambda: {"host": "golden", "ip": "0.0.0.0", "uptime": "1h 0m"},
+    )
+    row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
+    with _frozen_clock():
+        early, late = (
+            rq.render(t, dict(row), 800, 480, mode="production", theme=theme).convert("RGB") for t in _FURNITURE_TIMES
+        )
+    draws_time = ImageChops.difference(early, late).getbbox() is not None
+    if draws_time:
+        assert theme in TIME_SURFACE_THEMES, f"{theme} draws the time; add it to theme_names.TIME_SURFACE_THEMES"
+    else:
+        assert theme not in TIME_SURFACE_THEMES, f"{theme} no longer draws the time; drop it from TIME_SURFACE_THEMES"
+
+
+# marquee prints the name only when a row has neither title nor author, which
+# no row reaching the panel lacks (the baker requires one).
+_BRAND_FALLBACK_ONLY = frozenset({"marquee"})
+
+
+def test_branded_roster_is_accurate():
+    """``theme_names.BRANDED_THEMES`` lists the theme modules that print "Idle Hours".
+
+    A string literal (not a docstring or comment) naming the product in a
+    theme's own module is drawn on the panel; the shared modules are left
+    out because the one mention there (a culture ship name) belongs to
+    themes already in ``TIME_SURFACE_THEMES``.
+    """
+    from idle_hours.theme_names import BRANDED_THEMES
+
+    themes_dir = Path(rq.__file__).parent / "themes"
+    found = set()
+    for path in themes_dir.glob("[!_]*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and ast.get_docstring(node) is not None
+        }
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
+                    and "idle hours" in node.value.lower()):
+                found.add(path.stem)
+    assert found, "no theme module names Idle Hours; the scan has stopped matching"
+    assert found - _BRAND_FALLBACK_ONLY == BRANDED_THEMES, (
+        f"unlisted={sorted(found - _BRAND_FALLBACK_ONLY - BRANDED_THEMES)}, "
+        f"listed but unbranded={sorted(BRANDED_THEMES - found)}"
+    )

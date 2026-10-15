@@ -3718,6 +3718,14 @@ class TestRandomThemeMode:
             result = runtime_theme.pick_random_theme()
             assert result in valid, f"pick_random_theme() returned {result!r}, not in theme_cycle()"
 
+    def test_bag_refills_from_a_given_pool(self):
+        pool = ("roman", "saloon", "deco")
+        bag, seen = [], []
+        for _ in range(2 * len(pool)):
+            theme, bag = runtime_theme.pick_next_random_theme(bag, pool=pool)
+            seen.append(theme)
+        assert sorted(seen) == sorted(pool * 2)
+
     def test_resolve_random_uses_current_random_theme(self):
         """When ``current_random_theme`` is set, ``resolve_effective_theme`` returns it."""
         result = runtime_theme.resolve_effective_theme("random", "10:00", None, current_random_theme="roman")

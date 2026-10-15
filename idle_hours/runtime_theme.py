@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+from collections.abc import Sequence
 
 from idle_hours import runtime_store, theme_names
 from idle_hours.runtime_log import _log
@@ -99,7 +100,7 @@ def recent_window_size(pool_size: int) -> int:
 
 
 def pick_next_random_theme(
-    bag: list[str], *, recent: list[str] | None = None,
+    bag: list[str], *, recent: list[str] | None = None, pool: Sequence[str] | None = None,
 ) -> tuple[str, list[str]]:
     """Draw the next theme from a shuffled bag of unseen themes.
 
@@ -109,11 +110,13 @@ def pick_next_random_theme(
     the themes in ``recent`` (most-recent last) moved to the head, which is
     drawn last. That keeps a theme from the tail of one pass from reappearing
     at the start of the next; docs/runtime.md explains the window and why
-    :func:`recent_window_size` caps it at half the pool.
+    :func:`recent_window_size` caps it at half the pool. ``pool`` replaces
+    :func:`random_theme_pool` as the refill source (Idle Weather passes the
+    pool without :data:`theme_names.CLOCK_FURNITURE_THEMES`).
     """
     bag = list(bag)  # never mutate the caller's list
     if not bag:
-        pool = list(random_theme_pool())
+        pool = list(random_theme_pool() if pool is None else pool)
         random.shuffle(pool)
         if recent:
             recent_set = set(recent)

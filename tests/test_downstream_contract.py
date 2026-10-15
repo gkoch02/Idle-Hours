@@ -31,7 +31,7 @@ from idle_hours.match_span import has_display_match
 from idle_hours.pidfile import PidfileLockedError
 from idle_hours.quality_filter import score_quote
 from idle_hours.runtime_theme import pick_next_random_theme, random_theme_pool, recent_window_size
-from idle_hours.theme_names import THEME_ORDER
+from idle_hours.theme_names import CLOCK_FURNITURE_THEMES, THEME_ORDER
 from tests.pixel_helpers import distinct_inks
 
 POS = inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -77,12 +77,13 @@ CONTRACT: dict[str, dict[str, list[tuple[str, inspect._ParameterKind, bool]] | N
     },
     "runtime_theme": {
         "pick_random_theme": [],
-        "pick_next_random_theme": [("bag", POS, False), ("recent", KW, True)],
+        "pick_next_random_theme": [("bag", POS, False), ("recent", KW, True), ("pool", KW, True)],
         "random_theme_pool": [],
         "recent_window_size": [("pool_size", POS, False)],
     },
     "theme_names": {
         "THEME_ORDER": None,
+        "CLOCK_FURNITURE_THEMES": None,
     },
     "render_quote": {
         "render": [
@@ -164,6 +165,13 @@ class TestWeatherBehaviour:
         assert theme in random_theme_pool() and theme in THEME_ORDER
         assert isinstance(bag, list)
         assert 0 <= recent_window_size(len(random_theme_pool())) < len(random_theme_pool())
+
+    def test_a_clock_free_rotation_remains(self):
+        # Idle Weather rotates through the random pool minus these.
+        assert CLOCK_FURNITURE_THEMES <= set(THEME_ORDER)
+        clock_free = [t for t in random_theme_pool() if t not in CLOCK_FURNITURE_THEMES]
+        theme, _bag = pick_next_random_theme([], pool=clock_free)
+        assert theme in clock_free
 
     def test_pidfile_error_is_an_exception(self):
         assert issubclass(PidfileLockedError, Exception)
