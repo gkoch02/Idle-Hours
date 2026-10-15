@@ -112,7 +112,7 @@ def pick_next_random_theme(
     at the start of the next; docs/runtime.md explains the window and why
     :func:`recent_window_size` caps it at half the pool. ``pool`` replaces
     :func:`random_theme_pool` as the refill source (Idle Weather passes the
-    pool without :data:`theme_names.CLOCK_FURNITURE_THEMES`).
+    pool without :data:`theme_names.TIME_SURFACE_THEMES`).
     """
     bag = list(bag)  # never mutate the caller's list
     if not bag:

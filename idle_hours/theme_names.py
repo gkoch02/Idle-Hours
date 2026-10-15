@@ -127,14 +127,12 @@ TIME_SURFACE_THEMES: frozenset[str] = frozenset({
 })
 
 # Themes whose furniture prints the Idle Hours name (an imprint, a maker's
-# line, a header). Idle Weather leaves these out too. tests/test_render_golden.py
+# line, a header). Nothing excludes these today: Idle Weather keeps them, the
+# name reading as a maker's mark. tests/test_render_golden.py
 # fails if a theme module carries the name and is not listed here.
 BRANDED_THEMES: frozenset[str] = frozenset({
     "astrarium", "bakelite", "cardcatalog", "circuit", "diags", "lieder", "metro", "pulp", "sampler",
 })
-
-# What a frame that is not a clock should not use: Idle Weather's exclusions.
-CLOCK_FURNITURE_THEMES: frozenset[str] = TIME_SURFACE_THEMES | BRANDED_THEMES
 
 
 def known_theme_names() -> frozenset[str]:

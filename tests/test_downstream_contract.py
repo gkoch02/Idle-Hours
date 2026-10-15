@@ -31,7 +31,7 @@ from idle_hours.match_span import has_display_match
 from idle_hours.pidfile import PidfileLockedError
 from idle_hours.quality_filter import score_quote
 from idle_hours.runtime_theme import pick_next_random_theme, random_theme_pool, recent_window_size
-from idle_hours.theme_names import CLOCK_FURNITURE_THEMES, THEME_ORDER
+from idle_hours.theme_names import THEME_ORDER, TIME_SURFACE_THEMES
 from tests.pixel_helpers import distinct_inks
 
 POS = inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -83,7 +83,11 @@ CONTRACT: dict[str, dict[str, list[tuple[str, inspect._ParameterKind, bool]] | N
     },
     "theme_names": {
         "THEME_ORDER": None,
-        "CLOCK_FURNITURE_THEMES": None,
+        "TIME_SURFACE_THEMES": None,
+    },
+    # Idle Weather's tests pin the renderer's clock seam (astrarium reads it).
+    "render_quote.clock": {
+        "now": [],
     },
     "render_quote": {
         "render": [
@@ -168,8 +172,8 @@ class TestWeatherBehaviour:
 
     def test_a_clock_free_rotation_remains(self):
         # Idle Weather rotates through the random pool minus these.
-        assert CLOCK_FURNITURE_THEMES <= set(THEME_ORDER)
-        clock_free = [t for t in random_theme_pool() if t not in CLOCK_FURNITURE_THEMES]
+        assert TIME_SURFACE_THEMES <= set(THEME_ORDER)
+        clock_free = [t for t in random_theme_pool() if t not in TIME_SURFACE_THEMES]
         theme, _bag = pick_next_random_theme([], pool=clock_free)
         assert theme in clock_free
 
