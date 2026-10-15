@@ -112,6 +112,31 @@ THEME_ORDER: tuple[str, ...] = (
 CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset()
 
 
+# Themes whose frame draws the time it is given: an hour carrier (a numeral, a
+# camera number, a due stamp) or HH:MM on an object that is a clock. Every
+# other theme renders the same frame at any time. Idle Weather leaves these
+# out, since its frames are not clocks and stay on the panel for half an hour.
+# tests/test_render_golden.py renders every theme at two times and fails if
+# this list is wrong in either direction.
+TIME_SURFACE_THEMES: frozenset[str] = frozenset({
+    "abyssal", "atropos", "bakelite", "beksinski", "betweenus", "betweenus_dark", "biomech", "bladerunner",
+    "cardcatalog", "codex", "culture", "diags", "dsky", "expanse", "expedition", "gantry", "hades", "hal",
+    "hippochomp", "hitchhiker", "izakaya", "lasvegas", "lieder", "lumon", "metro", "oblivion", "observation",
+    "orbital", "plaque", "platform", "pourjudgment", "pulp", "reactornight", "saros", "semiotic", "synoptic",
+    "tarot", "traumateam", "trisolaris", "vhs", "vitrail", "witcher", "yorha",
+})
+
+# Themes whose furniture prints the Idle Hours name (an imprint, a maker's
+# line, a header). Idle Weather leaves these out too. tests/test_render_golden.py
+# fails if a theme module carries the name and is not listed here.
+BRANDED_THEMES: frozenset[str] = frozenset({
+    "astrarium", "bakelite", "cardcatalog", "circuit", "diags", "lieder", "metro", "pulp", "sampler",
+})
+
+# What a frame that is not a clock should not use: Idle Weather's exclusions.
+CLOCK_FURNITURE_THEMES: frozenset[str] = TIME_SURFACE_THEMES | BRANDED_THEMES
+
+
 def known_theme_names() -> frozenset[str]:
     """Every registered theme name.
 
