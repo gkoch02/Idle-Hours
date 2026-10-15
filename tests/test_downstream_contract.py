@@ -9,8 +9,8 @@ Weather the next time it bumps its pin.
 ``CONTRACT`` is a hand-written copy of what Idle Weather calls, not something
 read back from the code: it is the oracle (issue #392). Adding an optional
 parameter, or a default to a required one, is compatible and passes. Removing
-or renaming a name or a parameter, reordering positional parameters, adding a
-required one, or dropping a default fails. When a change here has to break
+or renaming a name or a parameter, reordering positional parameters or putting
+a new one in front of them, adding a required one, or dropping a default fails. When a change here has to break
 the contract, change Idle Weather in step, then update this table.
 
 The behaviour checks below call each name with the argument shapes Idle Weather
@@ -111,8 +111,11 @@ def test_contract_name_is_compatible(module, name):
         if has_default:
             assert actual.default is not inspect.Parameter.empty, f"{module}.{name}({param}) lost its default"
     expected_names = {param for param, _kind, _default in expected}
-    positional = [p.name for p in params.values() if p.kind == POS and p.name in expected_names]
-    assert positional == [p for p, kind, _d in expected if kind == POS], f"{module}.{name} reordered its positional parameters"
+    # Idle Weather passes these positionally, so they must hold the leading
+    # slots: a new optional parameter in front of one would take its argument.
+    expected_positional = [p for p, kind, _d in expected if kind == POS]
+    leading = [p.name for p in params.values() if p.kind in (inspect.Parameter.POSITIONAL_ONLY, POS)][: len(expected_positional)]
+    assert leading == expected_positional, f"{module}.{name} moved its positional parameters: {leading}"
     for extra in params.values():
         if extra.name in expected_names or extra.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             continue
