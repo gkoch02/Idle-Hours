@@ -115,7 +115,8 @@ CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset()
 # Themes whose frame draws the time it is given: an hour carrier (a numeral, a
 # camera number, a due stamp) or HH:MM on an object that is a clock. Every
 # other theme renders the same frame at any time. Idle Weather leaves these
-# out, since its frames are not clocks and stay on the panel for half an hour.
+# out unless it has judged the time decoration rather than a clock, since its
+# frames stay on the panel for half an hour.
 # tests/test_render_golden.py renders every theme at two times and fails if
 # this list is wrong in either direction.
 TIME_SURFACE_THEMES: frozenset[str] = frozenset({
