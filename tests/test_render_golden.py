@@ -980,9 +980,10 @@ _FURNITURE_TIMES = ("03:10", "14:40")
 def test_time_surface_roster_is_accurate(theme, monkeypatch):
     """``theme_names.TIME_SURFACE_THEMES`` lists exactly the themes that draw the time.
 
-    Idle Weather leaves the listed themes out of its rotation, so an unlisted
-    theme puts a stale clock on a weather panel, and a needlessly listed one
-    costs Idle Weather a theme. The wall clock and the diags uptime strip are
+    Idle Weather keeps a listed theme out of its rotation until someone has
+    judged its time decorative, so an unlisted theme can put an unreviewed
+    clock on a weather panel, and a needlessly listed one waits on a review it
+    does not need. The wall clock and the diags uptime strip are
     pinned, so only ``time_str`` changes between the two renders.
     """
     from idle_hours.theme_names import TIME_SURFACE_THEMES
