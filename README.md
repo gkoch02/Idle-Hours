@@ -2,8 +2,6 @@
   <img src="idle_hours/assets/logo.svg" alt="Idle Hours" width="800">
 </p>
 
-# Idle Hours
-
 [![CI](https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/gkoch02/IdleHours/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/gkoch02/IdleHours/actions/workflows/github-code-scanning/codeql)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
