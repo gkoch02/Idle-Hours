@@ -27,7 +27,9 @@ truthful about the workflow beside it.
 """
 from __future__ import annotations
 
+import ast
 import json
+import subprocess
 from pathlib import Path
 
 # PyYAML is declared in the [dev] extra and imported hard, not through
@@ -57,6 +59,12 @@ RULESET_PATH = REPO_ROOT / ".github" / "rulesets" / "main-branch.json"
 # where the check never reports at all. ci.yml has no such filter on
 # ``pull_request``, so it cannot arise here.)
 ADVISORY_JOBS: dict[str, str] = {
+    "changes": (
+        "plumbing, not a check: it only classifies a pull request as docs-only. "
+        "Every consumer gates on `docs_only != 'true'`, so if it fails the "
+        "output is empty and every job runs in full; there is nothing for it "
+        "to block."
+    ),
     "coverage": (
         "still enforces and reports the 95% line-and-branch floor, but is "
         "advisory because its tracer-heavy full-suite run adds roughly ten "
@@ -69,6 +77,18 @@ ADVISORY_JOBS: dict[str, str] = {
         "success, so requiring it would add a context that is green without "
         "having checked anything — assurance theatre, not a gate."
     ),
+}
+
+
+# The condition every skippable job carries. ``!= 'true'`` (not ``== 'false'``)
+# is what makes it fail safe: a failed ``changes`` job leaves the output empty,
+# and ``!cancelled()`` stops the failed dependency from skipping the job.
+DOCS_ONLY_GATE = "${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}"
+
+# Test modules that name a repo Markdown file without reading the repo's copy.
+DOCS_FENCE_FALSE_POSITIVES: dict[str, str] = {
+    "test_render_quote_themes.py": "reads idle_hours/assets/semiotic/README.md, a package asset, not a doc",
+    "test_ci_required_checks.py": "names README.md only to sanity-check the scan below",
 }
 
 
@@ -162,7 +182,7 @@ class TestWorkflowTriggers:
     def test_ci_runs_on_pull_requests(self):
         assert "pull_request" in _triggers(_load_workflow())
 
-    def test_coverage_job_is_not_conditional(self):
+    def test_coverage_job_runs_on_pull_requests(self):
         """The ``--cov-fail-under`` floor has to actually run to mean anything.
 
         This job was ``if: github.event_name == 'push'``, which made the
@@ -174,9 +194,10 @@ class TestWorkflowTriggers:
         advisory, because it looks enforced.
         """
         coverage = _load_workflow()["jobs"]["coverage"]
-        assert "if" not in coverage, (
-            "coverage must run on pull_request: an advisory check that is skipped "
-            "provides no coverage signal at all (issue #241)"
+        assert coverage.get("if") == DOCS_ONLY_GATE, (
+            "coverage must run on every pull_request that touches code: an advisory "
+            "check that is skipped provides no coverage signal at all (issue #241). "
+            "The only skip allowed is the docs-only gate."
         )
 
     def test_coverage_job_still_enforces_the_floor(self):
@@ -232,3 +253,68 @@ class TestRequiredStatusChecks:
         rules = json.loads(RULESET_PATH.read_text(encoding="utf-8"))["rules"]
         [pr] = [rule for rule in rules if rule["type"] == "pull_request"]
         assert pr["parameters"]["required_review_thread_resolution"] is True
+
+
+def _string_constants(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+
+
+def _docs_fence_step_modules(workflow: dict) -> set[str]:
+    steps = workflow["jobs"]["test"]["steps"]
+    [step] = [step for step in steps if step.get("if") == "needs.changes.outputs.docs_only == 'true'"]
+    return {word.removeprefix("tests/") for word in step["run"].split() if word.startswith("tests/")}
+
+
+class TestDocsOnlyFences:
+    """A docs-only pull request skips most of CI but must still run every test
+    that reads the docs: README rosters and documented commands are fenced, so
+    deleting one README line can break the build. The step names those modules
+    by hand; this fence finds them from the source, so a new docs test cannot
+    be left out of the docs-only run.
+    """
+
+    def test_skippable_jobs_use_the_fail_safe_gate(self):
+        jobs = _load_workflow()["jobs"]
+        for job_id, job in jobs.items():
+            if job_id in ("changes", "test", "release-version"):
+                continue
+            assert job.get("needs") == "changes" and job.get("if") == DOCS_ONLY_GATE, job_id
+
+    def test_test_job_always_reports(self):
+        """Its two contexts are required, and the docs fences run inside it."""
+        assert _load_workflow()["jobs"]["test"]["if"] == "${{ !cancelled() }}"
+
+    def test_classifier_sees_both_sides_of_a_rename(self):
+        """With rename detection on, `idle_hours/x.py` -> `docs/x.md` lists only the .md and reads as docs-only."""
+        steps = _load_workflow()["jobs"]["changes"]["steps"]
+        script = next(s["run"] for s in steps if s.get("id") == "diff")
+        assert "git diff --no-renames --name-only" in script
+
+    def test_listed_modules_exist(self):
+        for name in _docs_fence_step_modules(_load_workflow()):
+            assert (REPO_ROOT / "tests" / name).is_file(), name
+
+    def test_every_docs_reading_module_is_listed(self):
+        tracked = subprocess.run(
+            ["git", "ls-files", "*.md"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+        ).stdout.split()
+        docs = [path for path in tracked if not path.startswith("idle_hours/")]
+        assert "README.md" in docs, "git ls-files found no docs; the scan below would match nothing"
+        doc_names = set(docs) | {Path(path).name for path in docs}
+        scripts = {path.name: path for path in (REPO_ROOT / "scripts").glob("*.py")}
+
+        readers = set()
+        for test in sorted((REPO_ROOT / "tests").glob("test_*.py")):
+            names = _string_constants(test)
+            via_script = any(doc_names & _string_constants(scripts[name]) for name in names & set(scripts))
+            if names & doc_names or via_script:
+                readers.add(test.name)
+
+        assert set(DOCS_FENCE_FALSE_POSITIVES) <= readers, "a false-positive entry no longer matches; drop it"
+        missing = sorted(readers - set(DOCS_FENCE_FALSE_POSITIVES) - _docs_fence_step_modules(_load_workflow()))
+        assert not missing, (
+            f"{missing} name a repo doc but are not in ci.yml's docs-only pytest step, so a "
+            "docs-only pull request would skip them. Add them there, or to "
+            "DOCS_FENCE_FALSE_POSITIVES with a reason."
+        )

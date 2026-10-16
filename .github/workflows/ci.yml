@@ -16,7 +16,45 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Decides whether a pull request touches only Markdown, so the jobs below
+    # can skip work a docs edit cannot affect. Fail-safe by construction: the
+    # output is "true" only when every changed path is a *.md outside the
+    # package, and every consumer tests `!= 'true'`, so a failure here, a push,
+    # a tag or an empty diff all mean "run everything". A skipped job reports
+    # success to a required status check, so docs-only PRs still merge.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      # A pull_request checkout is the merge commit, whose first parent is the
+      # base tip, so depth 2 is enough to diff exactly what the PR changes.
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+
+      - name: Classify changed paths
+        id: diff
+        if: github.event_name == 'pull_request'
+        run: |
+          # --no-renames lists both sides of a rename; otherwise moving
+          # idle_hours/x.py to docs/x.md shows only the .md and skips CI.
+          changed="$(git diff --no-renames --name-only HEAD^1 HEAD)"
+          printf '%s\n' "$changed"
+          # Markdown inside idle_hours/ ships in the wheel (assets/*.md), so it
+          # is not "just docs".
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vE '\.md$' | grep -q . \
+              && ! printf '%s\n' "$changed" | grep -q '^idle_hours/'; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -40,6 +78,8 @@ jobs:
   typecheck:
     # mypy over the whole package (issue #350). Settings live in
     # pyproject.toml's [tool.mypy]; the version is pinned in the dev extra.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -61,6 +101,8 @@ jobs:
         run: mypy
 
   test:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -89,7 +131,23 @@ jobs:
       # branch shows up as a drop) has measurable sysmon overhead and was
       # serialising the 3.12 leg behind ~2-3 extra minutes of tracer work.
       - name: Run tests
+        if: needs.changes.outputs.docs_only != 'true'
         run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py
+
+      # A docs-only PR still runs every test that reads the docs (README
+      # rosters, CLAUDE.md size, documented script invocations, the font
+      # table): deleting a README line can break those. The list is fenced by
+      # tests/test_ci_required_checks.py::TestDocsOnlyFences.
+      - name: Run docs fences (docs-only change)
+        if: needs.changes.outputs.docs_only == 'true'
+        run: >-
+          pytest -n auto --dist loadscope
+          tests/test_claude_md_size.py
+          tests/test_docs_script_invocations.py
+          tests/test_docs_theme_registry.py
+          tests/test_font_table.py
+          tests/test_pi_deployment_contract.py
+          tests/test_release_tool.py
 
       - name: End-to-end --once smoke (verifies rendered PNG decodes)
         # One Python version is enough — the existing test job already exercises
@@ -98,7 +156,7 @@ jobs:
         # surfaces immediately instead of waiting for someone to look at the
         # appliance. ``--skip-preflight`` is required because the CI runner
         # has no display script on the configured path.
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == '3.12' && needs.changes.outputs.docs_only != 'true'
         run: |
           python -m idle_hours.run_clock --once --skip-preflight --buttons-off --quiet-off \
             --history-path "" --state-path "" --pidfile "" --telemetry-path "" \
@@ -120,6 +178,8 @@ jobs:
     # but ``tests/test_ci_required_checks.py`` classifies it as advisory and the
     # live ruleset does not require it. This keeps the signal without making the
     # slowest job the merge critical path.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -151,6 +211,8 @@ jobs:
           if-no-files-found: error
 
   golden-render:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -193,6 +255,8 @@ jobs:
     # when node is absent. Running node --test as its own job means a missing
     # interpreter fails the build loudly instead of turning the whole JS
     # suite into a silent green skip.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -232,6 +296,8 @@ jobs:
     #   4. Broken ``__main__`` wiring — ``python -m idle_hours.run_clock``
     #      only resolves against installed top-level modules, not the
     #      source checkout.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
