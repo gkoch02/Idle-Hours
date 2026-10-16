@@ -400,11 +400,11 @@ Pass `--theme auto` to let the clock pick by wall-clock time. The defaults are `
 idle-hours run --theme auto --auto-day-theme newsprint --auto-night-theme nightvision
 ```
 
-`auto` itself is rejected for the day/night picks (would be a config typo, not a useful recursion). A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover, when the override clears and `auto` resumes.
+`auto` itself is rejected for the day/night picks (would be a config typo, not a useful recursion). A button-A press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover, when the override clears and `auto` resumes.
 
-Pass `--theme random` to pick a theme at random each time the displayed quote changes (so every new bucket gets a fresh look). Picks are drawn from a shuffled bag rather than uniformly, so you see every eligible theme once before any repeats — and the most recent half of the rotation is held back from the front of the next pass, so a theme shown at the end of one pass can't turn up again a pick or two later. The pick is held for the lifetime of the displayed quote and is **not persisted** — a restart picks a fresh theme on the first render. Button B / the web-UI dropdown still wins over the random pick until midnight, the same way it wins over `auto`.
+Pass `--theme random` to pick a theme at random each time the displayed quote changes (so every new bucket gets a fresh look). Picks are drawn from a shuffled bag rather than uniformly, so you see every eligible theme once before any repeats — and the most recent half of the rotation is held back from the front of the next pass, so a theme shown at the end of one pass can't turn up again a pick or two later. The pick is held for the lifetime of the displayed quote and is **not persisted** — a restart picks a fresh theme on the first render. Button A stays in random mode: a press repaints the quote in the next theme from the same bag. The web-UI dropdown still wins over the random pick until midnight, the same way it wins over `auto`.
 
-Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` / `random` mode.
+Outside random mode, button A cycles forward through the list and wraps, stepping over banned themes; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` / `random` mode.
 
 > Regenerate previews: the images under `idle_hours/assets/previews/` are built by looping over `render_quote.THEME_ORDER` and calling the `python -m idle_hours.render_quote` CLI. **Pin the quote** — the table reads as one passage shown in every theme, so a preview rendered from a fresh pick would show a different quote from its neighbours, and the picker's answer for a given time moves as the corpus grows:
 >
@@ -426,12 +426,12 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 
 | Button | Short press | Long press (2s) |
 |---|---|---|
-| **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
-| **B** | Cycle theme — advances through `default → dark → newsprint → nightvision → gothic → bauhaus → comic → dispatch → atomic → marker` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
-| **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
+| **A** | Next theme — the same quote in another theme. Under `--theme random` it draws the next random theme and stays random; otherwise it advances through `default → dark → newsprint → nightvision → gothic → bauhaus → comic → dispatch → atomic → marker` (wraps) and persists the choice to `--state-path`. | Ban theme — never show this theme in random draws or the cycle again, then move to the next theme. Lift a ban in the curator UI's Controls card. |
+| **B** | Next quote — holds the current quote back for `--history-days` and picks a new one. | Ban quote — adds the quote to `ban_quote_keys` in the selection overrides, so it never shows again, then moves to the next quote. |
+| **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | Undo last ban — lifts the most recent theme or quote ban and puts it back on the panel. Clearing every theme ban is in the curator UI, behind a confirm. |
 | **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the sleep frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
-Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one.
+Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one. A ban or an undo stamps a one-line notice ("Theme banned: gothic · hold C to undo") on the frame it paints; the notice goes away at the next repaint.
 
 If a button press lands while a render is already in flight (a Spectra 6 refresh can take 10–20s), the press is logged and dropped rather than queued — the UX is "first press wins, subsequent taps during that refresh are no-ops." Each hardware press is also logged with its GPIO pin so you can confirm the physical button reached the expected handler; for deeper wiring diagnosis run `idle-hours probe-buttons` on the Pi. The main loop also watches for a dead button listener (pin claim lost, background thread crashed) and logs one loud warning plus a telemetry entry if it detects one — presses won't work again until the process restarts.
 
@@ -570,7 +570,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 #### Tab: Now
 
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
-- Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
+- Buttons that mirror the physical Inky panel (`A · Next theme`, `A-hold · Ban theme`, `B · Next quote`, `B-hold · Ban quote`, `C-hold · Undo last ban`, `D · Quiet / wake`), plus `Un-skip`, `Re-render`, a theme dropdown that jumps directly to any registered theme, and the list of banned themes with an un-ban on each and a **Clear all**.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
 - Theme thumbnail grid: side-by-side previews of every registered theme, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
@@ -592,7 +592,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 - Telemetry: renders / errors / p50 / p95 latencies over the last 24 h, reading the same date-rotated sidecar that `idle_hours_health.py` does.
 - History: the anti-repeat ledger, newest first.
 
-The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, quiet, re-render, overrides save, bake) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
+The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, theme / quote ban, quiet, re-render, overrides save, bake) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
 
 | Endpoint | Purpose |
 |---|---|
@@ -615,7 +615,11 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `POST /api/content-overrides` | **v2** — validate + atomically rewrite the per-row content sidecar; empty `{}` is a legitimate "wipe everything" |
 | `POST /api/bake` | **v2** — re-run `bake_quote_database.bake_rows` in-process under `render_lock`; re-applies the content-overrides sidecar first so save → bake reflects on the next tick. 409 when busy. |
 | `POST /api/setup` | **v2** — mark first-run wizard complete; optional `{"theme": "<name>"}` body applies a theme before dismissing |
-| `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field cycles. Malformed JSON returns 400 without mutating state. |
+| `POST /api/action/{theme,ban-theme,skip,ban-quote,quiet}` | Mirror buttons A / A-hold / B / B-hold / D. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field does what button A does. Malformed JSON returns 400 without mutating state. |
+| `POST /api/action/{unskip,rerender}` | Web only: reverse the last skip; repaint the frame on the panel. |
+| `POST /api/action/unban-theme` | `{"theme": "<name>"}` lifts a theme ban (no repaint). 400 on an unknown name. |
+| `POST /api/action/undo-ban` | Mirrors button C-hold: undo the most recent ban. |
+| `POST /api/action/clear-theme-bans` | Lift every theme ban (no repaint). Web only. |
 
 Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-Idle-Hours-Token` header only; query-string tokens would leak into journald via HTTP request logging.
 
@@ -665,8 +669,8 @@ idle-hours run --quiet-theme auto
 ```
 
 The default is `inherit` — the sleep frame uses whatever theme the clock is
-already showing. A manual theme override (button B, or the web dropdown) always
-wins over `--quiet-theme`, and pressing button B while the panel is asleep
+already showing. A manual theme override (button A, or the web dropdown) always
+wins over `--quiet-theme`, and pressing button A while the panel is asleep
 repaints the *sleep frame* in the new theme rather than waking it with a quote.
 
 #### Showing a static image instead
@@ -865,9 +869,9 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - If the exact bucket is weak or empty, the picker walks nearby buckets and records fallback metadata.
 - `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
 - Quiet hours are on by default (22:00–06:00) and show `idle_hours/assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
-- Button B cycles through the full theme list and persists the choice to `--state-path`; the web UI dropdown jumps directly to any named theme. Button A's long press reverses the most recent skip.
+- Button A moves to the next theme (another random draw under `--theme random`, otherwise the next in the cycle, persisted to `--state-path`) and its long press bans the theme; button B moves to the next quote and its long press bans the quote. The web UI dropdown jumps directly to any named theme, and its Un-skip reverses the most recent skip.
 - Every registered theme ships built-in; the [Themes](#themes) table above is the roster, with a preview, palette and typeface per row, and [`docs/themes.md`](docs/themes.md) holds the design notes behind each one.
-- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); broaden the rotation past the binary default with `--auto-day-theme` / `--auto-night-theme`. `--theme random` rerolls the theme each time the picked quote changes (not persisted across restarts). A manual button-B / web override wins over either mode until the next midnight rollover.
+- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); broaden the rotation past the binary default with `--auto-day-theme` / `--auto-night-theme`. `--theme random` rerolls the theme each time the picked quote changes (not persisted across restarts). A button-A press outside random mode, or a web dropdown choice, overrides either mode until the next midnight rollover.
 - Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
 - Telemetry at `--telemetry-path` (default `~/.idle-hours/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `idle_hours_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
 - The anti-repeat history ledger at `--history-path` (default `~/.idle-hours/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.

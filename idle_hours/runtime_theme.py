@@ -1,7 +1,7 @@
 """Theme resolution: auto-dark window, manual override, midnight reset.
 
 ``resolve_effective_theme`` merges the CLI ``--theme`` choice, the wall-clock
-(for ``auto``), and the user's button-B manual override into the theme actually
+(for ``auto``), and the user's button-A manual override into the theme actually
 passed to the renderer. ``_maybe_reset_manual_theme_at_midnight`` clears the
 manual override on day rollover so ``auto`` resumes. Extracted from
 :mod:`run_clock` (issue #353).
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from idle_hours import runtime_store, theme_names
 from idle_hours.runtime_log import _log
@@ -54,26 +54,38 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
 
 # Themes that are deliberately excluded from the ``--theme random`` rotation.
 # The ``diags`` theme renders a status panel instead of a quote and is intended
-# for operator-driven calibration (button B / web dropdown only) — a random
+# for operator-driven calibration (button A / web dropdown only) — a random
 # pick that lands on it would replace the quote unexpectedly with a swatch /
 # host-info screen, which is not what an operator running ``--theme random``
 # is asking for. Manual selection still works for every entry in this set.
 RANDOM_EXCLUDED_THEMES: frozenset[str] = frozenset({"diags"})
 
 
-def random_theme_pool() -> tuple[str, ...]:
+def without_banned(themes: Sequence[str], banned: Collection[str]) -> tuple[str, ...]:
+    """``themes`` minus the operator's banned ones (button A long-press).
+
+    Falls back to ``themes`` unchanged when the bans would leave nothing, so
+    banning every theme degrades to "bans ignored" rather than a pool that
+    cannot be drawn from.
+    """
+    kept = tuple(name for name in themes if name not in banned)
+    return kept or tuple(themes)
+
+
+def random_theme_pool(*, banned: Collection[str] = ()) -> tuple[str, ...]:
     """Return the cycle of themes eligible for ``--theme random`` picks.
 
     Identical to :func:`theme_names.theme_cycle` minus
-    :data:`RANDOM_EXCLUDED_THEMES`. Single source of truth so both
+    :data:`RANDOM_EXCLUDED_THEMES` and, when given, the operator's
+    ``banned`` themes (see :func:`without_banned`). Single source of truth so
     :func:`pick_random_theme` (the ``--once`` / startup fallback) and
-    :func:`pick_next_random_theme` (the main-loop bag refill) agree on
-    which entries can show up.
+    the main-loop bag refill agree on which entries can show up.
     """
-    return tuple(name for name in theme_names.theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
+    pool = tuple(name for name in theme_names.theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
+    return without_banned(pool, banned)
 
 
-def pick_random_theme() -> str:
+def pick_random_theme(*, banned: Collection[str] = ()) -> str:
     """Uniformly pick a theme from the random-eligible cycle.
 
     Used by the ``--once`` path and as the fallback inside
@@ -82,7 +94,7 @@ def pick_random_theme() -> str:
     shown once before any repeat (true-shuffle behaviour — like a music
     player's shuffled-playlist mode).
     """
-    return random.choice(list(random_theme_pool()))
+    return random.choice(list(random_theme_pool(banned=banned)))
 
 
 def recent_window_size(pool_size: int) -> int:
@@ -144,7 +156,7 @@ def resolve_effective_theme(
     """Resolve the theme actually passed to renderer/display.
 
     ``theme_arg`` is the CLI choice (any registered theme name, or 'auto').
-    ``manual_theme`` is the user's button-B / web-dropdown override (set until
+    ``manual_theme`` is the user's button-A / web-dropdown override (set until
     midnight). When ``theme_arg == 'auto'`` and no manual override is active,
     derive from the wall clock using the configured day/night picks (default
     ``default`` / ``dark`` — the legacy binary contract). Any registered theme
@@ -215,7 +227,9 @@ def resolve_quiet_theme(
         # a stale pick — the fixed branch above returns before reaching here.
         if held is not None and held in _registered_themes():
             return held
-        picked = pick_random_theme()
+        with state.lock:
+            banned = list(state.banned_themes)
+        picked = pick_random_theme(banned=banned)
         with state.lock:
             state.quiet_theme = picked
         _log(f"quiet theme: random pick {picked}")

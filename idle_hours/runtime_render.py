@@ -29,7 +29,7 @@ from typing import TypedDict
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours import runtime_store, runtime_telemetry, runtime_theme, sd_notify
 from idle_hours.buckets import bucket_for_time
-from idle_hours.path_resolution import resolve_input_path
+from idle_hours.path_resolution import NOTICE_ENV, resolve_input_path
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
 
@@ -190,7 +190,12 @@ def _persist_state_after_render(args: argparse.Namespace, state: RuntimeState) -
     if not state_path:
         return
     try:
-        runtime_store.save_runtime_state(state_path, state.snapshot_for_persistence())
+        # Snapshot and write under ``state.lock``, as every other writer of
+        # the file does. Unlocked, a ban lifted from the web UI while this
+        # write was in flight could be overwritten by this older snapshot and
+        # come back on the next restart.
+        with state.lock:
+            runtime_store.save_runtime_state(state_path, state.snapshot_for_persistence())
     except Exception as exc:
         _log(f"runtime state persist after render failed: {exc!r}", err=True)
 
@@ -325,6 +330,15 @@ def _package_imported_from_cwd() -> bool:
         return False
 
 
+def _render_env(notice: str | None) -> dict[str, str]:
+    """The render subprocess's environment: ours, warnings suppressed, and ``notice`` if any."""
+    env = {k: v for k, v in os.environ.items() if k != NOTICE_ENV}
+    env[pick_quote_module.SUPPRESS_WARNINGS_ENV] = "1"
+    if notice:
+        env[NOTICE_ENV] = notice
+    return env
+
+
 def render_now(
     render_script: str,
     output_path: str,
@@ -343,6 +357,7 @@ def render_now(
     input_path: str | None = None,
     overrides_path: str | None = None,
     pin_quote: tuple | None = None,
+    notice: str | None = None,
 ) -> None:
     if time_str is None:
         time_str = current_time_str()
@@ -392,7 +407,11 @@ def render_now(
             # subprocess argv must stay recognisable to an operator's own
             # ``--render-script`` — an unknown env var is ignored, an unknown
             # flag exits 2 and takes the appliance into backoff.
-            env={**os.environ, pick_quote_module.SUPPRESS_WARNINGS_ENV: "1"},
+            #
+            # ``notice`` (a ban / undo confirmation) travels the same way, for
+            # the same reason. An inherited one is dropped so only the render
+            # that asked for it carries it.
+            env=_render_env(notice),
         )
     except subprocess.TimeoutExpired as exc:
         # subprocess.run has already killed the child before re-raising; we
@@ -517,23 +536,38 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
         )
         if not quote_changed:
             return None
-        new_theme, new_bag = runtime_theme.pick_next_random_theme(
-            list(state.random_theme_bag), recent=state.random_theme_recent
-        )
-        state.current_random_theme = new_theme
-        state.random_theme_bag = new_bag
-        # Roll the recent-window forward (most-recent last) and cap it at
-        # ~half the pool, so the next refill keeps these themes out of the
-        # new bag's draw-front. This is what prevents a tail-of-pass theme
-        # from reappearing a pick or two into the next pass.
-        window = runtime_theme.recent_window_size(len(runtime_theme.random_theme_pool()))
-        state.random_theme_recent = (state.random_theme_recent + [new_theme])[-window:]
+        new_theme = _draw_random_theme_locked(state)
         state.last_random_quote_id = quote_id
     return new_theme
 
 
+def _draw_random_theme_locked(state: RuntimeState) -> str:
+    """Draw the next random theme from the bag and record it. The caller holds ``state.lock``.
+
+    Shared by the per-quote pick above and button A's reroll
+    (``runtime_actions.action_theme``). Banned themes are left out of the
+    refill pool and dropped from a bag filled before the ban, so a ban takes
+    effect on the very next draw.
+    """
+    pool = runtime_theme.random_theme_pool(banned=state.banned_themes)
+    bag = [name for name in state.random_theme_bag if name in pool]
+    new_theme, new_bag = runtime_theme.pick_next_random_theme(
+        bag, recent=state.random_theme_recent, pool=pool,
+    )
+    state.current_random_theme = new_theme
+    state.random_theme_bag = new_bag
+    # Roll the recent-window forward (most-recent last) and cap it at
+    # ~half the pool, so the next refill keeps these themes out of the
+    # new bag's draw-front. This is what prevents a tail-of-pass theme
+    # from reappearing a pick or two into the next pass.
+    window = runtime_theme.recent_window_size(len(pool))
+    state.random_theme_recent = (state.random_theme_recent + [new_theme])[-window:]
+    return new_theme
+
+
 def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
-                     mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
+                     mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None,
+                     notice: str | None = None) -> None:
     """Core render-and-push. The caller MUST already hold ``state.render_lock``.
 
     Split out from :func:`_do_render` so a button handler can take the render
@@ -555,6 +589,7 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
         pin_quote=_pin_key_for(quote_id),
+        notice=notice,
         **_corpus_kwargs(args),
     )
     if actual_mode in _IDENTITY_RENDER_MODES:

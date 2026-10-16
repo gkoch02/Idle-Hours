@@ -586,6 +586,84 @@ def ban_quote_keys(overrides: dict | None) -> set[str]:
     return {str(k) for k in (overrides or {}).get("ban_quote_keys", [])} | SHIPPED_BAN_QUOTE_KEYS
 
 
+# Serialises every in-process read-modify-write of selection_overrides.json:
+# the curator UI's wholesale save and ban, and the button-B long-press ban
+# (issue #289). One lock, because the web server and the button listener are
+# threads of the same run_clock process writing the same file.
+OVERRIDES_WRITE_LOCK = threading.Lock()
+
+
+def serialize_overrides(payload: dict) -> bytes:
+    """The exact bytes every overrides writer puts on disk for ``payload``."""
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def append_ban_quote_key(path: Path, key: str) -> tuple[bool, bytes]:
+    """Add ``key`` to the sidecar's ``ban_quote_keys``; return ``(already_banned, bytes_on_disk)``.
+
+    The caller holds :data:`OVERRIDES_WRITE_LOCK`. ``bytes_on_disk`` is what the
+    file holds afterwards, so a caller can mint an ETag from what it wrote; an
+    absent file is created.
+
+    A file that is unreadable as a document (unparseable JSON, a non-object
+    root, a ``ban_quote_keys`` that is not a list) raises ``ValueError`` rather
+    than being replaced by defaults: the picker's loader fails open so an
+    operator can see a broken file, but a one-key ban must never be the thing
+    that silently wipes every ban and boost in it. Anything short of that is
+    kept verbatim: the key is merged into the *loaded* dict, so a ``_comment``,
+    an int source id or a newer schema's key survive.
+    """
+    if not is_quote_key(key):
+        raise ValueError("key must be of the form '<source_id>:<line_number>'")
+    path = Path(path)
+    try:
+        raw: bytes | None = path.read_bytes()
+    except FileNotFoundError:
+        raw = None
+    if raw is None:
+        current = _empty_overrides()
+    else:
+        current = json.loads(raw.decode("utf-8-sig"))
+        if not isinstance(current, dict):
+            raise ValueError("root is not a JSON object")
+        if not isinstance(current.setdefault("ban_quote_keys", []), list):
+            raise ValueError("ban_quote_keys is not a list")
+    if raw is not None and key in current["ban_quote_keys"]:
+        return True, raw
+    current["ban_quote_keys"].append(key)
+    data = serialize_overrides(current)
+    atomic_io.atomic_write_bytes(path, data)
+    return False, data
+
+
+def remove_ban_quote_key(path: Path, key: str) -> bool:
+    """Drop every ``key`` from the sidecar's ``ban_quote_keys``; return whether one was there.
+
+    The undo of :func:`append_ban_quote_key`, with the same rules: the caller
+    holds :data:`OVERRIDES_WRITE_LOCK`, a document that cannot be read as one
+    raises ``ValueError`` instead of being rewritten, and everything else in it
+    is kept verbatim. An absent file, or a key that is not there (already
+    lifted in the editor), is a no-op. A shipped ban
+    (:data:`SHIPPED_BAN_QUOTE_KEYS`) is not in the sidecar and stays in force.
+    """
+    path = Path(path)
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return False
+    current = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(current, dict):
+        raise ValueError("root is not a JSON object")
+    keys = current.get("ban_quote_keys", [])
+    if not isinstance(keys, list):
+        raise ValueError("ban_quote_keys is not a list")
+    if key not in keys:
+        return False
+    current["ban_quote_keys"] = [k for k in keys if k != key]
+    atomic_io.atomic_write_bytes(path, serialize_overrides(current))
+    return True
+
+
 def is_banned(row: dict, overrides: dict) -> bool:
     """True when ``row`` should be excluded from picking entirely.
 
@@ -906,7 +984,7 @@ def compact_history(history_path: str | None, days: int) -> int:
 def remove_history_entries(history_path: str | None, source_id, line_number) -> int:
     """Remove every ledger entry matching ``(source_id, line_number)``.
 
-    Powers the "un-skip" button long-press. A skipped quote has (at least)
+    Powers the curator UI's "un-skip". A skipped quote has (at least)
     two ledger entries — the original render-time append plus the ban append
     from ``action_skip`` — and *all* of them must go, or the fresh-first
     history filter still excludes the quote and the restore renders a third

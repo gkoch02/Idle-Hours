@@ -956,6 +956,68 @@ class TestActionEndpointsLocking:
         with state.lock:
             assert state.last_skipped == ("99", 7, "prior", "three")
 
+    def test_ban_theme_bans_the_displayed_theme_and_lists_it(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "gothic"
+        with self._patch_render():
+            status, body = _post(server, "/api/action/ban-theme")
+        assert status == 200
+        result = _json_body(body)
+        assert result["ok"] is True and result["banned"] == "gothic"
+        status, body = _get(server, "/api/themes")
+        assert _json_body(body)["banned_themes"] == ["gothic"]
+
+    def test_unban_theme_lifts_the_ban(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.banned_themes = ["gothic"]
+        status, body = _post(server, "/api/action/unban-theme", {"theme": "gothic"})
+        assert status == 200
+        assert _json_body(body)["banned_themes"] == []
+
+    def test_unban_theme_rejects_an_unknown_or_missing_name(self, live_server):
+        server, _state, _args = live_server
+        assert _post(server, "/api/action/unban-theme", {"theme": "nope"})[0] == 400
+        assert _post(server, "/api/action/unban-theme", {})[0] == 400
+
+    def test_ban_quote_writes_the_shared_ban_list(self, live_server):
+        server, state, args = live_server
+        with state.lock:
+            state.last_quote_id = ("99", 7, "prior", "three")
+        with self._patch_render():
+            status, body = _post(server, "/api/action/ban-quote")
+        assert status == 200
+        assert _json_body(body)["key"] == "99:7"
+        assert json.loads(Path(args.overrides).read_text())["ban_quote_keys"] == ["99:7"]
+
+    def test_undo_ban_reverses_a_theme_ban(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "gothic"
+        with self._patch_render():
+            assert _post(server, "/api/action/ban-theme")[0] == 200
+            status, body = _post(server, "/api/action/undo-ban")
+        assert status == 200
+        assert _json_body(body)["undone"] == {"kind": "theme", "theme": "gothic"}
+        with state.lock:
+            assert state.banned_themes == []
+
+    def test_clear_theme_bans(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.banned_themes = ["gothic", "deco"]
+        status, body = _post(server, "/api/action/clear-theme-bans", {})
+        assert status == 200
+        assert _json_body(body)["cleared"] == ["gothic", "deco"]
+        assert _json_body(_get(server, "/api/themes")[1])["banned_themes"] == []
+
+    def test_ban_quote_with_nothing_on_the_panel_is_409(self, live_server):
+        server, _state, _args = live_server
+        status, body = _post(server, "/api/action/ban-quote")
+        assert status == 409
+        assert _json_body(body)["error"] == "no_quote"
+
     def test_unskip_returns_200_with_no_prior(self, live_server):
         server, _state, _args = live_server
         with self._patch_render():

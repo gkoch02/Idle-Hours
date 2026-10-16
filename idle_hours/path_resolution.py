@@ -21,6 +21,13 @@ from pathlib import Path
 # render backoff, where an unknown environment variable is simply ignored.
 PHOTO_PATH_ENV = "IDLE_HOURS_PHOTO_PATH"
 
+# A one-line notice the renderer stamps on the frame it paints ("Theme banned:
+# gothic · hold C to undo"). Set only for the render that follows a button or
+# web ban / undo, so it stays on the panel until the next repaint. An
+# environment variable for the reason above: an operator's own
+# ``--render-script`` ignores it instead of exiting on an unknown flag.
+NOTICE_ENV = "IDLE_HOURS_NOTICE"
+
 
 def resolve_input_path(value: str | Path, base_dir: Path) -> Path:
     """Resolve an input path with CWD-then-bundled fallback.

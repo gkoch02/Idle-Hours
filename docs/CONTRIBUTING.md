@@ -247,7 +247,7 @@ own their whole composition. Adding another means wiring it into all of
 `idle_hours/render_quote/theme_tables.py`):
 
 - `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
-- `theme_names.THEME_ORDER` — append; this is what button B cycles through,
+- `theme_names.THEME_ORDER` — append; this is what button A cycles through,
   and `run_clock.py`'s `--theme` choices read it (re-exported as
   `render_quote.THEME_ORDER`)
 - `render_quote.THEME_FONTS` — typeface chain (otherwise the renderer falls

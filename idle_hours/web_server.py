@@ -538,9 +538,8 @@ def validate_overrides_payload(payload: object) -> dict:
     return {key: cleaned[key] for key in OVERRIDES_KEYS}
 
 
-def serialize_overrides(payload: dict) -> bytes:
-    """The exact bytes ``write_overrides_atomic`` puts on disk for ``payload``."""
-    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+# The picker owns the on-disk form, so the button-B ban and these writers agree byte for byte.
+serialize_overrides = pick_quote_module.serialize_overrides
 
 
 def write_overrides_atomic(path: Path, payload: dict) -> bytes:
@@ -561,11 +560,11 @@ def write_overrides_atomic(path: Path, payload: dict) -> bytes:
     return data
 
 
-# Serialises every read-modify-write of selection_overrides.json made through
-# this server (#289): the If-Match compare + write of a wholesale save, and the
-# append of a single-key ban. Per-process, which is the scope that matters —
-# the web server is the only in-process writer.
-_OVERRIDES_LOCK = threading.Lock()
+# Serialises every read-modify-write of selection_overrides.json in this
+# process (#289): the If-Match compare + write of a wholesale save, the append
+# of a single-key ban, and button B's long-press ban, which runs on the GPIO
+# thread. The picker owns the lock so both writers take the same one.
+_OVERRIDES_LOCK = pick_quote_module.OVERRIDES_WRITE_LOCK
 
 
 def _default_overrides() -> dict:
@@ -1039,6 +1038,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "/api/action/skip": self._action_skip,
             "/api/action/unskip": self._action_unskip,
             "/api/action/theme": self._action_theme,
+            "/api/action/ban-theme": self._action_ban_theme,
+            "/api/action/unban-theme": self._action_unban_theme,
+            "/api/action/ban-quote": self._action_ban_quote,
+            "/api/action/undo-ban": self._action_undo_ban,
+            "/api/action/clear-theme-bans": self._action_clear_theme_bans,
             "/api/action/quiet": self._action_quiet,
             "/api/action/rerender": self._action_rerender,
         }
@@ -1482,6 +1486,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             theme_arg = ctx.state.theme_arg
             last_effective = ctx.state.last_effective_theme
             current_random = ctx.state.current_random_theme
+            banned = list(ctx.state.banned_themes)
         effective = last_effective or runtime_theme.resolve_effective_theme(
             theme_arg, now, manual,
             current_random_theme=current_random,
@@ -1498,6 +1503,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "theme_arg": theme_arg,
             "manual_theme": manual,
             "effective": effective,
+            # Button A long-press bans, in ban order; the Controls card lists
+            # them with an un-ban.
+            "banned_themes": banned,
         })
 
     def _api_overrides_get(self, query: dict | None = None) -> None:
@@ -1898,29 +1906,16 @@ class CuratorHandler(BaseHTTPRequestHandler):
             raise ValueError("key must be of the form '<source_id>:<line_number>'")
         key = key.strip()
         with _OVERRIDES_LOCK:
-            raw = _read_overrides_bytes(ctx.overrides_path)
-            if raw is None:
-                current = _default_overrides()
-            else:
-                try:
-                    current = json.loads(raw.decode("utf-8-sig"))
-                    if not isinstance(current, dict):
-                        raise ValueError("root is not a JSON object")
-                    if not isinstance(current.setdefault("ban_quote_keys", []), list):
-                        raise ValueError("ban_quote_keys is not a list")
-                except ValueError as exc:
-                    _log(f"web: refusing ban — {ctx.overrides_path} is invalid: {exc!r}", err=True)
-                    self._reject(
-                        HTTPStatus.CONFLICT,
-                        "selection_overrides.json is corrupt or invalid; fix it in the editor before banning",
-                    )
-                    return
-            already = key in current["ban_quote_keys"]
-            if already:
-                etag = overrides_etag(raw)
-            else:
-                current["ban_quote_keys"].append(key)
-                etag = overrides_etag(write_overrides_atomic(ctx.overrides_path, current))
+            try:
+                already, written = pick_quote_module.append_ban_quote_key(ctx.overrides_path, key)
+            except ValueError as exc:
+                _log(f"web: refusing ban — {ctx.overrides_path} is invalid: {exc!r}", err=True)
+                self._reject(
+                    HTTPStatus.CONFLICT,
+                    "selection_overrides.json is corrupt or invalid; fix it in the editor before banning",
+                )
+                return
+            etag = overrides_etag(written)
         _log(f"web: banned quote {key}" + (" (already banned)" if already else ""))
         self._emit_web_telemetry({
             "mode": "action", "action": "ban", "label": "web", "ok": True, "key": key,
@@ -2044,8 +2039,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _action_theme(self) -> None:
         # Optional ``{"theme": "newsprint"}`` body lets the web dropdown jump
         # straight to a named theme; an empty body (or omitted field) matches
-        # the physical button B behaviour and advances one step through the
-        # cycle. ``action_theme`` validates the target name and returns
+        # the physical button A behaviour: the next random theme under
+        # ``--theme random``, otherwise one step through the cycle.
+        # ``action_theme`` validates the target name and returns
         # ``unknown_theme`` when it isn't registered.
         #
         # Malformed JSON or an oversized body raises ``ValueError`` from
@@ -2068,6 +2064,32 @@ class CuratorHandler(BaseHTTPRequestHandler):
         status = HTTPStatus.BAD_REQUEST if result.get("error") == "unknown_theme" else _status_from_result(result)
         self._json(status, result)
 
+    def _action_ban_theme(self) -> None:
+        result = runtime_actions.action_ban_theme(self._ctx().args, self._ctx().state, label="web")
+        self._json(_status_from_result(result), result)
+
+    def _action_unban_theme(self) -> None:
+        body = self._read_json_body()
+        theme = body.get("theme") if isinstance(body, dict) else None
+        if not isinstance(theme, str):
+            self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "theme must be a string"})
+            return
+        result = runtime_actions.action_unban_theme(self._ctx().args, self._ctx().state, theme, label="web")
+        status = HTTPStatus.BAD_REQUEST if result.get("error") == "unknown_theme" else _status_from_result(result)
+        self._json(status, result)
+
+    def _action_ban_quote(self) -> None:
+        result = runtime_actions.action_ban_quote(self._ctx().args, self._ctx().state, label="web")
+        self._json(_status_from_result(result), result)
+
+    def _action_undo_ban(self) -> None:
+        result = runtime_actions.action_undo_ban(self._ctx().args, self._ctx().state, label="web")
+        self._json(_status_from_result(result), result)
+
+    def _action_clear_theme_bans(self) -> None:
+        result = runtime_actions.action_clear_theme_bans(self._ctx().args, self._ctx().state, label="web")
+        self._json(_status_from_result(result), result)
+
     def _action_quiet(self) -> None:
         result = runtime_actions.action_quiet(self._ctx().args, self._ctx().state, label="web")
         self._json(_status_from_result(result), result)
@@ -2081,9 +2103,10 @@ def _status_from_result(result: dict) -> int:
     """Map an ``action_*`` result dict to an HTTP status code."""
     if result.get("ok"):
         return HTTPStatus.OK
-    if result.get("error") in ("busy", "asleep"):
-        # 409 — render already in flight, or the panel is showing the sleep
-        # frame and the action (skip / un-skip) needs a quote to act on.
+    if result.get("error") in ("busy", "asleep", "no_quote", "overrides_invalid"):
+        # 409 — render already in flight; the panel is showing the sleep
+        # frame, or nothing yet, and the action needs a quote to act on; or a
+        # quote ban met a selection_overrides.json it refuses to rewrite.
         return HTTPStatus.CONFLICT
     return HTTPStatus.INTERNAL_SERVER_ERROR
 

@@ -84,12 +84,15 @@
 
       <div class="card">
         <h2>Controls</h2>
-        <p class="hint">Mirrors the four physical Inky buttons. A render in flight returns 409 — taps during a refresh are dropped.</p>
+        <p class="hint">Mirrors the physical Inky buttons: A is themes, B is quotes, D is sleep. A render in flight returns 409 — taps during a refresh are dropped.</p>
         <div class="button-grid">
-          <button id="action-skip" data-action="skip" class="btn">A · Skip</button>
-          <button id="action-unskip" data-action="unskip" class="btn">A-hold · Un-skip</button>
-          <button data-action="theme" class="btn">B · Cycle theme</button>
-          <button data-action="rerender" class="btn">C · Re-render</button>
+          <button data-action="theme" class="btn">A · Next theme</button>
+          <button id="action-ban-theme" data-action="ban-theme" data-confirm="Ban the theme on the panel? It leaves random draws and the cycle until you un-ban it here." class="btn btn-danger">A-hold · Ban theme</button>
+          <button id="action-skip" data-action="skip" class="btn">B · Next quote</button>
+          <button id="action-ban-quote" data-action="ban-quote" data-confirm="Ban the quote on the panel? It goes into ban_quote_keys and never shows again." class="btn btn-danger">B-hold · Ban quote</button>
+          <button id="action-undo-ban" data-action="undo-ban" class="btn">C-hold · Undo last ban</button>
+          <button id="action-unskip" data-action="unskip" class="btn">Un-skip</button>
+          <button data-action="rerender" class="btn">Re-render</button>
           <button id="action-quiet" data-action="quiet" class="btn">D · Quiet / wake</button>
         </div>
         <div class="theme-picker">
@@ -98,6 +101,7 @@
           <button id="theme-apply" type="button" class="btn btn-small">Apply</button>
           <span id="theme-current" class="pill"></span>
         </div>
+        <div id="banned-themes" class="banned-themes" aria-live="polite"></div>
         <div id="action-log" class="action-log" aria-live="polite"></div>
       </div>
 

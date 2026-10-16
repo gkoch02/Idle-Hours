@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
-from idle_hours.path_resolution import PHOTO_PATH_ENV
+from idle_hours.path_resolution import NOTICE_ENV, PHOTO_PATH_ENV
 
 from . import clock
 from ._paths import (
@@ -47,6 +47,7 @@ from .layout import (
 from .palette import (
     DEFAULT_HEIGHT,
     DEFAULT_WIDTH,
+    SPECTRA6,
     SPECTRA6_PALETTE,
     snap_image_to_palette,
 )
@@ -724,6 +725,47 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# The notice tab: solid black ink on solid white, the two inks that survive
+# any ground and any palette snap, in the sturdy meta face (hairline or
+# stippled small text shreds on the panel).
+NOTICE_FONT_SIZE = 22
+NOTICE_MARGIN = 12
+NOTICE_PAD = (12, 7)
+
+
+def draw_notice(image: Image.Image, text: str) -> Image.Image:
+    """Stamp a one-line ``text`` tab on the top-left corner of a finished frame.
+
+    A post-pass over whatever the theme painted, so it works on every theme,
+    border-painted or custom frame. It covers a corner of the frame rather
+    than reflowing it: the notice is transient, gone at the next repaint
+    (``path_resolution.NOTICE_ENV``). The text is clipped to the frame width,
+    and a frame too narrow for even an ellipsis gets no notice.
+    """
+    width, _height = image.size
+    font = load_font(META_FONT_BOLD_CANDIDATES, size=NOTICE_FONT_SIZE)
+    draw = ImageDraw.Draw(image)
+    max_text_w = width - 2 * (NOTICE_MARGIN + NOTICE_PAD[0])
+    while len(text) > 1 and draw.textlength(text, font=font) > max_text_w:
+        text = text[:-2] + "…"
+    if draw.textlength(text, font=font) > max_text_w:
+        # Too narrow for even an ellipsis (a tiny --width): no notice.
+        return image
+    left, top, right, bottom = (int(v) for v in draw.textbbox((0, 0), text, font=font))
+    box = (
+        NOTICE_MARGIN,
+        NOTICE_MARGIN,
+        NOTICE_MARGIN + (right - left) + 2 * NOTICE_PAD[0],
+        NOTICE_MARGIN + (bottom - top) + 2 * NOTICE_PAD[1],
+    )
+    draw.rectangle(box, fill=SPECTRA6["white"], outline=SPECTRA6["black"], width=2)
+    draw.text(
+        (box[0] + NOTICE_PAD[0] - left, box[1] + NOTICE_PAD[1] - top), text, font=font, fill=SPECTRA6["black"],
+    )
+    # Antialiased glyph edges are greys; snap them back onto the six inks.
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def main() -> int:
     args = parse_args()
     if args.photo_path:
@@ -753,6 +795,9 @@ def main() -> int:
             pin_key=parse_pin_quote(args.pin_quote, args.pin_matched_text),
         )
         image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
+        notice = os.environ.get(NOTICE_ENV, "").strip()
+        if notice:
+            image = draw_notice(image, notice)
     try:
         # Encode to an in-memory buffer first so a mid-save exception can't leave
         # ``output/current.png`` truncated — display_inky.py loads that path every

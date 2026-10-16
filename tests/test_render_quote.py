@@ -3958,3 +3958,43 @@ class TestRigidMatchSpacing:
             f"rigid bold-phrase span {rigid_span}px did not pack tighter than "
             f"loose baseline {loose_span}px — bold-internal spaces are still elastic"
         )
+
+
+class TestDrawNotice:
+    """The ban / undo notice stamped on a finished frame (``path_resolution.NOTICE_ENV``)."""
+
+    def test_stamps_a_white_tab_with_black_text_in_the_top_left(self):
+        from PIL import Image
+        frame = Image.new("RGB", (800, 480), rq_palette.SPECTRA6["blue"])
+        out = rq_core.draw_notice(frame, "Theme banned: gothic · hold C to undo")
+        tab = out.crop((rq_core.NOTICE_MARGIN + 3, rq_core.NOTICE_MARGIN + 3, 200, 30))
+        inks = distinct_inks(tab)
+        assert inks <= {rq_palette.SPECTRA6["white"], rq_palette.SPECTRA6["black"]}
+        assert rq_palette.SPECTRA6["black"] in inks and rq_palette.SPECTRA6["white"] in inks
+        # The rest of the frame is untouched.
+        assert out.getpixel((700, 400)) == rq_palette.SPECTRA6["blue"]
+
+    def test_a_long_notice_is_clipped_to_the_frame(self):
+        from PIL import Image
+        frame = Image.new("RGB", (300, 200), rq_palette.SPECTRA6["white"])
+        out = rq_core.draw_notice(frame, "x" * 200)
+        # The right margin column stays clear of the tab's border.
+        assert all(out.getpixel((299, y)) == rq_palette.SPECTRA6["white"] for y in range(0, 60))
+
+    def test_a_frame_too_narrow_for_an_ellipsis_gets_no_notice(self):
+        from PIL import Image
+        frame = Image.new("RGB", (60, 40), rq_palette.SPECTRA6["blue"])
+        out = rq_core.draw_notice(frame, "Theme banned: gothic · hold C to undo")
+        assert distinct_inks(out) == {rq_palette.SPECTRA6["blue"]}
+
+    def test_main_stamps_the_notice_from_the_environment(self, tmp_path, monkeypatch):
+        from PIL import Image
+        out_path = tmp_path / "frame.png"
+        monkeypatch.setenv("IDLE_HOURS_NOTICE", "Quote banned · hold C to undo")
+        monkeypatch.setattr("sys.argv", [
+            "render_quote", "--time", "10:00", "--theme", "dark", "--mode", "production",
+            "--pin-quote", "35:646", "--pin-matched-text", "ten o’clock", "--output", str(out_path),
+        ])
+        assert rq_core.main() == 0
+        with Image.open(out_path) as img:
+            assert img.convert("RGB").getpixel((rq_core.NOTICE_MARGIN + 4, rq_core.NOTICE_MARGIN + 4)) == rq_palette.SPECTRA6["white"]

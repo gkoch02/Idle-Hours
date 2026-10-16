@@ -1243,6 +1243,7 @@ class TestRuntimeStatePersistence:
             "last_quote_id": None,
             "last_effective_theme": None,
             "setup_complete": False,  # v2 wizard flag, defaults False on fresh state
+            "banned_themes": [],
         }
 
     def test_snapshot_includes_render_identity_triple(self):
@@ -1859,6 +1860,7 @@ class TestMidnightThemeReset:
                 "last_quote_id": None,
                 "last_effective_theme": None,
                 "setup_complete": False,  # v2 wizard flag, defaults False on fresh state
+                "banned_themes": [],
             },
         )]
         # Patch was honored: the real writer never ran, so no file on disk.
@@ -1878,7 +1880,7 @@ class TestButtonHandlers:
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"), \
              patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["A"]()
+            short_handlers["B"]()
         # First append: ban the previous quote. Second: log the new one.
         assert mock_append.call_count == 2
         assert mock_append.call_args_list[0][0][1:] == ("src-old", 5)
@@ -1899,7 +1901,7 @@ class TestButtonHandlers:
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"), \
              patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["A"]()
+            short_handlers["B"]()
         # Only the ban append fires; the duplicate post-render append is skipped.
         assert mock_append.call_count == 1
         assert mock_append.call_args_list[0][0][1:] == ("src-x", 9)
@@ -1912,7 +1914,7 @@ class TestButtonHandlers:
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["B"]()
+            short_handlers["A"]()
         assert state.manual_theme == "dark"
         persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert persisted["manual_theme"] == "dark"
@@ -1938,7 +1940,7 @@ class TestButtonHandlers:
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["B"]()
+            short_handlers["A"]()
         assert state.manual_theme == expected_next
 
     def test_toggle_theme_handler_wraps_cycle_at_end(self, tmp_path):
@@ -1954,7 +1956,7 @@ class TestButtonHandlers:
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["B"]()
+            short_handlers["A"]()
         assert state.manual_theme == rq.THEME_ORDER[0]
 
     def test_do_render_bucket_matches_time_str_near_boundary(self, tmp_path):
@@ -2184,7 +2186,7 @@ class TestButtonHandlers:
         with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["B"]()
+            short_handlers["A"]()
         # manual_theme reverted to its pre-flip value; state.json must never
         # have been written with a flipped-theme snapshot.
         assert state.manual_theme is None
@@ -2215,7 +2217,7 @@ class TestButtonHandlers:
         with patch("idle_hours.runtime_render.render_now"), \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["B"]()
+            short_handlers["A"]()
         assert state.manual_theme == "dark"
         persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert persisted["manual_theme"] == "dark"
@@ -2232,7 +2234,7 @@ class TestButtonHandlers:
              patch("idle_hours.runtime_store.save_runtime_state", side_effect=OSError("disk full")), \
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
-            short_handlers["B"]()
+            short_handlers["A"]()
         # In-memory state keeps the flip — the panel showed "dark", and so must we.
         assert state.manual_theme == "dark"
         err = capsys.readouterr().err
@@ -2284,8 +2286,8 @@ class TestMaybeStartButtons:
         result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
         assert result == ["stub"]
         assert set(captured["short"]) == {"A", "B", "C", "D"}
-        # Long-press is only wired on A (un-skip) and D (shutdown).
-        assert set(captured["hold"]) == {"A", "D"}
+        # Long-press: A bans the theme, B bans the quote, C undoes the last ban, D shuts down.
+        assert set(captured["hold"]) == {"A", "B", "C", "D"}
 
     def test_successful_start_attaches_handles_to_state(self, tmp_path, monkeypatch):
         """The liveness check relies on state.button_handles; make sure start wires it up."""
@@ -2337,7 +2339,7 @@ class TestCheckButtonLiveness:
 
 
 class TestUnskipHandler:
-    """Button A held 2s: remove the last-skipped ban from the ledger and re-render."""
+    """Web un-skip: remove the last skip (button B / web) from the ledger and re-render."""
 
     def test_skip_records_last_skipped_in_state(self, tmp_path):
         args = make_args(tmp_path)
@@ -2349,7 +2351,7 @@ class TestUnskipHandler:
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"), \
              patch("idle_hours.run_clock.pick_quote_module.append_history"):
             short, _hold = run_clock._build_button_handlers(args, state)
-            short["A"]()
+            short["B"]()
         assert state.last_skipped == ("src-old", 5, "q-old", "mt-old")
 
     def test_unskip_removes_ledger_entry_and_rerenders(self, tmp_path):
@@ -2362,8 +2364,7 @@ class TestUnskipHandler:
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"), \
              patch("idle_hours.run_clock.pick_quote_module.remove_history_entries", return_value=2) as mock_rm, \
              patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
-            _short, hold = run_clock._build_button_handlers(args, state)
-            hold["A"]()
+            runtime_actions.action_unskip(args, state, label="web")
         # Removed the ban.
         assert mock_rm.called
         assert mock_rm.call_args[0][1:] == ("src-old", 5)
@@ -2380,11 +2381,368 @@ class TestUnskipHandler:
         state.last_skipped = None
         with patch("idle_hours.runtime_render.render_now") as mock_render, \
              patch("idle_hours.run_clock.pick_quote_module.remove_history_entries") as mock_rm:
-            _short, hold = run_clock._build_button_handlers(args, state)
-            hold["A"]()
+            runtime_actions.action_unskip(args, state, label="web")
         assert not mock_rm.called
         assert not mock_render.called
         assert "no recently-skipped" in capsys.readouterr().out
+
+
+class TestThemeAndQuoteButtons:
+    """Button A is themes (next / ban), button B is quotes (next / ban)."""
+
+    QUIET = dict(quiet_start="22:00", quiet_end="06:00", quiet_off=False, quiet_image="auto",
+                 quiet_theme="inherit", auto_day_theme="default", auto_night_theme="dark")
+
+    @staticmethod
+    def _rendered_theme(mock_render) -> str:
+        # render_now(render_script, output, width, height, display_script, mode, theme, ...)
+        return mock_render.call_args.args[6]
+
+    @staticmethod
+    def _telemetry(tmp_path) -> list[dict]:
+        # Telemetry is date-rotated into telemetry-YYYY-MM-DD.jsonl siblings.
+        return [
+            json.loads(line)
+            for path in sorted(tmp_path.glob("telemetry-*.jsonl"))
+            for line in path.read_text().splitlines()
+        ]
+
+    @staticmethod
+    def _random_state(**fields) -> run_clock.RuntimeState:
+        state = run_clock.RuntimeState("random")
+        state.last_quote_id = ("src", 1, "a quote", "one")
+        state.current_random_theme = "gothic"
+        state.last_effective_theme = "gothic"
+        state.last_random_quote_id = state.last_quote_id
+        for key, value in fields.items():
+            setattr(state, key, value)
+        return state
+
+    def test_a_short_in_random_mode_rerolls_and_stays_random(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            short, _hold = run_clock._build_button_handlers(args, state)
+            short["A"]()
+        new_theme = self._rendered_theme(mock_render)
+        assert new_theme != "gothic"
+        assert new_theme in runtime_theme.random_theme_pool()
+        assert state.manual_theme is None
+        assert state.current_random_theme == new_theme
+        # Same quote, repainted: a theme change never re-picks.
+        assert mock_render.call_args.kwargs["quote_id"] == ("src", 1, "a quote", "one")
+
+    def test_a_short_in_random_mode_clears_a_manual_override(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state(manual_theme="saloon", last_effective_theme="saloon")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            short, _hold = run_clock._build_button_handlers(args, state)
+            short["A"]()
+        assert state.manual_theme is None
+        assert self._rendered_theme(mock_render) == state.current_random_theme
+        assert json.loads((tmp_path / "state.json").read_text())["manual_theme"] is None
+
+    def test_a_short_in_random_mode_rolls_back_a_failed_render(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state(manual_theme="saloon", random_theme_bag=["deco", "roman"])
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_theme(args, state, label="button A")
+        assert result["ok"] is False and result["rolled_back"] is True
+        assert state.manual_theme == "saloon"
+        assert state.current_random_theme == "gothic"
+        assert state.random_theme_bag == ["deco", "roman"]
+
+    def test_a_short_cycles_past_banned_themes(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        state.banned_themes = ["dark", "newsprint"]
+        with patch("idle_hours.runtime_render.render_now"), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            short, _hold = run_clock._build_button_handlers(args, state)
+            short["A"]()
+        assert state.manual_theme == "nightvision"
+
+    def test_next_theme_steps_off_a_banned_current_theme(self):
+        assert runtime_actions._next_theme("dark", ["dark", "newsprint"]) == "nightvision"
+
+    def test_next_theme_ignores_bans_that_leave_nothing(self):
+        from idle_hours.theme_names import theme_cycle
+        assert runtime_actions._next_theme("default", theme_cycle()) == "dark"
+
+    def test_a_long_bans_the_displayed_theme_persists_and_moves_on(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        state.last_quote_id = ("src", 1, "x" * 120, "one")
+        with patch("idle_hours.runtime_render.render_now"), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["A"]()
+        assert state.banned_themes == ["default"]
+        assert state.manual_theme == "dark"
+        assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == ["default"]
+        events = self._telemetry(tmp_path)
+        ban = next(e for e in events if e.get("action") == "theme_ban")
+        assert ban["theme"] == "default" and ban["quote_length"] == 120 and ban["label"] == "button A"
+
+    def test_a_long_in_random_mode_keeps_the_theme_out_of_every_later_draw(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["A"]()
+            assert state.banned_themes == ["gothic"]
+            assert state.manual_theme is None
+            assert self._rendered_theme(mock_render) != "gothic"
+            pool_size = len(runtime_theme.random_theme_pool())
+            for i in range(2 * pool_size):
+                runtime_render._maybe_pick_random_theme(state, ("src", 100 + i, "q", "m"))
+                assert state.current_random_theme != "gothic"
+
+    def test_a_ban_drops_the_theme_from_a_bag_filled_before_it(self):
+        state = self._random_state(random_theme_bag=["deco", "gothic"], banned_themes=["gothic"])
+        with state.lock:
+            drawn = runtime_render._draw_random_theme_locked(state)
+        assert drawn == "deco"
+        assert "gothic" not in state.random_theme_bag
+
+    def test_a_long_is_refused_while_asleep(self, tmp_path):
+        args = make_args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True
+        state.last_effective_theme = "default"
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="23:00"):
+            result = runtime_actions.action_ban_theme(args, state, label="button A")
+        assert result == {"ok": False, "error": "asleep"}
+        assert state.banned_themes == []
+        mock_render.assert_not_called()
+
+    def test_unban_lifts_a_ban_and_persists(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.banned_themes = ["gothic", "deco"]
+        result = runtime_actions.action_unban_theme(args, state, "gothic")
+        assert result["ok"] and result["was_banned"] and result["banned_themes"] == ["deco"]
+        assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == ["deco"]
+
+    def test_unban_rejects_an_unknown_theme(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        result = runtime_actions.action_unban_theme(make_args(tmp_path), state, "nope")
+        assert result == {"ok": False, "error": "unknown_theme", "target": "nope"}
+
+    def test_banned_themes_load_keeps_known_names_once(self):
+        state = run_clock.RuntimeState("random", persisted={"banned_themes": ["gothic", "nope", 3, "gothic", "deco"]})
+        assert state.banned_themes == ["gothic", "deco"]
+
+    def test_random_pool_ignores_bans_that_would_empty_it(self):
+        everything = runtime_theme.random_theme_pool()
+        assert "gothic" not in runtime_theme.random_theme_pool(banned=["gothic"])
+        assert runtime_theme.random_theme_pool(banned=everything) == everything
+
+    def test_a_ban_frame_carries_a_notice_naming_the_undo(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_theme(args, state, label="button A")
+        assert mock_render.call_args.kwargs["notice"] == "Theme banned: gothic · hold C to undo"
+        # The next repaint has no notice: it lasts one frame.
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_theme(args, state, label="button A")
+        assert mock_render.call_args.kwargs["notice"] is None
+
+    def test_c_long_undoes_a_theme_ban_and_brings_it_back_in_random_mode(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["A"]()
+            assert state.banned_themes == ["gothic"]
+            hold["C"]()
+        assert state.banned_themes == []
+        assert state.last_ban is None
+        assert state.manual_theme is None and state.current_random_theme == "gothic"
+        assert self._rendered_theme(mock_render) == "gothic"
+        assert mock_render.call_args.kwargs["notice"] == "Ban undone: gothic is back"
+        assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == []
+
+    def test_c_long_undoes_a_theme_ban_as_the_manual_theme_outside_random(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("auto")
+        state.last_effective_theme = "deco"
+        state.last_quote_id = ("src", 1, "q", "m")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_theme(args, state, label="button A")
+            runtime_actions.action_undo_ban(args, state, label="button C")
+        assert state.banned_themes == [] and state.manual_theme == "deco"
+        assert self._rendered_theme(mock_render) == "deco"
+
+    def test_c_long_with_nothing_to_undo_does_not_repaint(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_undo_ban(make_args(tmp_path), state, label="button C")
+        assert result == {"ok": True, "undone": None}
+        mock_render.assert_not_called()
+
+    def _ban_a_quote(self, tmp_path, state):
+        overrides = tmp_path / "selection_overrides.json"
+        overrides.write_text(json.dumps({"_comment": "mine", "ban_quote_keys": ["9:9"]}))
+        args = make_args(tmp_path, overrides=str(overrides))
+        state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
+        state.last_bucket = "h10_exact"
+        with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_quote(args, state, label="button B")
+        assert mock_render.call_args.kwargs["notice"] == "Quote banned · hold C to undo"
+        return args, overrides
+
+    def test_c_long_undoes_a_quote_ban_and_puts_the_quote_back_within_its_bucket(self, tmp_path):
+        state = self._random_state(current_random_theme="deco", last_effective_theme="deco")
+        args, overrides = self._ban_a_quote(tmp_path, state)
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:01"):
+            result = runtime_actions.action_undo_ban(args, state, label="button C")
+        assert result["ok"] and result["restored"] is True
+        assert json.loads(overrides.read_text()) == {"_comment": "mine", "ban_quote_keys": ["9:9"]}
+        assert mock_render.call_args.kwargs["quote_id"] == ("src-old", 5, "q-old", "mt-old")
+        assert mock_render.call_args.kwargs["bucket"] == "h10_exact"
+        # Back in the theme it was banned in.
+        assert self._rendered_theme(mock_render) == "deco"
+        assert mock_render.call_args.kwargs["notice"] == "Ban undone: the quote is back"
+
+    def test_c_long_after_the_bucket_passed_lifts_the_ban_and_keeps_the_panel(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        args, overrides = self._ban_a_quote(tmp_path, state)
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:10"):
+            result = runtime_actions.action_undo_ban(args, state, label="button C")
+        assert result["restored"] is False
+        assert json.loads(overrides.read_text())["ban_quote_keys"] == ["9:9"]
+        assert mock_render.call_args.kwargs["quote_id"] == ("src-new", 7, "q-new", "mt-new")
+
+    def test_clear_theme_bans_lifts_every_theme_ban(self, tmp_path):
+        state = run_clock.RuntimeState("random")
+        state.banned_themes = ["gothic", "deco"]
+        state.last_ban = {"kind": "theme", "theme": "deco"}
+        result = runtime_actions.action_clear_theme_bans(make_args(tmp_path), state)
+        assert result["cleared"] == ["gothic", "deco"]
+        assert state.banned_themes == [] and state.last_ban is None
+        assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == []
+
+    def test_a_failed_ban_repaint_keeps_the_move_off_the_banned_theme(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        state.last_quote_id = ("src", 1, "q", "m")
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_ban_theme(args, state, label="button A")
+        assert result["ok"] is False and result["rolled_back"] is False
+        # Kept, so the loop's next tick sees a theme change and retries.
+        assert state.manual_theme == "dark"
+        assert state.last_effective_theme == "default"
+        saved = json.loads((tmp_path / "state.json").read_text())
+        assert saved["manual_theme"] == "dark" and saved["banned_themes"] == ["default"]
+
+    def test_a_failed_ban_repaint_in_random_mode_keeps_the_new_draw(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_theme(args, state, label="button A")
+        assert state.current_random_theme not in (None, "gothic")
+
+    def test_a_failed_undo_repaint_rolls_back_the_saved_theme_too(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("auto")
+        state.banned_themes = ["deco"]
+        state.last_ban = {"kind": "theme", "theme": "deco"}
+        state.last_quote_id = ("src", 1, "q", "m")
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_undo_ban(args, state, label="button C")
+        assert result["ok"] is False
+        assert state.manual_theme is None and state.banned_themes == []
+        saved = json.loads((tmp_path / "state.json").read_text())
+        assert saved["manual_theme"] is None and saved["banned_themes"] == []
+
+    def test_post_render_persist_holds_the_state_lock(self, tmp_path, monkeypatch):
+        # Every writer of state.json snapshots and writes under state.lock, so
+        # a web unban cannot be overwritten by an older post-render snapshot.
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        held = []
+        monkeypatch.setattr(runtime_store, "save_runtime_state", lambda path, payload: held.append(state.lock.locked()))
+        runtime_render._persist_state_after_render(args, state)
+        assert held == [True]
+
+    def test_b_short_moves_to_the_next_quote(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
+        with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
+             patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
+            short, _hold = run_clock._build_button_handlers(args, state)
+            short["B"]()
+        assert mock_render.call_args.kwargs["quote_id"] == ("src-new", 7, "q-new", "mt-new")
+        assert state.last_skipped == ("src-old", 5, "q-old", "mt-old")
+
+    def test_b_long_bans_the_quote_for_good_and_moves_on(self, tmp_path):
+        overrides = tmp_path / "selection_overrides.json"
+        overrides.write_text(json.dumps({"_comment": "mine", "ban_quote_keys": ["9:9"]}))
+        args = make_args(tmp_path, overrides=str(overrides))
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-old", 5, "a fifteen char", "mt-old")
+        state.last_effective_theme = "deco"
+        with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
+             patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["B"]()
+        on_disk = json.loads(overrides.read_text())
+        assert on_disk["ban_quote_keys"] == ["9:9", "src-old:5"]
+        assert on_disk["_comment"] == "mine"
+        assert mock_render.call_args.kwargs["quote_id"] == ("src-new", 7, "q-new", "mt-new")
+        events = self._telemetry(tmp_path)
+        ban = next(e for e in events if e.get("action") == "quote_ban")
+        assert ban["key"] == "src-old:5" and ban["theme"] == "deco" and ban["quote_length"] == 14
+
+    def test_b_long_refuses_a_corrupt_overrides_file(self, tmp_path):
+        overrides = tmp_path / "selection_overrides.json"
+        overrides.write_text("{not json")
+        args = make_args(tmp_path, overrides=str(overrides))
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-old", 5, "q", "m")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_ban_quote(args, state, label="button B")
+        assert result["error"] == "overrides_invalid"
+        assert overrides.read_text() == "{not json"
+        mock_render.assert_not_called()
+
+    def test_b_long_with_nothing_on_the_panel_does_nothing(self, tmp_path):
+        args = make_args(tmp_path, overrides=str(tmp_path / "selection_overrides.json"))
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_ban_quote(args, state, label="button B")
+        assert result == {"ok": False, "error": "no_quote"}
+        assert not (tmp_path / "selection_overrides.json").exists()
+        mock_render.assert_not_called()
 
 
 class TestShutdownHandler:
@@ -2910,7 +3268,7 @@ class TestButtonRenderGate:
                  patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
                  patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
                 short, _hold = run_clock._build_button_handlers(args, state)
-                short["A"]()
+                short["B"]()
         finally:
             state.render_lock.release()
         assert not mock_render.called
@@ -2928,7 +3286,7 @@ class TestButtonRenderGate:
                  patch("idle_hours.runtime_store.save_runtime_state") as mock_save, \
                  patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
                 short, _hold = run_clock._build_button_handlers(args, state)
-                short["B"]()
+                short["A"]()
         finally:
             state.render_lock.release()
         assert state.manual_theme is None
@@ -2942,7 +3300,7 @@ class TestButtonRenderGate:
              patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             short, _hold = run_clock._build_button_handlers(args, state)
-            short["A"]()  # Exception is caught by handler's try/except; gate must still release.
+            short["B"]()  # Exception is caught by handler's try/except; gate must still release.
         # Lock should be free now; acquiring non-blocking must succeed.
         assert state.render_lock.acquire(blocking=False)
         state.render_lock.release()
@@ -4674,6 +5032,16 @@ class TestRenderChildSuppressesCorpusWarnings:
         assert env["IDLE_HOURS_TEST_CANARY"] == "kept"
         assert "PATH" in env
 
+    def test_a_notice_reaches_the_child_by_environment_only(self, tmp_path):
+        mock_run = self._run(tmp_path, notice="Theme banned: gothic · hold C to undo")
+        assert mock_run.call_args.kwargs["env"]["IDLE_HOURS_NOTICE"] == "Theme banned: gothic · hold C to undo"
+        assert not any(str(a).startswith("--notice") for a in mock_run.call_args[0][0])
+
+    def test_an_inherited_notice_is_not_passed_on(self, tmp_path, monkeypatch):
+        # Only the render that asked for a notice carries one.
+        monkeypatch.setenv("IDLE_HOURS_NOTICE", "stale")
+        assert "IDLE_HOURS_NOTICE" not in self._run(tmp_path).call_args.kwargs["env"]
+
     def test_suppression_is_not_passed_as_argv(self, tmp_path):
         """It must be an env var, not a flag: ``_corpus_render_args`` documents
         that an unrecognised flag exits an operator's custom --render-script
@@ -5898,7 +6266,7 @@ class TestUnknownStateKeysRoundTrip:
         snapshot = state.snapshot_for_persistence()
         assert set(snapshot) == {
             "manual_theme", "manual_quiet", "last_bucket",
-            "last_quote_id", "last_effective_theme", "setup_complete",
+            "last_quote_id", "last_effective_theme", "setup_complete", "banned_themes",
         }
 
 

@@ -28,8 +28,8 @@ class RuntimeState:
     def __init__(self, theme_arg: str, persisted: dict | None = None):
         self.lock = threading.Lock()
         self.render_lock = threading.Lock()
-        # Serialises read-modify-write of ~/.idle-hours/history.jsonl. Button A's
-        # long-press does a remove-last-entry that would otherwise race the main
+        # Serialises read-modify-write of ~/.idle-hours/history.jsonl. The web
+        # un-skip does a remove-last-entry that would otherwise race the main
         # loop's post-render append and silently drop it.
         self.ledger_lock = threading.Lock()
         # CLI ``--theme`` value — any registered theme name in
@@ -73,6 +73,17 @@ class RuntimeState:
         # panel nobody is looking at — cheaper than another ``state.json``
         # schema field to validate and round-trip.
         self.quiet_theme: str | None = None
+        # Themes banned by button A's long-press (or the curator UI), in ban
+        # order. Persisted: a ban is permanent until lifted in the curator UI.
+        # ``runtime_theme.without_banned`` applies it to random draws and the
+        # theme cycle; an explicit ``--theme`` or dropdown choice still wins.
+        self.banned_themes: list[str] = []
+        # The most recent button / web ban, which button C's long-press
+        # undoes: ``{"kind": "theme", "theme": ...}`` or ``{"kind": "quote",
+        # "key": ..., "quote_id": ..., "bucket": ..., "theme": ...}``. In
+        # memory only: an undo is for the press you just regretted, and a
+        # restart in between costs a trip to the curator UI instead.
+        self.last_ban: dict | None = None
         self.manual_quiet = False             # toggled by button D
         # Manual *awake* override (issue #278): the operator pressed D (or
         # the web "wake") during the scheduled quiet window and wants the
@@ -87,8 +98,8 @@ class RuntimeState:
         self.last_quote_id: tuple | None = None
         self.last_effective_theme: str | None = None
         self.last_seen_date: dt.date | None = None
-        # Populated when button A (skip) bans a quote; button A long-press
-        # rolls that ban back and re-renders.
+        # Populated when button B (next quote) skips a quote; the web un-skip
+        # rolls that skip back and re-renders.
         self.last_skipped: tuple | None = None
         # Button listener bookkeeping. ``button_handles`` is the keepalive list
         # returned by ``inky_buttons.start_listener`` (we must hold the refs
@@ -179,6 +190,14 @@ class RuntimeState:
             if isinstance(mt, str) and mt in _known_theme_names():
                 self.manual_theme = mt
             self.manual_quiet = bool(persisted.get("manual_quiet", False))
+            banned = persisted.get("banned_themes")
+            if isinstance(banned, list):
+                # Registered names only, first occurrence kept: a theme a
+                # newer build dropped, or a hand-edited typo, is ignored.
+                known_names = _known_theme_names()
+                self.banned_themes = list(dict.fromkeys(
+                    name for name in banned if isinstance(name, str) and name in known_names
+                ))
             # Render-identity fields (last_bucket / last_quote_id /
             # last_effective_theme) survive a restart so a mid-bucket
             # ``systemctl restart`` does not redraw an identical frame. The
@@ -230,6 +249,7 @@ class RuntimeState:
             "last_quote_id": last_quote_id,
             "last_effective_theme": self.last_effective_theme,
             "setup_complete": self.setup_complete,
+            "banned_themes": list(self.banned_themes),
         }
 
     def commit_render_result(

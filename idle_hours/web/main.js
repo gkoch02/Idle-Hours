@@ -371,12 +371,13 @@ async function refreshCurrent() {
   reflectSleep(Boolean(data.asleep));
 }
 
-// While the panel shows the sleep frame, skip and un-skip have no quote to
-// act on and the server refuses them (409 "asleep"), so the buttons say so
-// up front instead of failing on click; button D reads as the wake it is.
+// While the panel shows the sleep frame, skip, un-skip and the two bans have
+// nothing on the panel to act on and the server refuses them (409 "asleep"),
+// so the buttons say so up front instead of failing on click; button D reads
+// as the wake it is.
 function reflectSleep(asleep) {
   state.asleep = asleep;
-  for (const id of ["action-skip", "action-unskip"]) {
+  for (const id of ["action-skip", "action-unskip", "action-ban-theme", "action-ban-quote", "action-undo-ban"]) {
     const btn = $(id);
     if (!btn) continue;
     btn.disabled = asleep;
@@ -667,7 +668,8 @@ async function fireAction(action, body = {}) {
     log(`${action}: error ${status} ${data?.error || ""}`, "err");
     return false;
   }
-  log(`${action}: ok${data?.theme ? ` → ${data.theme}` : ""}`, "ok");
+  const banned = data?.banned ? ` (banned ${data.banned})` : data?.key ? ` (banned ${data.key})` : "";
+  log(`${action}: ok${banned}${data?.theme ? ` → ${data.theme}` : ""}`, "ok");
   // Any applied theme supersedes a pending dropdown choice, so let the
   // dropdown follow the live theme again (#290).
   if (action === "theme") state.themeSelectDirty = false;
@@ -677,7 +679,11 @@ async function fireAction(action, body = {}) {
 
 function wireControls() {
   document.querySelectorAll("[data-action]").forEach((btn) => {
-    btn.addEventListener("click", () => fireAction(btn.dataset.action));
+    btn.addEventListener("click", () => {
+      // The bans are permanent, so they ask first, as "Ban this quote" does.
+      if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
+      fireAction(btn.dataset.action);
+    });
   });
   const select = $("theme-select");
   if (select) {
@@ -741,12 +747,73 @@ async function refreshThemes() {
   if (pill) {
     if (data.manual_theme) {
       pill.textContent = `manual: ${data.manual_theme}`;
-    } else if (data.theme_arg === "auto") {
-      pill.textContent = `auto: ${data.effective}`;
+    } else if (data.theme_arg === "auto" || data.theme_arg === "random") {
+      pill.textContent = `${data.theme_arg}: ${data.effective}`;
     } else {
       pill.textContent = `fixed: ${data.effective}`;
     }
   }
+  renderBannedThemes(data.banned_themes || []);
+}
+
+// Themes banned with button A's long-press, each with an un-ban. The list is
+// the only way back from a ban short of editing state.json.
+function renderBannedThemes(banned) {
+  const box = $("banned-themes");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!banned.length) return;
+  const label = document.createElement("span");
+  label.className = "hint";
+  label.textContent = "Banned themes:";
+  box.appendChild(label);
+  for (const name of banned) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-small";
+    btn.title = `Un-ban ${name}: it rejoins random draws and the cycle`;
+    btn.textContent = `${name} ✕`;
+    btn.addEventListener("click", () => unbanTheme(name));
+    box.appendChild(btn);
+  }
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "btn btn-small btn-danger";
+  clear.textContent = "Clear all";
+  clear.title = "Lift every theme ban";
+  clear.addEventListener("click", clearThemeBans);
+  box.appendChild(clear);
+}
+
+// Every theme ban at once. Only here, behind a confirm: on the panel a hold
+// is too easy to trigger for something that undoes many considered presses.
+async function clearThemeBans() {
+  if (!confirm("Lift every theme ban? They all rejoin random draws and the cycle.")) return;
+  const { ok, status, data } = await jsonFetch("/api/action/clear-theme-bans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!ok) {
+    log(`clear theme bans: error ${status} ${data?.error || ""}`, "err");
+    return;
+  }
+  log(`cleared ${(data?.cleared || []).length} theme ban(s)`, "ok");
+  await refreshThemes();
+}
+
+async function unbanTheme(name) {
+  const { ok, status, data } = await jsonFetch("/api/action/unban-theme", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme: name }),
+  });
+  if (!ok) {
+    log(`unban ${name}: error ${status} ${data?.error || ""}`, "err");
+    return;
+  }
+  log(`unbanned theme ${name}`, "ok");
+  await refreshThemes();
 }
 
 // ------- Selection overrides editor -----------------------------------------

@@ -191,7 +191,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "'auto' picks --auto-day-theme between 06:00 and 18:00 and --auto-night-theme "
             "otherwise (defaults 'default' / 'dark'). "
             "'random' picks a fresh theme each time the displayed quote changes. "
-            "Pressing button B cycles themes manually and overrides 'auto'/'random' until midnight."
+            "Pressing button A moves to the next theme: another random draw under 'random', "
+            "otherwise the next theme in the cycle, which overrides 'auto' until midnight. "
+            "Holding A bans the theme on the panel from random draws and the cycle."
         ),
     )
     parser.add_argument(
@@ -335,7 +337,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "'inherit' (the default) uses whatever theme the clock is already showing. "
             "'auto' derives from the wall clock like --theme auto. "
             "'random' picks once per quiet window, on entry, and holds it until morning. "
-            "A button-B / web-dropdown manual theme override wins over all of these."
+            "A button-A / web-dropdown manual theme override wins over all of these."
         ),
     )
     parser.add_argument(
@@ -548,19 +550,24 @@ def _build_button_handlers(
     Thin wrappers around the module-level ``action_*`` functions so the same
     bodies power both GPIO presses and the curator web UI's POST endpoints.
     ``short_handlers`` covers quick taps on A/B/C/D; ``hold_handlers`` adds the
-    2-second long-press actions on A (un-skip) and D (shutdown).
+    2-second long-press actions: A bans the theme, B bans the quote, C undoes
+    the last ban, D shuts down. A is the theme button (next theme / ban
+    theme), B the quote button (next quote / ban quote).
     """
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
 
-    def on_skip() -> None:
-        runtime_actions.action_skip(args, state, label="button A")
+    def on_next_theme() -> None:
+        runtime_actions.action_theme(args, state, label="button A")
 
-    def on_unskip() -> None:
-        runtime_actions.action_unskip(args, state, label="button A")
+    def on_ban_theme() -> None:
+        runtime_actions.action_ban_theme(args, state, label="button A")
 
-    def on_toggle_theme() -> None:
-        runtime_actions.action_theme(args, state, label="button B")
+    def on_next_quote() -> None:
+        runtime_actions.action_skip(args, state, label="button B")
+
+    def on_ban_quote() -> None:
+        runtime_actions.action_ban_quote(args, state, label="button B")
 
     def on_source_card() -> None:
         # Source-card display is button-only for v2 (the web UI surfaces the
@@ -740,17 +747,22 @@ def _build_button_handlers(
                 runtime_telemetry.append_telemetry(telemetry_path, {"bucket": runtime_render.current_bucket(), "error": repr(exc), "mode": "shutdown"})
                 _rollback_quiet()
 
+    def on_undo_ban() -> None:
+        runtime_actions.action_undo_ban(args, state, label="button C")
+
     def on_quiet_toggle() -> None:
         runtime_actions.action_quiet(args, state, label="button D")
 
     short_handlers = {
-        "A": on_skip,
-        "B": on_toggle_theme,
+        "A": on_next_theme,
+        "B": on_next_quote,
         "C": on_source_card,
         "D": on_quiet_toggle,
     }
     hold_handlers = {
-        "A": on_unskip,
+        "A": on_ban_theme,
+        "B": on_ban_quote,
+        "C": on_undo_ban,
         "D": on_shutdown,
     }
     return short_handlers, hold_handlers
@@ -913,7 +925,7 @@ def _maybe_compact_history(args: argparse.Namespace, state: RuntimeState) -> Non
     Gated on ``state.last_compacted_date`` so the compact sweep runs at most
     once per calendar day — the ledger is a ~288-entries-per-week
     append-only file, so a per-tick compact would re-parse it needlessly.
-    Serialised against button A's ``remove_history_entries`` rewrite via
+    Serialised against the un-skip's ``remove_history_entries`` rewrite via
     ``state.ledger_lock`` to avoid stepping on a concurrent un-skip.
     Best-effort: a disk hiccup here must not bubble into the render path and
     trip the outer-loop backoff counter.
@@ -1713,7 +1725,7 @@ def main() -> int:
     # collide with the unlocked display call.
     if args.startup_image == "auto":
         # On-the-fly sleep frame in the active theme. Honours any persisted
-        # ``manual_theme`` so an operator who pressed button B before reboot
+        # ``manual_theme`` so an operator who pressed button A before reboot
         # still gets their chosen theme on cold boot, not just the --theme arg.
         # Deliberately ``resolve_effective_theme``, NOT ``resolve_quiet_theme``:
         # a cold boot is not a quiet-hours entry, so a ``--quiet-theme random``
