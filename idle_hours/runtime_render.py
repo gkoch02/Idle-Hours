@@ -517,18 +517,32 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
         )
         if not quote_changed:
             return None
-        new_theme, new_bag = runtime_theme.pick_next_random_theme(
-            list(state.random_theme_bag), recent=state.random_theme_recent
-        )
-        state.current_random_theme = new_theme
-        state.random_theme_bag = new_bag
-        # Roll the recent-window forward (most-recent last) and cap it at
-        # ~half the pool, so the next refill keeps these themes out of the
-        # new bag's draw-front. This is what prevents a tail-of-pass theme
-        # from reappearing a pick or two into the next pass.
-        window = runtime_theme.recent_window_size(len(runtime_theme.random_theme_pool()))
-        state.random_theme_recent = (state.random_theme_recent + [new_theme])[-window:]
+        new_theme = _draw_random_theme_locked(state)
         state.last_random_quote_id = quote_id
+    return new_theme
+
+
+def _draw_random_theme_locked(state: RuntimeState) -> str:
+    """Draw the next random theme from the bag and record it. The caller holds ``state.lock``.
+
+    Shared by the per-quote pick above and button A's reroll
+    (``runtime_actions.action_theme``). Banned themes are left out of the
+    refill pool and dropped from a bag filled before the ban, so a ban takes
+    effect on the very next draw.
+    """
+    pool = runtime_theme.random_theme_pool(banned=state.banned_themes)
+    bag = [name for name in state.random_theme_bag if name in pool]
+    new_theme, new_bag = runtime_theme.pick_next_random_theme(
+        bag, recent=state.random_theme_recent, pool=pool,
+    )
+    state.current_random_theme = new_theme
+    state.random_theme_bag = new_bag
+    # Roll the recent-window forward (most-recent last) and cap it at
+    # ~half the pool, so the next refill keeps these themes out of the
+    # new bag's draw-front. This is what prevents a tail-of-pass theme
+    # from reappearing a pick or two into the next pass.
+    window = runtime_theme.recent_window_size(len(pool))
+    state.random_theme_recent = (state.random_theme_recent + [new_theme])[-window:]
     return new_theme
 
 

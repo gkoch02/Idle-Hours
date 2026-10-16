@@ -221,6 +221,17 @@ main {
   min-height: var(--tap);
 }
 
+.banned-themes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.82rem;
+}
+.banned-themes:empty { display: none; }
+
 /* Theme preview grid ------------------------------------------------------- */
 
 .theme-preview-grid {

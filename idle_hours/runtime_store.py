@@ -1,6 +1,6 @@
 """Persistent runtime-state store (manual theme / manual quiet) with atomic writes.
 
-Loads ``~/.idle-hours/state.json`` at loop startup so the user's last button-B /
+Loads ``~/.idle-hours/state.json`` at loop startup so the user's last button-A /
 button-D choices survive a restart, and writes atomically (tmp-sibling →
 ``fsync`` → ``os.replace`` → dir-``fsync`` via :mod:`atomic_io`) so a crash
 mid-write never leaves the file truncated. Extracted from :mod:`run_clock`.
@@ -31,6 +31,10 @@ _STATE_SCHEMA: dict[str, tuple[type, ...] | tuple] = {
     # overlay on next visit. Plain bool so tests / hand-edits can flip it
     # back to ``False`` to re-trigger the wizard.
     "setup_complete": (bool,),
+    # Themes the operator banned with button A's long-press (or the curator
+    # UI): left out of random draws and of the theme cycle. Entries that are
+    # not a registered theme name are dropped by ``RuntimeState``.
+    "banned_themes": (list,),
 }
 
 

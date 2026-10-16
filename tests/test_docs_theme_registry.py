@@ -1,7 +1,7 @@
 """The documentation's theme rosters must agree with the theme registry.
 
 A roster is real content: the README's per-theme table, its contact-sheet loop
-and docs/runtime.md's button-B chain each enumerate themes because a reader
+and docs/runtime.md's button-A chain each enumerate themes because a reader
 needs the list there. Each is checked against the registry it mirrors, so
 adding a theme without its row, preview or loop entry fails here.
 
@@ -91,8 +91,8 @@ class TestContactSheetLoop:
             )
 
 
-class TestButtonBCycleChain:
-    """docs/runtime.md's button-B chain must match the real cycle order.
+class TestButtonACycleChain:
+    """docs/runtime.md's button-A chain must match the real cycle order.
 
     The chain documents what a physical button press actually does, so it tracks
     ``theme_cycle()`` — ``THEME_ORDER`` minus ``CYCLE_EXCLUDED_THEMES`` — not the
@@ -104,14 +104,14 @@ class TestButtonBCycleChain:
     def test_chain_matches_the_cycle(self):
         text = (REPO_ROOT / "docs" / "runtime.md").read_text(encoding="utf-8")
         match = self.CHAIN_RE.search(text)
-        assert match, "could not find the button-B cycle chain in docs/runtime.md"
+        assert match, "could not find the button-A cycle chain in docs/runtime.md"
         listed = [part.strip().strip("`") for part in match.group(1).split("→")]
         cycle = list(theme_names.theme_cycle())
         assert listed[-1] == cycle[0], (
             f"the chain should wrap back to `{cycle[0]}`, it ends at `{listed[-1]}`"
         )
         assert listed[:-1] == cycle, (
-            "the button-B chain in docs/runtime.md no longer matches theme_cycle() — "
+            "the button-A chain in docs/runtime.md no longer matches theme_cycle() — "
             f"missing {sorted(set(cycle) - set(listed))}, "
             f"unknown {sorted(set(listed) - set(cycle))}"
         )
@@ -122,5 +122,5 @@ class TestButtonBCycleChain:
         for excluded in rq.CYCLE_EXCLUDED_THEMES:
             assert excluded not in listed, (
                 f"`{excluded}` is in CYCLE_EXCLUDED_THEMES but the documented "
-                "button-B chain still lists it"
+                "button-A chain still lists it"
             )
