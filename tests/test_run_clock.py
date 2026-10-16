@@ -2640,6 +2640,53 @@ class TestThemeAndQuoteButtons:
         assert state.banned_themes == [] and state.last_ban is None
         assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == []
 
+    def test_a_failed_ban_repaint_keeps_the_move_off_the_banned_theme(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        state.last_quote_id = ("src", 1, "q", "m")
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_ban_theme(args, state, label="button A")
+        assert result["ok"] is False and result["rolled_back"] is False
+        # Kept, so the loop's next tick sees a theme change and retries.
+        assert state.manual_theme == "dark"
+        assert state.last_effective_theme == "default"
+        saved = json.loads((tmp_path / "state.json").read_text())
+        assert saved["manual_theme"] == "dark" and saved["banned_themes"] == ["default"]
+
+    def test_a_failed_ban_repaint_in_random_mode_keeps_the_new_draw(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_theme(args, state, label="button A")
+        assert state.current_random_theme not in (None, "gothic")
+
+    def test_a_failed_undo_repaint_rolls_back_the_saved_theme_too(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("auto")
+        state.banned_themes = ["deco"]
+        state.last_ban = {"kind": "theme", "theme": "deco"}
+        state.last_quote_id = ("src", 1, "q", "m")
+        with patch("idle_hours.runtime_render.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_undo_ban(args, state, label="button C")
+        assert result["ok"] is False
+        assert state.manual_theme is None and state.banned_themes == []
+        saved = json.loads((tmp_path / "state.json").read_text())
+        assert saved["manual_theme"] is None and saved["banned_themes"] == []
+
+    def test_post_render_persist_holds_the_state_lock(self, tmp_path, monkeypatch):
+        # Every writer of state.json snapshots and writes under state.lock, so
+        # a web unban cannot be overwritten by an older post-render snapshot.
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        held = []
+        monkeypatch.setattr(runtime_store, "save_runtime_state", lambda path, payload: held.append(state.lock.locked()))
+        runtime_render._persist_state_after_render(args, state)
+        assert held == [True]
+
     def test_b_short_moves_to_the_next_quote(self, tmp_path):
         args = make_args(tmp_path)
         state = run_clock.RuntimeState("default")

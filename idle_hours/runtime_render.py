@@ -190,7 +190,12 @@ def _persist_state_after_render(args: argparse.Namespace, state: RuntimeState) -
     if not state_path:
         return
     try:
-        runtime_store.save_runtime_state(state_path, state.snapshot_for_persistence())
+        # Snapshot and write under ``state.lock``, as every other writer of
+        # the file does. Unlocked, a ban lifted from the web UI while this
+        # write was in flight could be overwritten by this older snapshot and
+        # come back on the next restart.
+        with state.lock:
+            runtime_store.save_runtime_state(state_path, state.snapshot_for_persistence())
     except Exception as exc:
         _log(f"runtime state persist after render failed: {exc!r}", err=True)
 

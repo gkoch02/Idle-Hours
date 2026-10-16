@@ -739,14 +739,18 @@ def draw_notice(image: Image.Image, text: str) -> Image.Image:
     A post-pass over whatever the theme painted, so it works on every theme,
     border-painted or custom frame. It covers a corner of the frame rather
     than reflowing it: the notice is transient, gone at the next repaint
-    (``path_resolution.NOTICE_ENV``). The text is clipped to the frame width.
+    (``path_resolution.NOTICE_ENV``). The text is clipped to the frame width,
+    and a frame too narrow for even an ellipsis gets no notice.
     """
     width, _height = image.size
     font = load_font(META_FONT_BOLD_CANDIDATES, size=NOTICE_FONT_SIZE)
     draw = ImageDraw.Draw(image)
     max_text_w = width - 2 * (NOTICE_MARGIN + NOTICE_PAD[0])
-    while text and draw.textlength(text, font=font) > max_text_w:
+    while len(text) > 1 and draw.textlength(text, font=font) > max_text_w:
         text = text[:-2] + "…"
+    if draw.textlength(text, font=font) > max_text_w:
+        # Too narrow for even an ellipsis (a tiny --width): no notice.
+        return image
     left, top, right, bottom = (int(v) for v in draw.textbbox((0, 0), text, font=font))
     box = (
         NOTICE_MARGIN,

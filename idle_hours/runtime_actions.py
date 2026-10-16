@@ -378,9 +378,15 @@ def action_theme(
 
 
 def _change_theme_unlocked(
-    args: argparse.Namespace, state: RuntimeState, label: str, target: str | None, *, notice: str | None = None,
+    args: argparse.Namespace, state: RuntimeState, label: str, target: str | None, *,
+    notice: str | None = None, keep_on_failure: bool = False,
 ) -> dict:
-    """The body of :func:`action_theme`. The caller holds ``render_lock``; ``target`` is already validated."""
+    """The body of :func:`action_theme`. The caller holds ``render_lock``; ``target`` is already validated.
+
+    ``keep_on_failure`` is for the ban: a failed repaint keeps the move to the
+    next theme instead of rolling back to the banned one, so the main loop,
+    seeing an effective theme that differs from the panel's, retries it.
+    """
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     time_str = runtime_render.current_time_str()
@@ -388,7 +394,9 @@ def _change_theme_unlocked(
     # BEFORE the ``with state.lock`` block below — it is not reentrant.
     quiet_now = _quiet_active(args, state, time_str)
     if target is None and not quiet_now and state.theme_arg == "random":
-        return _reroll_random_theme_unlocked(args, state, label, time_str, notice=notice)
+        return _reroll_random_theme_unlocked(
+            args, state, label, time_str, notice=notice, keep_on_failure=keep_on_failure,
+        )
     # What is actually on the panel right now. While the panel is asleep
     # that is NOT ``state.last_effective_theme``: quiet frames render
     # through ``render_quiet_frame`` → ``render_now`` rather than
@@ -450,6 +458,8 @@ def _change_theme_unlocked(
         else:
             runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id, notice=notice)
     except Exception as exc:
+        if keep_on_failure:
+            return _keep_theme_move_after_failure(args, state, label, exc)
         with state.lock:
             state.manual_theme = previous_theme
         _log(f"{label} theme change failed: {exc!r} (rolled back to {previous_theme!r})", err=True)
@@ -467,7 +477,8 @@ def _change_theme_unlocked(
     return {"ok": True, "theme": new_theme, "previous": current}
 
 def _reroll_random_theme_unlocked(
-    args: argparse.Namespace, state: RuntimeState, label: str, time_str: str, *, notice: str | None = None,
+    args: argparse.Namespace, state: RuntimeState, label: str, time_str: str, *,
+    notice: str | None = None, keep_on_failure: bool = False,
 ) -> dict:
     """Button A in ``--theme random``: repaint the quote on the panel in the next random theme.
 
@@ -493,6 +504,8 @@ def _reroll_random_theme_unlocked(
     try:
         runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id, notice=notice)
     except Exception as exc:
+        if keep_on_failure:
+            return _keep_theme_move_after_failure(args, state, label, exc)
         with state.lock:
             (
                 state.manual_theme, state.current_random_theme,
@@ -510,6 +523,28 @@ def _reroll_random_theme_unlocked(
             _log(f"{label} random theme change: persist after render failed: {exc!r}", err=True)
     _emit_action(telemetry_path, "theme", label, ok=True)
     return {"ok": True, "theme": new_theme, "previous": current, "random": True}
+
+
+def _keep_theme_move_after_failure(
+    args: argparse.Namespace, state: RuntimeState, label: str, exc: Exception,
+) -> dict:
+    """A ban's repaint failed: keep the move off the banned theme and persist it.
+
+    Rolling back, as a plain theme change does, would leave the panel on the
+    theme just banned with nothing to move it: the loop would resolve the
+    restored theme, match the frame on the panel and never repaint. Kept,
+    the effective theme differs from ``last_effective_theme`` and the next
+    tick retries the repaint (without the notice).
+    """
+    telemetry_path = args.telemetry_path or None
+    try:
+        with state.lock:
+            runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+    except Exception as persist_exc:
+        _log(f"{label} theme change: persist failed: {persist_exc!r}", err=True)
+    _log(f"{label} theme change failed: {exc!r} (kept; the next tick retries the repaint)", err=True)
+    _emit_action(telemetry_path, "theme", label, ok=False, error=repr(exc))
+    return {"ok": False, "error": repr(exc), "rolled_back": False}
 
 
 def action_ban_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
@@ -557,7 +592,9 @@ def action_ban_theme(args: argparse.Namespace, state: RuntimeState, *, label: st
             telemetry_path, "theme_ban", label, ok=True,
             theme=theme, quote_length=_quote_length(quote_id),
         )
-        result = _change_theme_unlocked(args, state, label, None, notice=theme_banned_notice(theme))
+        result = _change_theme_unlocked(
+            args, state, label, None, notice=theme_banned_notice(theme), keep_on_failure=True,
+        )
         return {**result, "banned": theme, "already_banned": already}
 
 
@@ -793,6 +830,12 @@ def _undo_theme_ban_unlocked(
         # rolled back, so state matches the frame still on the panel.
         with state.lock:
             state.manual_theme, state.current_random_theme = saved
+            # The theme switch was persisted with the lifted ban; re-save so
+            # a restart does not apply the switch the panel never showed.
+            try:
+                runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+            except Exception as persist_exc:
+                _log(f"{label} undo ban: persist after rollback failed: {persist_exc!r}", err=True)
         _log(f"{label} undo ban: repaint failed: {exc!r}", err=True)
         _emit_action(telemetry_path, "undo_ban", label, ok=False, error=repr(exc), theme=theme)
         return {"ok": False, "error": repr(exc), "undone": {"kind": "theme", "theme": theme}}

@@ -3981,6 +3981,12 @@ class TestDrawNotice:
         # The right margin column stays clear of the tab's border.
         assert all(out.getpixel((299, y)) == rq_palette.SPECTRA6["white"] for y in range(0, 60))
 
+    def test_a_frame_too_narrow_for_an_ellipsis_gets_no_notice(self):
+        from PIL import Image
+        frame = Image.new("RGB", (60, 40), rq_palette.SPECTRA6["blue"])
+        out = rq_core.draw_notice(frame, "Theme banned: gothic · hold C to undo")
+        assert distinct_inks(out) == {rq_palette.SPECTRA6["blue"]}
+
     def test_main_stamps_the_notice_from_the_environment(self, tmp_path, monkeypatch):
         from PIL import Image
         out_path = tmp_path / "frame.png"
