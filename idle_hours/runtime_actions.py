@@ -1,4 +1,4 @@
-"""Button / web action handlers: next / ban theme, next / ban quote, un-skip, quiet toggle, rerender.
+"""Button / web action handlers: next / ban theme, next / ban quote, undo ban, un-skip, quiet toggle, rerender.
 
 Each action returns a result dict so the curator web server can serialise it
 to JSON (``{"ok": True, ...}`` / ``{"ok": False, "error": "busy"}``); button
@@ -50,6 +50,17 @@ def _next_theme(current: str, banned: Collection[str] = ()) -> str:
         if candidate in eligible:
             return candidate
     return current  # pragma: no cover - eligible is never empty
+
+
+# Stamped on the frame painted right after a ban or an undo, and gone at the
+# next repaint (``path_resolution.NOTICE_ENV``). The ban notices name the undo
+# because a long press is otherwise invisible: this is how someone who did not
+# know the gesture learns what just happened and how to take it back.
+QUOTE_BANNED_NOTICE = "Quote banned · hold C to undo"
+
+
+def theme_banned_notice(theme: str) -> str:
+    return f"Theme banned: {theme} · hold C to undo"
 
 
 @contextlib.contextmanager
@@ -188,7 +199,7 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
 
 
 def _show_next_quote_unlocked(
-    args: argparse.Namespace, state: RuntimeState, previous: tuple | None,
+    args: argparse.Namespace, state: RuntimeState, previous: tuple | None, *, notice: str | None = None,
 ) -> tuple | None:
     """Pick the quote for now, render it, and record it on the ledger. The caller holds ``render_lock``.
 
@@ -205,7 +216,7 @@ def _show_next_quote_unlocked(
         **runtime_render._corpus_kwargs(args),
     )
     runtime_render._maybe_pick_random_theme(state, quote_id)
-    runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+    runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id, notice=notice)
     if quote_id is not None and (previous is None or quote_id[:2] != previous[:2]):
         runtime_render._append_history_after_render(state, history_path, quote_id)
     return quote_id
@@ -246,8 +257,14 @@ def action_ban_quote(args: argparse.Namespace, state: RuntimeState, *, label: st
             _emit_action(telemetry_path, "quote_ban", label, ok=False, error="overrides_invalid", key=key)
             return {"ok": False, "error": "overrides_invalid", "key": key}
         _log(f"{label}: banned quote {key}" + (" (already banned)" if already else ""))
+        if not already:
+            with state.lock:
+                state.last_ban = {
+                    "kind": "quote", "key": key, "quote_id": previous,
+                    "bucket": state.last_bucket, "theme": theme,
+                }
         try:
-            quote_id = _show_next_quote_unlocked(args, state, previous)
+            quote_id = _show_next_quote_unlocked(args, state, previous, notice=QUOTE_BANNED_NOTICE)
         except Exception as exc:
             # The ban stands (it is on disk and is what the operator asked
             # for); only the repaint failed, and the next tick retries it.
@@ -361,7 +378,7 @@ def action_theme(
 
 
 def _change_theme_unlocked(
-    args: argparse.Namespace, state: RuntimeState, label: str, target: str | None,
+    args: argparse.Namespace, state: RuntimeState, label: str, target: str | None, *, notice: str | None = None,
 ) -> dict:
     """The body of :func:`action_theme`. The caller holds ``render_lock``; ``target`` is already validated."""
     history_path = args.history_path or None
@@ -371,7 +388,7 @@ def _change_theme_unlocked(
     # BEFORE the ``with state.lock`` block below — it is not reentrant.
     quiet_now = _quiet_active(args, state, time_str)
     if target is None and not quiet_now and state.theme_arg == "random":
-        return _reroll_random_theme_unlocked(args, state, label, time_str)
+        return _reroll_random_theme_unlocked(args, state, label, time_str, notice=notice)
     # What is actually on the panel right now. While the panel is asleep
     # that is NOT ``state.last_effective_theme``: quiet frames render
     # through ``render_quiet_frame`` → ``render_now`` rather than
@@ -431,7 +448,7 @@ def _change_theme_unlocked(
             # theme worth changing.
             runtime_quiet.render_quiet_frame(args, state, time_str, manual_only=True)
         else:
-            runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id, notice=notice)
     except Exception as exc:
         with state.lock:
             state.manual_theme = previous_theme
@@ -450,7 +467,7 @@ def _change_theme_unlocked(
     return {"ok": True, "theme": new_theme, "previous": current}
 
 def _reroll_random_theme_unlocked(
-    args: argparse.Namespace, state: RuntimeState, label: str, time_str: str,
+    args: argparse.Namespace, state: RuntimeState, label: str, time_str: str, *, notice: str | None = None,
 ) -> dict:
     """Button A in ``--theme random``: repaint the quote on the panel in the next random theme.
 
@@ -474,7 +491,7 @@ def _reroll_random_theme_unlocked(
         quote_id = state.last_quote_id
     _log(f"{label}: random theme {current} -> {new_theme}")
     try:
-        runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+        runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id, notice=notice)
     except Exception as exc:
         with state.lock:
             (
@@ -525,6 +542,10 @@ def action_ban_theme(args: argparse.Namespace, state: RuntimeState, *, label: st
             already = theme in state.banned_themes
             if not already:
                 state.banned_themes.append(theme)
+                # What button C's long-press undoes. A repeat ban of an
+                # already-banned theme is not a new decision, so it leaves the
+                # last real one in place.
+                state.last_ban = {"kind": "theme", "theme": theme}
             quote_id = state.last_quote_id
             try:
                 runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
@@ -536,7 +557,7 @@ def action_ban_theme(args: argparse.Namespace, state: RuntimeState, *, label: st
             telemetry_path, "theme_ban", label, ok=True,
             theme=theme, quote_length=_quote_length(quote_id),
         )
-        result = _change_theme_unlocked(args, state, label, None)
+        result = _change_theme_unlocked(args, state, label, None, notice=theme_banned_notice(theme))
         return {**result, "banned": theme, "already_banned": already}
 
 
@@ -552,6 +573,8 @@ def action_unban_theme(args: argparse.Namespace, state: RuntimeState, theme: str
         return {"ok": False, "error": "unknown_theme", "target": theme}
     with state.lock:
         was_banned = theme in state.banned_themes
+        if state.last_ban == {"kind": "theme", "theme": theme}:
+            state.last_ban = None
         if was_banned:
             state.banned_themes.remove(theme)
             try:
@@ -706,3 +729,139 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
             _log(f"{label} rerender failed: {exc!r}", err=True)
             _emit_action(telemetry_path, "rerender", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc)}
+
+
+def action_undo_ban(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Undo the most recent ban (``state.last_ban``), theme or quote, and put it back on the panel.
+
+    Mirrors button C long-press. One decision, not all of them: clearing every
+    theme ban is a curator-UI action behind a confirm
+    (:func:`action_clear_theme_bans`). A theme comes back on the quote now on
+    the panel (as the random pick under ``--theme random``, otherwise as the
+    manual theme). A quote comes back if it is still its five-minute bucket;
+    later than that its ban is lifted and the panel keeps its quote. Either
+    repaint carries a "Ban undone" notice. Refused while asleep, like the bans;
+    nothing to undo is a no-op success with no repaint.
+    """
+    telemetry_path = args.telemetry_path or None
+    with _button_render_gate(state, label, "undo_ban", telemetry_path=telemetry_path) as acquired:
+        if not acquired:
+            return {"ok": False, "error": "busy"}
+        refused = _refuse_while_asleep(args, state, "undo_ban", label, telemetry_path)
+        if refused is not None:
+            return refused
+        with state.lock:
+            ban = state.last_ban
+        if ban is None:
+            _log(f"{label}: undo ban: nothing to undo")
+            _emit_action(telemetry_path, "undo_ban", label, ok=True, undone=None)
+            return {"ok": True, "undone": None}
+        time_str = runtime_render.current_time_str()
+        if ban["kind"] == "theme":
+            return _undo_theme_ban_unlocked(args, state, label, time_str, ban["theme"])
+        return _undo_quote_ban_unlocked(args, state, label, time_str, ban)
+
+
+def _undo_theme_ban_unlocked(
+    args: argparse.Namespace, state: RuntimeState, label: str, time_str: str, theme: str,
+) -> dict:
+    """Lift ``theme``'s ban and repaint the panel's quote in it. The caller holds ``render_lock``."""
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    with state.lock:
+        if theme in state.banned_themes:
+            state.banned_themes.remove(theme)
+        state.last_ban = None
+        saved = (state.manual_theme, state.current_random_theme)
+        if state.theme_arg == "random":
+            state.manual_theme = None
+            state.current_random_theme = theme
+        else:
+            state.manual_theme = theme
+        quote_id = state.last_quote_id
+        try:
+            runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+        except Exception as exc:
+            _log(f"{label} undo ban: persist failed: {exc!r}", err=True)
+    _log(f"{label}: undo ban: theme {theme} is back")
+    try:
+        runtime_render._render_unlocked(
+            args, state, time_str, history_path, quote_id=quote_id, notice=f"Ban undone: {theme} is back",
+        )
+    except Exception as exc:
+        # The ban stays lifted (that was the ask); only the theme switch is
+        # rolled back, so state matches the frame still on the panel.
+        with state.lock:
+            state.manual_theme, state.current_random_theme = saved
+        _log(f"{label} undo ban: repaint failed: {exc!r}", err=True)
+        _emit_action(telemetry_path, "undo_ban", label, ok=False, error=repr(exc), theme=theme)
+        return {"ok": False, "error": repr(exc), "undone": {"kind": "theme", "theme": theme}}
+    _emit_action(telemetry_path, "undo_ban", label, ok=True, theme=theme)
+    return {"ok": True, "undone": {"kind": "theme", "theme": theme}}
+
+
+def _undo_quote_ban_unlocked(
+    args: argparse.Namespace, state: RuntimeState, label: str, time_str: str, ban: dict,
+) -> dict:
+    """Lift a quote ban and, within its bucket, put the quote back. The caller holds ``render_lock``."""
+    from idle_hours.buckets import bucket_for_time
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    key = ban["key"]
+    overrides_path = Path(runtime_render._corpus_kwargs(args)["overrides_path"]).expanduser()
+    try:
+        with pick_quote_module.OVERRIDES_WRITE_LOCK:
+            pick_quote_module.remove_ban_quote_key(overrides_path, key)
+    except (OSError, ValueError) as exc:
+        # last_ban is kept, so the undo can be retried once the file is fixed.
+        _log(f"{label}: undo ban refused, {overrides_path} is unreadable or invalid: {exc!r}", err=True)
+        _emit_action(telemetry_path, "undo_ban", label, ok=False, error="overrides_invalid", key=key)
+        return {"ok": False, "error": "overrides_invalid", "key": key}
+    restore = ban.get("bucket") is not None and ban["bucket"] == bucket_for_time(time_str)
+    with state.lock:
+        state.last_ban = None
+        if restore and state.theme_arg == "random" and state.manual_theme is None and ban.get("theme"):
+            # Back in the theme it was banned in, held for this quote.
+            state.current_random_theme = ban["theme"]
+            state.last_random_quote_id = ban["quote_id"]
+    if restore:
+        bucket, quote_id, notice = ban["bucket"], ban["quote_id"], "Ban undone: the quote is back"
+    else:
+        bucket, quote_id = runtime_render.displayed_quote(state)
+        notice = "Ban undone: that quote can show again"
+    _log(f"{label}: undo ban: quote {key}" + (" is back" if restore else " unbanned (its bucket has passed)"))
+    try:
+        runtime_render._render_unlocked(
+            args, state, time_str, history_path, bucket=bucket, quote_id=quote_id, notice=notice,
+        )
+    except Exception as exc:
+        _log(f"{label} undo ban: repaint failed: {exc!r}", err=True)
+        _emit_action(telemetry_path, "undo_ban", label, ok=False, error=repr(exc), key=key)
+        return {"ok": False, "error": repr(exc), "undone": {"kind": "quote", "key": key}}
+    _emit_action(telemetry_path, "undo_ban", label, ok=True, key=key, restored=restore)
+    return {"ok": True, "undone": {"kind": "quote", "key": key}, "restored": restore}
+
+
+def action_clear_theme_bans(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Lift every theme ban. Curator UI only, behind a confirm; no repaint.
+
+    Deliberately not on a button: bans accumulate one considered press at a
+    time and a hold is the easiest gesture to trigger by accident, so the
+    wholesale reset lives where it can ask first. Quote bans are untouched;
+    they share ``selection_overrides.json`` with the curator's own bans and
+    are edited there.
+    """
+    telemetry_path = args.telemetry_path or None
+    with state.lock:
+        cleared = list(state.banned_themes)
+        state.banned_themes.clear()
+        if state.last_ban is not None and state.last_ban.get("kind") == "theme":
+            state.last_ban = None
+        if cleared:
+            try:
+                runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+            except Exception as exc:
+                _log(f"{label} clear theme bans: persist failed: {exc!r}", err=True)
+    _log(f"{label}: cleared {len(cleared)} theme ban(s)")
+    _emit_action(telemetry_path, "clear_theme_bans", label, ok=True, themes=cleared)
+    return {"ok": True, "cleared": cleared, "banned_themes": []}

@@ -78,6 +78,12 @@ class RuntimeState:
         # ``runtime_theme.without_banned`` applies it to random draws and the
         # theme cycle; an explicit ``--theme`` or dropdown choice still wins.
         self.banned_themes: list[str] = []
+        # The most recent button / web ban, which button C's long-press
+        # undoes: ``{"kind": "theme", "theme": ...}`` or ``{"kind": "quote",
+        # "key": ..., "quote_id": ..., "bucket": ..., "theme": ...}``. In
+        # memory only: an undo is for the press you just regretted, and a
+        # restart in between costs a trip to the curator UI instead.
+        self.last_ban: dict | None = None
         self.manual_quiet = False             # toggled by button D
         # Manual *awake* override (issue #278): the operator pressed D (or
         # the web "wake") during the scheduled quiet window and wants the

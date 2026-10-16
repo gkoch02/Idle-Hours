@@ -550,9 +550,9 @@ def _build_button_handlers(
     Thin wrappers around the module-level ``action_*`` functions so the same
     bodies power both GPIO presses and the curator web UI's POST endpoints.
     ``short_handlers`` covers quick taps on A/B/C/D; ``hold_handlers`` adds the
-    2-second long-press actions: A bans the theme, B bans the quote, D shuts
-    down. A is the theme button (next theme / ban theme), B the quote button
-    (next quote / ban quote).
+    2-second long-press actions: A bans the theme, B bans the quote, C undoes
+    the last ban, D shuts down. A is the theme button (next theme / ban
+    theme), B the quote button (next quote / ban quote).
     """
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
@@ -747,6 +747,9 @@ def _build_button_handlers(
                 runtime_telemetry.append_telemetry(telemetry_path, {"bucket": runtime_render.current_bucket(), "error": repr(exc), "mode": "shutdown"})
                 _rollback_quiet()
 
+    def on_undo_ban() -> None:
+        runtime_actions.action_undo_ban(args, state, label="button C")
+
     def on_quiet_toggle() -> None:
         runtime_actions.action_quiet(args, state, label="button D")
 
@@ -759,6 +762,7 @@ def _build_button_handlers(
     hold_handlers = {
         "A": on_ban_theme,
         "B": on_ban_quote,
+        "C": on_undo_ban,
         "D": on_shutdown,
     }
     return short_handlers, hold_handlers

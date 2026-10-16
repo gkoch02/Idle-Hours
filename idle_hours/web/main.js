@@ -377,7 +377,7 @@ async function refreshCurrent() {
 // as the wake it is.
 function reflectSleep(asleep) {
   state.asleep = asleep;
-  for (const id of ["action-skip", "action-unskip", "action-ban-theme", "action-ban-quote"]) {
+  for (const id of ["action-skip", "action-unskip", "action-ban-theme", "action-ban-quote", "action-undo-ban"]) {
     const btn = $(id);
     if (!btn) continue;
     btn.disabled = asleep;
@@ -776,6 +776,30 @@ function renderBannedThemes(banned) {
     btn.addEventListener("click", () => unbanTheme(name));
     box.appendChild(btn);
   }
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "btn btn-small btn-danger";
+  clear.textContent = "Clear all";
+  clear.title = "Lift every theme ban";
+  clear.addEventListener("click", clearThemeBans);
+  box.appendChild(clear);
+}
+
+// Every theme ban at once. Only here, behind a confirm: on the panel a hold
+// is too easy to trigger for something that undoes many considered presses.
+async function clearThemeBans() {
+  if (!confirm("Lift every theme ban? They all rejoin random draws and the cycle.")) return;
+  const { ok, status, data } = await jsonFetch("/api/action/clear-theme-bans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!ok) {
+    log(`clear theme bans: error ${status} ${data?.error || ""}`, "err");
+    return;
+  }
+  log(`cleared ${(data?.cleared || []).length} theme ban(s)`, "ok");
+  await refreshThemes();
 }
 
 async function unbanTheme(name) {

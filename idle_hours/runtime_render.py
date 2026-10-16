@@ -29,7 +29,7 @@ from typing import TypedDict
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours import runtime_store, runtime_telemetry, runtime_theme, sd_notify
 from idle_hours.buckets import bucket_for_time
-from idle_hours.path_resolution import resolve_input_path
+from idle_hours.path_resolution import NOTICE_ENV, resolve_input_path
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
 
@@ -325,6 +325,15 @@ def _package_imported_from_cwd() -> bool:
         return False
 
 
+def _render_env(notice: str | None) -> dict[str, str]:
+    """The render subprocess's environment: ours, warnings suppressed, and ``notice`` if any."""
+    env = {k: v for k, v in os.environ.items() if k != NOTICE_ENV}
+    env[pick_quote_module.SUPPRESS_WARNINGS_ENV] = "1"
+    if notice:
+        env[NOTICE_ENV] = notice
+    return env
+
+
 def render_now(
     render_script: str,
     output_path: str,
@@ -343,6 +352,7 @@ def render_now(
     input_path: str | None = None,
     overrides_path: str | None = None,
     pin_quote: tuple | None = None,
+    notice: str | None = None,
 ) -> None:
     if time_str is None:
         time_str = current_time_str()
@@ -392,7 +402,11 @@ def render_now(
             # subprocess argv must stay recognisable to an operator's own
             # ``--render-script`` — an unknown env var is ignored, an unknown
             # flag exits 2 and takes the appliance into backoff.
-            env={**os.environ, pick_quote_module.SUPPRESS_WARNINGS_ENV: "1"},
+            #
+            # ``notice`` (a ban / undo confirmation) travels the same way, for
+            # the same reason. An inherited one is dropped so only the render
+            # that asked for it carries it.
+            env=_render_env(notice),
         )
     except subprocess.TimeoutExpired as exc:
         # subprocess.run has already killed the child before re-raising; we
@@ -547,7 +561,8 @@ def _draw_random_theme_locked(state: RuntimeState) -> str:
 
 
 def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
-                     mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
+                     mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None,
+                     notice: str | None = None) -> None:
     """Core render-and-push. The caller MUST already hold ``state.render_lock``.
 
     Split out from :func:`_do_render` so a button handler can take the render
@@ -569,6 +584,7 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
         pin_quote=_pin_key_for(quote_id),
+        notice=notice,
         **_corpus_kwargs(args),
     )
     if actual_mode in _IDENTITY_RENDER_MODES:

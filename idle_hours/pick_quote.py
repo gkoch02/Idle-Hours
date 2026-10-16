@@ -636,6 +636,34 @@ def append_ban_quote_key(path: Path, key: str) -> tuple[bool, bytes]:
     return False, data
 
 
+def remove_ban_quote_key(path: Path, key: str) -> bool:
+    """Drop every ``key`` from the sidecar's ``ban_quote_keys``; return whether one was there.
+
+    The undo of :func:`append_ban_quote_key`, with the same rules: the caller
+    holds :data:`OVERRIDES_WRITE_LOCK`, a document that cannot be read as one
+    raises ``ValueError`` instead of being rewritten, and everything else in it
+    is kept verbatim. An absent file, or a key that is not there (already
+    lifted in the editor), is a no-op. A shipped ban
+    (:data:`SHIPPED_BAN_QUOTE_KEYS`) is not in the sidecar and stays in force.
+    """
+    path = Path(path)
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return False
+    current = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(current, dict):
+        raise ValueError("root is not a JSON object")
+    keys = current.get("ban_quote_keys", [])
+    if not isinstance(keys, list):
+        raise ValueError("ban_quote_keys is not a list")
+    if key not in keys:
+        return False
+    current["ban_quote_keys"] = [k for k in keys if k != key]
+    atomic_io.atomic_write_bytes(path, serialize_overrides(current))
+    return True
+
+
 def is_banned(row: dict, overrides: dict) -> bool:
     """True when ``row`` should be excluded from picking entirely.
 

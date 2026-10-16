@@ -1041,6 +1041,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "/api/action/ban-theme": self._action_ban_theme,
             "/api/action/unban-theme": self._action_unban_theme,
             "/api/action/ban-quote": self._action_ban_quote,
+            "/api/action/undo-ban": self._action_undo_ban,
+            "/api/action/clear-theme-bans": self._action_clear_theme_bans,
             "/api/action/quiet": self._action_quiet,
             "/api/action/rerender": self._action_rerender,
         }
@@ -2078,6 +2080,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
 
     def _action_ban_quote(self) -> None:
         result = runtime_actions.action_ban_quote(self._ctx().args, self._ctx().state, label="web")
+        self._json(_status_from_result(result), result)
+
+    def _action_undo_ban(self) -> None:
+        result = runtime_actions.action_undo_ban(self._ctx().args, self._ctx().state, label="web")
+        self._json(_status_from_result(result), result)
+
+    def _action_clear_theme_bans(self) -> None:
+        result = runtime_actions.action_clear_theme_bans(self._ctx().args, self._ctx().state, label="web")
         self._json(_status_from_result(result), result)
 
     def _action_quiet(self) -> None:

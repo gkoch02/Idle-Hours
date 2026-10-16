@@ -24,7 +24,7 @@ Optional in-process HTTP surface for browsing telemetry / coverage / candidates 
 
 **Lifecycle.** `run_clock._maybe_start_web_server(args, state)` runs after `_maybe_start_buttons`, imports `web_server` lazily (so unit tests and `--buttons-off` dev hosts never pay for it), and calls `web_server.start_web_server(args, state, token=...)`. The `(server, thread)` handle is stashed so `stop_web_server` can be called by tests for deterministic teardown; the daemon thread flag means the process's own exit tears it down automatically under systemd. A startup failure (malformed bind, port busy, missing token on non-localhost bind) is **logged but not fatal** — the panel keeps rendering.
 
-**Action handlers are shared with buttons.** Each GPIO button's body has been hoisted from `_build_button_handlers` closures into module-level `runtime_actions.action_skip` / `action_unskip` / `action_theme` / `action_ban_theme` / `action_unban_theme` / `action_ban_quote` / `action_quiet` / `action_rerender` functions. The button dispatcher and the HTTP handler both call them with a `label="button A"` or `label="web"` attribution string. Each function returns `{"ok": True, ...}` on success, `{"ok": False, "error": "busy"}` when the render lock is held, or `{"ok": False, "error": "<repr>"}` on exception; the web handler maps that to 200 / 409 / 500. The source-card restore timer and the shutdown command remain inline in `_build_button_handlers` because neither fits the single-response return-dict contract.
+**Action handlers are shared with buttons.** Each GPIO button's body has been hoisted from `_build_button_handlers` closures into module-level `runtime_actions.action_skip` / `action_unskip` / `action_theme` / `action_ban_theme` / `action_unban_theme` / `action_ban_quote` / `action_undo_ban` / `action_clear_theme_bans` / `action_quiet` / `action_rerender` functions. The button dispatcher and the HTTP handler both call them with a `label="button A"` or `label="web"` attribution string. Each function returns `{"ok": True, ...}` on success, `{"ok": False, "error": "busy"}` when the render lock is held, or `{"ok": False, "error": "<repr>"}` on exception; the web handler maps that to 200 / 409 / 500. The source-card restore timer and the shutdown command remain inline in `_build_button_handlers` because neither fits the single-response return-dict contract.
 
 **Endpoints.**
 
@@ -79,6 +79,8 @@ POST /api/action/{theme,ban-theme,skip,ban-quote,quiet} → mirror buttons A / A
       theme under --theme random, otherwise one unbanned step through THEME_ORDER.
       ban-quote writes the same ban_quote_keys as /api/overrides/ban; 409 on
       no_quote / overrides_invalid / asleep / busy)
+POST /api/action/undo-ban             → mirror button C-hold: undo the most recent ban
+POST /api/action/clear-theme-bans     → web only: lift every theme ban; no repaint
 POST /api/action/{unskip,rerender}    → web only: reverse the last skip; repaint the panel's frame
 POST /api/action/unban-theme          → {"theme": "<name>"} lifts a button-A ban; no repaint;
                                           400 on an unknown name. GET /api/themes lists the

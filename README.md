@@ -424,10 +424,10 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 |---|---|---|
 | **A** | Next theme — the same quote in another theme. Under `--theme random` it draws the next random theme and stays random; otherwise it advances through `default → dark → newsprint → nightvision → gothic → bauhaus → comic → dispatch → atomic → marker` (wraps) and persists the choice to `--state-path`. | Ban theme — never show this theme in random draws or the cycle again, then move to the next theme. Lift a ban in the curator UI's Controls card. |
 | **B** | Next quote — holds the current quote back for `--history-days` and picks a new one. | Ban quote — adds the quote to `ban_quote_keys` in the selection overrides, so it never shows again, then moves to the next quote. |
-| **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
+| **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | Undo last ban — lifts the most recent theme or quote ban and puts it back on the panel. Clearing every theme ban is in the curator UI, behind a confirm. |
 | **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the sleep frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
-Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one.
+Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one. A ban or an undo stamps a one-line notice ("Theme banned: gothic · hold C to undo") on the frame it paints; the notice goes away at the next repaint.
 
 If a button press lands while a render is already in flight (a Spectra 6 refresh can take 10–20s), the press is logged and dropped rather than queued — the UX is "first press wins, subsequent taps during that refresh are no-ops." Each hardware press is also logged with its GPIO pin so you can confirm the physical button reached the expected handler; for deeper wiring diagnosis run `idle-hours probe-buttons` on the Pi. The main loop also watches for a dead button listener (pin claim lost, background thread crashed) and logs one loud warning plus a telemetry entry if it detects one — presses won't work again until the process restarts.
 
@@ -566,7 +566,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 #### Tab: Now
 
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
-- Buttons that mirror the physical Inky panel (`A · Next theme`, `A-hold · Ban theme`, `B · Next quote`, `B-hold · Ban quote`, `D · Quiet / wake`), plus `Un-skip`, `Re-render`, a theme dropdown that jumps directly to any registered theme, and the list of banned themes with an un-ban on each.
+- Buttons that mirror the physical Inky panel (`A · Next theme`, `A-hold · Ban theme`, `B · Next quote`, `B-hold · Ban quote`, `C-hold · Undo last ban`, `D · Quiet / wake`), plus `Un-skip`, `Re-render`, a theme dropdown that jumps directly to any registered theme, and the list of banned themes with an un-ban on each and a **Clear all**.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
 - Theme thumbnail grid: side-by-side previews of every registered theme, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
@@ -614,6 +614,8 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `POST /api/action/{theme,ban-theme,skip,ban-quote,quiet}` | Mirror buttons A / A-hold / B / B-hold / D. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field does what button A does. Malformed JSON returns 400 without mutating state. |
 | `POST /api/action/{unskip,rerender}` | Web only: reverse the last skip; repaint the frame on the panel. |
 | `POST /api/action/unban-theme` | `{"theme": "<name>"}` lifts a theme ban (no repaint). 400 on an unknown name. |
+| `POST /api/action/undo-ban` | Mirrors button C-hold: undo the most recent ban. |
+| `POST /api/action/clear-theme-bans` | Lift every theme ban (no repaint). Web only. |
 
 Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-Idle-Hours-Token` header only; query-string tokens would leak into journald via HTTP request logging.
 

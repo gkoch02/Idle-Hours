@@ -991,6 +991,27 @@ class TestActionEndpointsLocking:
         assert _json_body(body)["key"] == "99:7"
         assert json.loads(Path(args.overrides).read_text())["ban_quote_keys"] == ["99:7"]
 
+    def test_undo_ban_reverses_a_theme_ban(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "gothic"
+        with self._patch_render():
+            assert _post(server, "/api/action/ban-theme")[0] == 200
+            status, body = _post(server, "/api/action/undo-ban")
+        assert status == 200
+        assert _json_body(body)["undone"] == {"kind": "theme", "theme": "gothic"}
+        with state.lock:
+            assert state.banned_themes == []
+
+    def test_clear_theme_bans(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.banned_themes = ["gothic", "deco"]
+        status, body = _post(server, "/api/action/clear-theme-bans", {})
+        assert status == 200
+        assert _json_body(body)["cleared"] == ["gothic", "deco"]
+        assert _json_body(_get(server, "/api/themes")[1])["banned_themes"] == []
+
     def test_ban_quote_with_nothing_on_the_panel_is_409(self, live_server):
         server, _state, _args = live_server
         status, body = _post(server, "/api/action/ban-quote")

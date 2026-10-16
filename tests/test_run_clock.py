@@ -2286,8 +2286,8 @@ class TestMaybeStartButtons:
         result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
         assert result == ["stub"]
         assert set(captured["short"]) == {"A", "B", "C", "D"}
-        # Long-press: A bans the theme, B bans the quote, D shuts down; C has none.
-        assert set(captured["hold"]) == {"A", "B", "D"}
+        # Long-press: A bans the theme, B bans the quote, C undoes the last ban, D shuts down.
+        assert set(captured["hold"]) == {"A", "B", "C", "D"}
 
     def test_successful_start_attaches_handles_to_state(self, tmp_path, monkeypatch):
         """The liveness check relies on state.button_handles; make sure start wires it up."""
@@ -2544,6 +2544,101 @@ class TestThemeAndQuoteButtons:
         everything = runtime_theme.random_theme_pool()
         assert "gothic" not in runtime_theme.random_theme_pool(banned=["gothic"])
         assert runtime_theme.random_theme_pool(banned=everything) == everything
+
+    def test_a_ban_frame_carries_a_notice_naming_the_undo(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_theme(args, state, label="button A")
+        assert mock_render.call_args.kwargs["notice"] == "Theme banned: gothic · hold C to undo"
+        # The next repaint has no notice: it lasts one frame.
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_theme(args, state, label="button A")
+        assert mock_render.call_args.kwargs["notice"] is None
+
+    def test_c_long_undoes_a_theme_ban_and_brings_it_back_in_random_mode(self, tmp_path):
+        args = make_args(tmp_path)
+        state = self._random_state()
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["A"]()
+            assert state.banned_themes == ["gothic"]
+            hold["C"]()
+        assert state.banned_themes == []
+        assert state.last_ban is None
+        assert state.manual_theme is None and state.current_random_theme == "gothic"
+        assert self._rendered_theme(mock_render) == "gothic"
+        assert mock_render.call_args.kwargs["notice"] == "Ban undone: gothic is back"
+        assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == []
+
+    def test_c_long_undoes_a_theme_ban_as_the_manual_theme_outside_random(self, tmp_path):
+        args = make_args(tmp_path)
+        state = run_clock.RuntimeState("auto")
+        state.last_effective_theme = "deco"
+        state.last_quote_id = ("src", 1, "q", "m")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_theme(args, state, label="button A")
+            runtime_actions.action_undo_ban(args, state, label="button C")
+        assert state.banned_themes == [] and state.manual_theme == "deco"
+        assert self._rendered_theme(mock_render) == "deco"
+
+    def test_c_long_with_nothing_to_undo_does_not_repaint(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            result = runtime_actions.action_undo_ban(make_args(tmp_path), state, label="button C")
+        assert result == {"ok": True, "undone": None}
+        mock_render.assert_not_called()
+
+    def _ban_a_quote(self, tmp_path, state):
+        overrides = tmp_path / "selection_overrides.json"
+        overrides.write_text(json.dumps({"_comment": "mine", "ban_quote_keys": ["9:9"]}))
+        args = make_args(tmp_path, overrides=str(overrides))
+        state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
+        state.last_bucket = "h10_exact"
+        with patch("idle_hours.runtime_render.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"):
+            runtime_actions.action_ban_quote(args, state, label="button B")
+        assert mock_render.call_args.kwargs["notice"] == "Quote banned · hold C to undo"
+        return args, overrides
+
+    def test_c_long_undoes_a_quote_ban_and_puts_the_quote_back_within_its_bucket(self, tmp_path):
+        state = self._random_state(current_random_theme="deco", last_effective_theme="deco")
+        args, overrides = self._ban_a_quote(tmp_path, state)
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:01"):
+            result = runtime_actions.action_undo_ban(args, state, label="button C")
+        assert result["ok"] and result["restored"] is True
+        assert json.loads(overrides.read_text()) == {"_comment": "mine", "ban_quote_keys": ["9:9"]}
+        assert mock_render.call_args.kwargs["quote_id"] == ("src-old", 5, "q-old", "mt-old")
+        assert mock_render.call_args.kwargs["bucket"] == "h10_exact"
+        # Back in the theme it was banned in.
+        assert self._rendered_theme(mock_render) == "deco"
+        assert mock_render.call_args.kwargs["notice"] == "Ban undone: the quote is back"
+
+    def test_c_long_after_the_bucket_passed_lifts_the_ban_and_keeps_the_panel(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        args, overrides = self._ban_a_quote(tmp_path, state)
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:10"):
+            result = runtime_actions.action_undo_ban(args, state, label="button C")
+        assert result["restored"] is False
+        assert json.loads(overrides.read_text())["ban_quote_keys"] == ["9:9"]
+        assert mock_render.call_args.kwargs["quote_id"] == ("src-new", 7, "q-new", "mt-new")
+
+    def test_clear_theme_bans_lifts_every_theme_ban(self, tmp_path):
+        state = run_clock.RuntimeState("random")
+        state.banned_themes = ["gothic", "deco"]
+        state.last_ban = {"kind": "theme", "theme": "deco"}
+        result = runtime_actions.action_clear_theme_bans(make_args(tmp_path), state)
+        assert result["cleared"] == ["gothic", "deco"]
+        assert state.banned_themes == [] and state.last_ban is None
+        assert json.loads((tmp_path / "state.json").read_text())["banned_themes"] == []
 
     def test_b_short_moves_to_the_next_quote(self, tmp_path):
         args = make_args(tmp_path)
@@ -4889,6 +4984,16 @@ class TestRenderChildSuppressesCorpusWarnings:
         env = self._run(tmp_path).call_args.kwargs["env"]
         assert env["IDLE_HOURS_TEST_CANARY"] == "kept"
         assert "PATH" in env
+
+    def test_a_notice_reaches_the_child_by_environment_only(self, tmp_path):
+        mock_run = self._run(tmp_path, notice="Theme banned: gothic · hold C to undo")
+        assert mock_run.call_args.kwargs["env"]["IDLE_HOURS_NOTICE"] == "Theme banned: gothic · hold C to undo"
+        assert not any(str(a).startswith("--notice") for a in mock_run.call_args[0][0])
+
+    def test_an_inherited_notice_is_not_passed_on(self, tmp_path, monkeypatch):
+        # Only the render that asked for a notice carries one.
+        monkeypatch.setenv("IDLE_HOURS_NOTICE", "stale")
+        assert "IDLE_HOURS_NOTICE" not in self._run(tmp_path).call_args.kwargs["env"]
 
     def test_suppression_is_not_passed_as_argv(self, tmp_path):
         """It must be an env var, not a flag: ``_corpus_render_args`` documents

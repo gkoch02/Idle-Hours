@@ -129,7 +129,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 - **Supervision:** subprocesses run under timeouts (render 45 s, display 60 s). Failures back off exponentially. Heartbeats are telemetry entries stamped with quiet state, and systemd `WATCHDOG=1` is pinged at every subprocess boundary as well as from the heartbeat. SIGTERM drains the in-flight render.
 - **Telemetry:** date-rotated JSONL sibling files, fsync'd except heartbeats, pruned after `--telemetry-retain-days`. `idle-hours health` summarises it, and its render-age gates stand down while quiet hours are active.
 
-**Buttons** (A/B/C/D on GPIO 5/6/16/24; long press = 2 s): A next theme / long-press ban theme · B next quote / long-press ban quote · C 5 s source card · D sleep-or-wake toggle / long-press shutdown. The full table, including the cycle chain, is in `docs/runtime.md`.
+**Buttons** (A/B/C/D on GPIO 5/6/16/24; long press = 2 s): A next theme / long-press ban theme · B next quote / long-press ban quote · C 5 s source card / long-press undo last ban · D sleep-or-wake toggle / long-press shutdown. The full table, including the cycle chain, is in `docs/runtime.md`.
 
 
 ### Inky Display Bridge (`display_inky.py`)
