@@ -39,7 +39,9 @@ jobs:
         id: diff
         if: github.event_name == 'pull_request'
         run: |
-          changed="$(git diff --name-only HEAD^1 HEAD)"
+          # --no-renames lists both sides of a rename; otherwise moving
+          # idle_hours/x.py to docs/x.md shows only the .md and skips CI.
+          changed="$(git diff --no-renames --name-only HEAD^1 HEAD)"
           printf '%s\n' "$changed"
           # Markdown inside idle_hours/ ships in the wheel (assets/*.md), so it
           # is not "just docs".

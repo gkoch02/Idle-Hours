@@ -285,6 +285,12 @@ class TestDocsOnlyFences:
         """Its two contexts are required, and the docs fences run inside it."""
         assert _load_workflow()["jobs"]["test"]["if"] == "${{ !cancelled() }}"
 
+    def test_classifier_sees_both_sides_of_a_rename(self):
+        """With rename detection on, `idle_hours/x.py` -> `docs/x.md` lists only the .md and reads as docs-only."""
+        steps = _load_workflow()["jobs"]["changes"]["steps"]
+        script = next(s["run"] for s in steps if s.get("id") == "diff")
+        assert "git diff --no-renames --name-only" in script
+
     def test_listed_modules_exist(self):
         for name in _docs_fence_step_modules(_load_workflow()):
             assert (REPO_ROOT / "tests" / name).is_file(), name
