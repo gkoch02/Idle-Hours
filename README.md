@@ -2,11 +2,13 @@
   <img src="idle_hours/assets/logo.svg" alt="Idle Hours" width="800">
 </p>
 
-[![CI](https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/gkoch02/IdleHours/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/gkoch02/IdleHours/actions/workflows/github-code-scanning/codeql)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
-[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-C51A4A?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+<p align="center">
+  <a href="https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml"><img src="https://github.com/gkoch02/IdleHours/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/gkoch02/IdleHours/actions/workflows/github-code-scanning/codeql"><img src="https://github.com/gkoch02/IdleHours/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="https://www.raspberrypi.com"><img src="https://img.shields.io/badge/Raspberry%20Pi-C51A4A?logo=raspberrypi&logoColor=white" alt="Raspberry Pi"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+</p>
 
 Idle Hours is a literary clock: every few minutes it shows a sentence from a public-domain novel that names the current time, with the time phrase picked out in bold. Behind it is a pipeline that mines Project Gutenberg for phrases like "a quarter past seven", cleans and scores them, and bakes over two thousand quotes into a database ranked for each five-minute slot of the twelve-hour clock. A Raspberry Pi renders the pick for a six-colour eInk panel and runs unattended as a systemd appliance, with a small web UI for curating the corpus.
 
